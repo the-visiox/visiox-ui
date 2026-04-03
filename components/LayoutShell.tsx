@@ -7,9 +7,10 @@ import Footer from "@/components/Footer";
 import Sidebar from "@/components/platform/Sidebar";
 import TopBar from "@/components/platform/TopBar";
 import { useAuth } from "@/lib/auth";
+import { TOKEN_KEYS } from "@/lib/api";
 
 // Routes that belong to the authenticated platform workspace hubs.
-const PLATFORM_ROUTES = ["/overview", "/datasets", "/workflows", "/train", "/deploy"];
+const PLATFORM_ROUTES = ["/overview", "/projects", "/teams", "/datasets", "/workflows", "/train", "/deploy"];
 // Routes that show no shell at all (auth pages).
 const BARE_ROUTES = ["/login", "/register"];
 
@@ -32,7 +33,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       // In a real app we might check a cookie or local session here
       // But for this demo, we'll let existing sessions persist.
       // If truly logged out, send to login.
-      if (localStorage.getItem("visiox_auth") !== "true") {
+      if (!localStorage.getItem(TOKEN_KEYS.access)) {
         router.push("/login");
       }
     }

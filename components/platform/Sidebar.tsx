@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  FolderKanban,
   Database,
   Workflow,
   Cpu,
@@ -12,11 +13,14 @@ import {
   HelpCircle,
   ChevronRight,
   Fingerprint,
+  LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useAuth } from "@/lib/auth";
 
 const navItems = [
   { name: "Overview",  icon: LayoutDashboard, href: "/overview" },
+  { name: "Projects",  icon: FolderKanban,    href: "/projects" },
   { name: "Datasets",  icon: Database,        href: "/datasets" },
   { name: "Workflows", icon: Workflow,         href: "/workflows" },
   { name: "Train",     icon: Cpu,             href: "/train" },
@@ -138,6 +142,3 @@ export default function Sidebar() {
     </aside>
   );
 }
-
-import { LogOut } from "lucide-react";
-import { useAuth } from "@/lib/auth";

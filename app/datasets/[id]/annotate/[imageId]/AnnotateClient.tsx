@@ -1,21 +1,23 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  ArrowLeft, 
-  Save, 
-  MousePointer2, 
-  Square, 
-  Pentagon, 
-  Undo2, 
+import {
+  ArrowLeft,
+  Save,
+  MousePointer2,
+  Square,
+  Pentagon,
+  Undo2,
   Redo2,
   Trash2,
   Settings,
-  HelpCircle
+  HelpCircle,
+  Loader2,
 } from 'lucide-react';
 import AnnotationEditor from '@/components/annotate/AnnotationEditor';
 import BlueprintGrid from '@/components/BlueprintGrid';
+import { datasets } from '@/lib/api';
 
 interface AnnotateClientProps {
   id: string;
@@ -24,9 +26,58 @@ interface AnnotateClientProps {
 
 export default function AnnotateClient({ id, imageId }: AnnotateClientProps) {
   const router = useRouter();
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock image URL based on ID for demo
-  const imageUrl = `https://picsum.photos/seed/${imageId}/1200/800`;
+  useEffect(() => {
+    const datasetId = parseInt(id, 10);
+    const mid = parseInt(imageId, 10);
+    if (Number.isNaN(datasetId) || Number.isNaN(mid)) {
+      setError('Invalid dataset or image.');
+      setLoading(false);
+      return;
+    }
+    (async () => {
+      try {
+        const list = await datasets.media(datasetId);
+        const found = list.find((m) => m.id === mid);
+        if (!found?.file_url) {
+          setError('Image not found or has no file URL.');
+        } else {
+          setImageUrl(found.file_url);
+        }
+      } catch {
+        setError('Could not load image.');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [id, imageId]);
+
+  if (loading) {
+    return (
+      <div className="relative flex-1 flex flex-col h-screen bg-stone-950 items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+        <p className="text-stone-400 text-sm font-medium">Loading image…</p>
+      </div>
+    );
+  }
+
+  if (error || !imageUrl) {
+    return (
+      <div className="relative flex-1 flex flex-col h-screen bg-stone-950 items-center justify-center gap-4 px-6 text-center">
+        <p className="text-red-400 text-sm font-medium">{error ?? 'No image URL.'}</p>
+        <button
+          type="button"
+          onClick={() => router.push(`/datasets/${id}`)}
+          className="px-4 py-2 bg-white text-stone-900 rounded-xl text-xs font-bold"
+        >
+          Back to dataset
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex-1 flex flex-col h-screen bg-stone-950 overflow-hidden">
