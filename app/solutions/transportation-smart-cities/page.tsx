@@ -8,18 +8,18 @@ import {
 
 const config: SolutionPageConfig = {
     accentColor: "orange",
-    accentHex: "#EA580C",
-    bgTint: "bg-stone-50",
+    accentHex: "#FF7300",
+    bgTint: "bg-[#fcfaf7]",
     gradientFrom: "from-orange-600",
-    gradientTo: "to-amber-400",
+    gradientTo: "to-orange-400",
 
     badge: "Transportation",
     badgeIcon: <Signal className="w-4 h-4" />,
-    title: <>Intelligent <br /><span className="bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent">Smart Cities</span></>,
+    title: <>Intelligent <br /><span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Smart Cities</span></>,
     subtitle: "Harnessing computer vision to create safer, cleaner, and more efficient urban environments for every citizen.",
     heroImage: "/solutions/transportation-smart-cities.jpg",
-    heroCTAPrimary: "Explore Platform",
-    heroCTASecondary: "Case Studies",
+    heroCTAPrimary: "Try Now",
+    heroCTASecondary: "Contact Sales",
 
     stats: [
         { label: "CO2 Savings", value: "-22%", icon: <Wind className="w-5 h-5" /> },

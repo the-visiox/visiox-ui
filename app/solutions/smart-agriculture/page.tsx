@@ -7,19 +7,19 @@ import {
 } from "lucide-react";
 
 const config: SolutionPageConfig = {
-    accentColor: "green",
-    accentHex: "#16A34A",
-    bgTint: "bg-[#fafcf9]",
-    gradientFrom: "from-green-600",
-    gradientTo: "to-lime-400",
+    accentColor: "orange",
+    accentHex: "#FF7300",
+    bgTint: "bg-[#fcfaf7]",
+    gradientFrom: "from-orange-600",
+    gradientTo: "to-orange-400",
 
     badge: "Agriculture",
     badgeIcon: <CloudSun className="w-4 h-4" />,
-    title: <>Precision AI for <br /><span className="text-green-600">Sustainable Yields</span></>,
+    title: <>Precision AI for <br /><span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Sustainable Yields</span></>,
     subtitle: "Bridging the gap between traditional farming and high-tech agriculture with visual intelligence that monitors every sprout and fruit.",
     heroImage: "/solutions/smart-agriculture.jpg",
-    heroCTAPrimary: "Join the Green Revolution",
-    heroCTASecondary: "Download Agri-Tech Report",
+    heroCTAPrimary: "Try Now",
+    heroCTASecondary: "Contact Sales",
 
     stats: [
         { label: "Efficiency Boost", value: "+30%", icon: <TrendingUp className="w-5 h-5" /> },
@@ -31,10 +31,10 @@ const config: SolutionPageConfig = {
     capabilitiesTitle: "Digital Eyes in the Field",
     capabilitiesSubtitle: "Our computer vision platform is ruggedized for outdoor environments, operating across varying light conditions and weather patterns.",
     capabilities: [
-        { title: "Crop Health Monitoring", description: "Multispectral analysis to detect early signs of stress, nutrient deficiency, or disease.", icon: <Leaf className="w-6 h-6 text-green-500" /> },
-        { title: "Yield Prediction", description: "High-accuracy fruit counting and size estimation for precise harvest forecasting.", icon: <TrendingUp className="w-6 h-6 text-green-500" /> },
-        { title: "Automated Harvesting", description: "Vision guidance for robotic harvesters to identify and pick ripe produce without damage.", icon: <Sprout className="w-6 h-6 text-green-500" /> },
-        { title: "Precision Spraying", description: "Targeted application of fertilizers and pesticides only where needed, reducing waste.", icon: <Droplets className="w-6 h-6 text-green-500" /> }
+        { title: "Crop Health Monitoring", description: "Multispectral analysis to detect early signs of stress, nutrient deficiency, or disease.", icon: <Leaf className="w-6 h-6 text-orange-500" /> },
+        { title: "Yield Prediction", description: "High-accuracy fruit counting and size estimation for precise harvest forecasting.", icon: <TrendingUp className="w-6 h-6 text-orange-500" /> },
+        { title: "Automated Harvesting", description: "Vision guidance for robotic harvesters to identify and pick ripe produce without damage.", icon: <Sprout className="w-6 h-6 text-orange-500" /> },
+        { title: "Precision Spraying", description: "Targeted application of fertilizers and pesticides only where needed, reducing waste.", icon: <Droplets className="w-6 h-6 text-orange-500" /> }
     ],
 
     useCasesTitle: "Farm Success Stories",

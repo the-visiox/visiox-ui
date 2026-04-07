@@ -16,7 +16,7 @@ export default function TopBar() {
   const title = crumb(pathname);
 
   return (
-    <header className="fixed top-0 left-64 right-0 h-16 z-40 bg-[#fcfaf7]/80 backdrop-blur-md border-b border-stone-200 flex items-center px-8 gap-4">
+    <header className="fixed top-0 md:left-64 left-0 right-0 h-16 z-40 bg-[#fcfaf7]/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 md:px-8 gap-4">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-stone-400 text-[10px] font-bold uppercase tracking-widest flex-1">
         <Link href="/overview" className="hover:text-stone-900 transition-colors">

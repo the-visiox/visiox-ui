@@ -82,7 +82,7 @@ export default function SolutionPageTemplate({ config }: { config: SolutionPageC
                 {/* Background ambience */}
                 <div className="absolute inset-0 pointer-events-none">
                     <div className="absolute top-0 right-0 w-[700px] h-[700px] rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2 opacity-30"
-                         style={{ backgroundColor: accentHex }} />
+                        style={{ backgroundColor: accentHex }} />
                     <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-stone-100/50 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
                 </div>
 
@@ -116,7 +116,7 @@ export default function SolutionPageTemplate({ config }: { config: SolutionPageC
 
                             <div className="flex flex-col sm:flex-row gap-4">
                                 <button className="px-10 py-4 text-white rounded-2xl font-bold transition-all shadow-xl hover:-translate-y-0.5"
-                                        style={{ backgroundColor: accentHex }}>
+                                    style={{ backgroundColor: accentHex }}>
                                     {heroCTAPrimary}
                                 </button>
                                 <button className="px-10 py-4 bg-white text-stone-900 border border-stone-200 rounded-2xl font-bold hover:bg-stone-50 transition-colors">
@@ -149,12 +149,12 @@ export default function SolutionPageTemplate({ config }: { config: SolutionPageC
             <section className="bg-white px-6 lg:px-8 pt-16 pb-24 relative z-20">
                 <div className="max-w-7xl mx-auto">
                     {/* STATS BAR */}
-                    <div className="rounded-[2.5rem] shadow-xl shadow-stone-200/50 py-8 px-6 lg:py-10 lg:px-12 mb-24 relative overflow-hidden z-10" 
-                         style={{ backgroundColor: accentHex }}>
+                    <div className="rounded-[2.5rem] shadow-xl shadow-stone-200/50 py-8 px-6 lg:py-10 lg:px-12 mb-24 relative overflow-hidden z-10"
+                        style={{ backgroundColor: accentHex }}>
                         {/* Decorative glow inside stats */}
                         <div className="absolute top-0 right-0 w-64 h-64 bg-white/20 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2 pointer-events-none" />
                         <div className="absolute bottom-0 left-0 w-64 h-64 bg-black/10 rounded-full blur-[80px] translate-y-1/2 -translate-x-1/2 pointer-events-none" />
-                        
+
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 text-center relative z-10">
                             {stats.map((stat, i) => (
                                 <div key={i} className="space-y-3 group">
@@ -178,7 +178,7 @@ export default function SolutionPageTemplate({ config }: { config: SolutionPageC
                         {capabilities.map((item, i) => (
                             <div key={i} className="p-8 bg-stone-50/50 rounded-3xl border border-stone-100 hover:bg-white hover:shadow-2xl hover:border-stone-200 transition-all duration-300 group">
                                 <div className="mb-6 w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"
-                                     style={{ boxShadow: `0 4px 14px ${accentHex}15` }}>
+                                    style={{ boxShadow: `0 4px 14px ${accentHex}15` }}>
                                     {item.icon}
                                 </div>
                                 <h3 className="text-xl font-bold text-stone-900 mb-3">{item.title}</h3>
@@ -190,7 +190,7 @@ export default function SolutionPageTemplate({ config }: { config: SolutionPageC
             </section>
 
             {/* ═══════ USE CASES ═══════ */}
-            <section className="py-24 px-6 lg:px-8 bg-stone-50 overflow-hidden">
+            <section className="pt-24 pb-8 md:pb-16 px-6 lg:px-8 bg-stone-50 overflow-hidden">
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
                         <div>
@@ -238,21 +238,21 @@ export default function SolutionPageTemplate({ config }: { config: SolutionPageC
             </section>
 
             {/* ═══════ CTA ═══════ */}
-            <section className="py-32 px-6">
-                <div className="max-w-5xl mx-auto rounded-[3rem] p-12 lg:p-20 text-center text-white relative overflow-hidden"
-                     style={{ background: `linear-gradient(135deg, ${accentHex}, ${accentHex}cc)` }}>
-                    <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
-                    <div className="absolute bottom-0 left-0 w-96 h-96 bg-black/10 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
+            <section className="pt-8 md:pt-16 pb-12 md:pb-24 px-6">
+                <div className="max-w-4xl mx-auto rounded-3xl p-8 lg:p-12 text-center text-white relative overflow-hidden"
+                    style={{ background: `linear-gradient(135deg, ${accentHex}, ${accentHex}cc)` }}>
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2" />
+                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-black/10 rounded-full blur-[80px] translate-y-1/2 -translate-x-1/2" />
 
                     <div className="relative z-10">
-                        <h2 className="text-4xl lg:text-6xl font-bold mb-8 tracking-tight">{ctaTitle}</h2>
-                        <p className="text-xl mb-12 text-white/85 max-w-2xl mx-auto leading-relaxed">{ctaSubtitle}</p>
+                        <h2 className="text-3xl lg:text-5xl font-extrabold mb-6 tracking-tight leading-tight">{ctaTitle}</h2>
+                        <p className="text-lg mb-8 text-white/85 max-w-xl mx-auto leading-relaxed">{ctaSubtitle}</p>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                            <Link href="/contact" className="px-10 py-5 bg-white rounded-2xl font-bold hover:bg-stone-50 transition-all shadow-xl hover:-translate-y-0.5"
-                                  style={{ color: accentHex }}>
+                            <Link href="/contact" className="px-8 py-3.5 bg-white rounded-xl font-bold hover:bg-stone-50 transition-all shadow-xl hover:-translate-y-0.5"
+                                style={{ color: accentHex }}>
                                 {ctaPrimary}
                             </Link>
-                            <Link href="/contact" className="px-10 py-5 bg-white/10 text-white border border-white/30 rounded-2xl font-bold hover:bg-white/20 transition-all backdrop-blur-sm">
+                            <Link href="/contact" className="px-8 py-3.5 bg-white/10 text-white border border-white/30 rounded-xl font-bold hover:bg-white/20 transition-all backdrop-blur-sm">
                                 {ctaSecondary}
                             </Link>
                         </div>

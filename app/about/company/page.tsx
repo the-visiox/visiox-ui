@@ -42,22 +42,22 @@ export default function Page() {
             <span className="text-stone-700 text-sm font-bold uppercase tracking-widest">About Us</span>
           </div>
           <h1 className="text-5xl lg:text-7xl font-bold text-stone-900 mb-6 tracking-tight">
-            Democratizing <br />
-            <span className="bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent">Visual Intelligence</span>
+            Making Visual AI <br />
+            <span className="bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent">Accessible to Real World</span>
           </h1>
           <p className="text-xl text-stone-500 max-w-3xl mx-auto leading-relaxed mb-4">
             Industrial AI and 3D Vision Systems redefining automation technology solutions for diverse industries globally.
           </p>
         </motion.div>
       </section>
-      
+
       {/* Dynamic Solomon-style Sections */}
       <section className="py-24 px-6 lg:px-8 max-w-7xl mx-auto flex flex-col gap-32">
         {sections.map((sec, idx) => (
-          <motion.div 
-            key={idx} 
-            initial={{ opacity: 0, y: 30 }} 
-            whileInView={{ opacity: 1, y: 0 }} 
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6 }}
             className={`flex flex-col lg:flex-row items-center gap-16 ${sec.reverse ? 'lg:flex-row-reverse' : ''}`}
@@ -74,9 +74,9 @@ export default function Page() {
             </div>
             <div className="flex-1 w-full">
               <div className="relative aspect-video rounded-[3rem] overflow-hidden shadow-2xl border border-stone-200 group">
-                <img 
-                  src={sec.image} 
-                  alt={sec.title} 
+                <img
+                  src={sec.image}
+                  alt={sec.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-stone-900/40 to-transparent" />
@@ -93,7 +93,7 @@ export default function Page() {
           <p className="text-xl text-stone-500 mb-10 leading-relaxed">
             Get in touch to find out how VisioX can support your project. Our experts are ready to assist with feasibility studies and POCs.
           </p>
-          <Link href="/about/contact" className="inline-flex items-center px-8 py-4 bg-orange-600 hover:bg-orange-700 transition-colors text-white font-bold rounded-2xl shadow-xl shadow-orange-600/20 group">
+          <Link href="/about/contact" className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-orange-600 to-orange-400 hover:from-orange-400 hover:to-orange-300  transition-colors text-white font-bold rounded-2xl shadow-xl shadow-orange-600/20 group">
             Get in Touch
             <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </Link>

@@ -19,6 +19,12 @@ export const metadata: Metadata = {
   description: "Transform your visual data into actionable insights with cutting-edge AI-powered annotation tools",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

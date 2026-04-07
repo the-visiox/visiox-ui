@@ -7,19 +7,19 @@ import {
 } from "lucide-react";
 
 const config: SolutionPageConfig = {
-    accentColor: "rose",
-    accentHex: "#E11D48",
-    bgTint: "bg-rose-50/20",
-    gradientFrom: "from-rose-600",
+    accentColor: "orange",
+    accentHex: "#FF7300",
+    bgTint: "bg-[#fcfaf7]",
+    gradientFrom: "from-orange-600",
     gradientTo: "to-orange-400",
 
     badge: "Retail",
     badgeIcon: <Sparkles className="w-4 h-4" />,
-    title: <>The Future of <br /><span className="bg-gradient-to-r from-rose-600 to-orange-400 bg-clip-text text-transparent">Physical Retail</span></>,
+    title: <>The Future of <br /><span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Physical Retail</span></>,
     subtitle: "Transform your store into a data-driven powerhouse with computer vision that understands every customer interaction and shelf movement.",
     heroImage: "/solutions/retail-commerce.jpg",
-    heroCTAPrimary: "Start Your Pilot",
-    heroCTASecondary: "View Demo Store",
+    heroCTAPrimary: "Try Now",
+    heroCTASecondary: "Contact Sales",
 
     stats: [
         { label: "Conversion Rate", value: "+12%", icon: <TrendingUp className="w-5 h-5" /> },
@@ -31,10 +31,10 @@ const config: SolutionPageConfig = {
     capabilitiesTitle: "Bridge the Gap Between URL and IRL",
     capabilitiesSubtitle: "We bring the deep analytics of e-commerce to the physical storefront, providing unprecedented visibility.",
     capabilities: [
-        { title: "Footfall Analytics", description: "Map customer journey and dwell times to optimize store layout and staffing.", icon: <Users className="w-6 h-6 text-rose-500" /> },
-        { title: "Inventory Monitoring", description: "Automated shelf-scanning for out-of-stock detection and planogram compliance.", icon: <Tag className="w-6 h-6 text-rose-500" /> },
-        { title: "Automated Checkout", description: "Vision-based object recognition for friction-less self-checkout experiences.", icon: <ShoppingBag className="w-6 h-6 text-rose-500" /> },
-        { title: "Heatmap Visualization", description: "Identify high-traffic 'hot zones' and dead spaces to maximize floor value.", icon: <BarChart3 className="w-6 h-6 text-rose-500" /> }
+        { title: "Footfall Analytics", description: "Map customer journey and dwell times to optimize store layout and staffing.", icon: <Users className="w-6 h-6 text-orange-500" /> },
+        { title: "Inventory Monitoring", description: "Automated shelf-scanning for out-of-stock detection and planogram compliance.", icon: <Tag className="w-6 h-6 text-orange-500" /> },
+        { title: "Automated Checkout", description: "Vision-based object recognition for friction-less self-checkout experiences.", icon: <ShoppingBag className="w-6 h-6 text-orange-500" /> },
+        { title: "Heatmap Visualization", description: "Identify high-traffic 'hot zones' and dead spaces to maximize floor value.", icon: <BarChart3 className="w-6 h-6 text-orange-500" /> }
     ],
 
     useCasesTitle: "Success Stories",

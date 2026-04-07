@@ -1,10 +1,11 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { assetPath } from "@/lib/assets";
+import { Menu, X, ChevronDown } from "lucide-react";
 
 export default function Header() {
     const { isLoggedIn } = useAuth();
@@ -34,7 +35,8 @@ export default function Header() {
         { name: "Contact", href: "/about/contact" },
     ];
 
-    const [activeDropdown, setActiveDropdown] = React.useState<string | null>(null);
+    const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     return (
         <motion.nav
@@ -183,7 +185,8 @@ export default function Header() {
                                             flex items-center space-x-1
                                             shadow-md shadow-orange-500/20 font-bold"
                             >
-                                <span>{isLoggedIn ? "Dashboard" : "Get Started"}</span>
+                                <span className="hidden sm:inline">{isLoggedIn ? "Dashboard" : "Get Started"}</span>
+                                <span className="sm:hidden">{isLoggedIn ? "Dash" : "Start"}</span>
                                 <svg
                                     className="w-4 h-4"
                                     fill="none"
@@ -194,9 +197,84 @@ export default function Header() {
                                 </svg>
                             </motion.button>
                         </Link>
+
+                        {/* Mobile Menu Toggle */}
+                        <button 
+                            className="md:hidden p-2 text-stone-600 hover:text-[#FF7300] transition-colors"
+                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                        >
+                            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                        </button>
                     </motion.div>
                 </div>
             </div>
+
+            {/* Mobile Menu Content */}
+            <AnimatePresence>
+                {isMobileMenuOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="md:hidden bg-white border-t border-stone-100 overflow-hidden"
+                    >
+                        <div className="p-6 space-y-4">
+                            <Link href="/" onClick={() => setIsMobileMenuOpen(false)}>
+                                <span className="block text-lg font-semibold text-stone-900">Home</span>
+                            </Link>
+                            
+                            <div className="space-y-2">
+                                <p className="text-sm font-bold text-stone-400 uppercase tracking-widest">Product</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {productLinks.map((link) => (
+                                        <Link 
+                                            key={link.name} 
+                                            href={link.href}
+                                            onClick={() => setIsMobileMenuOpen(false)}
+                                            className="text-stone-600 hover:text-orange-500 py-1"
+                                        >
+                                            {link.name}
+                                        </Link>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <p className="text-sm font-bold text-stone-400 uppercase tracking-widest">Solutions</p>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <Link 
+                                        href="/solutions"
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                        className="text-stone-900 font-medium hover:text-orange-500"
+                                    >
+                                        All Solutions
+                                    </Link>
+                                    <div className="grid grid-cols-1 gap-y-1 pl-2 border-l border-stone-100">
+                                        {solutionLinks.slice(0, 4).map((link) => (
+                                            <Link 
+                                                key={link.name} 
+                                                href={link.href}
+                                                onClick={() => setIsMobileMenuOpen(false)}
+                                                className="text-stone-500 hover:text-orange-500 py-1 text-sm"
+                                            >
+                                                {link.name}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-stone-100 space-y-4">
+                                {!isLoggedIn && (
+                                    <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}>
+                                        <span className="block text-center text-stone-600 font-semibold py-2">Sign In</span>
+                                    </Link>
+                                )}
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.nav>
     );
 }

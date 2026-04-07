@@ -7,19 +7,19 @@ import {
 } from "lucide-react";
 
 const config: SolutionPageConfig = {
-    accentColor: "emerald",
-    accentHex: "#10B981",
-    bgTint: "bg-emerald-50/20",
-    gradientFrom: "from-emerald-500",
-    gradientTo: "to-teal-400",
+    accentColor: "orange",
+    accentHex: "#FF7300",
+    bgTint: "bg-[#fcfaf7]",
+    gradientFrom: "from-orange-600",
+    gradientTo: "to-orange-400",
 
     badge: "Healthcare",
     badgeIcon: <HeartPulse className="w-4 h-4" />,
-    title: <>Vision for a <br /><span className="text-emerald-600">Healthier Future</span></>,
+    title: <>Vision for a <br /><span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Healthier Future</span></>,
     subtitle: "Advancing patient care and clinical efficiency with medical-grade computer vision and intelligent diagnostic support.",
     heroImage: "/solutions/healthcare-medical.jpg",
-    heroCTAPrimary: "Request Whitepaper",
-    heroCTASecondary: "Contact Specialist",
+    heroCTAPrimary: "Try Now",
+    heroCTASecondary: "Contact Sales",
 
     stats: [
         { label: "Detection Sensitivity", value: "98%", icon: <Microscope className="w-5 h-5" /> },
@@ -31,10 +31,10 @@ const config: SolutionPageConfig = {
     capabilitiesTitle: "Precision Capabilities",
     capabilitiesSubtitle: "Our models are trained on curated clinical datasets to ensure medical-grade reliability.",
     capabilities: [
-        { title: "Diagnostic Assistance", description: "AI-powered detection of abnormalities in medical imaging with high sensitivity.", icon: <Microscope className="w-6 h-6 text-emerald-500" /> },
-        { title: "Patient Monitoring", description: "Non-intrusive vision systems for detecting patient falls, distress, or movement in ICUs.", icon: <Activity className="w-6 h-6 text-emerald-500" /> },
-        { title: "Lab Automation", description: "Automated cell counting, sample sorting, and results verification for high-throughput labs.", icon: <HeartPulse className="w-6 h-6 text-emerald-500" /> },
-        { title: "Surgical Guidance", description: "Real-time tracking of surgical instruments and anatomical markers during procedures.", icon: <Crosshair className="w-6 h-6 text-emerald-500" /> }
+        { title: "Diagnostic Assistance", description: "AI-powered detection of abnormalities in medical imaging with high sensitivity.", icon: <Microscope className="w-6 h-6 text-orange-500" /> },
+        { title: "Patient Monitoring", description: "Non-intrusive vision systems for detecting patient falls, distress, or movement in ICUs.", icon: <Activity className="w-6 h-6 text-orange-500" /> },
+        { title: "Lab Automation", description: "Automated cell counting, sample sorting, and results verification for high-throughput labs.", icon: <HeartPulse className="w-6 h-6 text-orange-500" /> },
+        { title: "Surgical Guidance", description: "Real-time tracking of surgical instruments and anatomical markers during procedures.", icon: <Crosshair className="w-6 h-6 text-orange-500" /> }
     ],
 
     useCasesTitle: "Empowering Clinical Workflows",

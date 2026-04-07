@@ -107,7 +107,7 @@ export default function Home() {
   const slideNames = ["Hero", "Features", "Impact", "CTA", "Partners"];
 
   return (
-    <div className="h-screen overflow-y-scroll overflow-x-hidden snap-y snap-mandatory scroll-smooth relative w-full">
+    <div className="h-screen overflow-y-scroll overflow-x-hidden md:snap-y md:snap-mandatory scroll-smooth relative w-full">
       {/* Side Navigation Dots */}
       <div className="fixed right-6 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-6 p-4 bg-white/5 backdrop-blur-md rounded-full border border-white/10 shadow-2xl">
         <div className="absolute top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-orange-500/30 to-transparent" />
@@ -140,7 +140,7 @@ export default function Home() {
         whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.5 }}
-        className="h-screen snap-start bg-[#fcfaf7] flex items-center justify-center px-6 lg:px-8 relative overflow-hidden"
+        className="min-h-screen md:h-screen snap-start bg-[#fcfaf7] flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0"
       >
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-20 right-20 w-96 h-96 bg-orange-200/30 rounded-full blur-3xl animate-pulse"></div>
@@ -155,13 +155,13 @@ export default function Home() {
                 ✨ Next-Gen Visual Platform
               </Badge>
 
-              <h1 className="text-6xl lg:text-7xl font-bold leading-tight text-stone-900">
+              <h1 className="text-4xl lg:text-7xl font-bold leading-tight text-stone-900">
                 <span className="bg-gradient-to-r from-[#E66700] via-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">
                   Intelligent Computer Vision Platform
                 </span>
               </h1>
 
-              <p className="text-2xl text-stone-600 leading-relaxed max-w-xl">
+              <p className="text-lg lg:text-2xl text-stone-600 leading-relaxed max-w-xl">
                 Transform your visual data into actionable insights with our cutting-edge AI-powered annotation and analysis tools.
               </p>
 
@@ -302,15 +302,15 @@ export default function Home() {
         whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.5 }}
-        className="h-screen snap-start bg-[#fcfaf7] flex items-center justify-center px-6 lg:px-8 relative overflow-hidden pt-16"
+        className="min-h-screen md:h-screen snap-start bg-[#fcfaf7] flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0"
       >
         <div className="max-w-7xl mx-auto w-full text-center">
-          <div className="mb-10">
-            <h2 className="text-5xl lg:text-6xl font-bold text-stone-900 mb-3">
+          <div className="mb-6 lg:mb-10">
+            <h2 className="text-3xl lg:text-6xl font-bold text-stone-900 mb-3 px-4">
               <span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Powerful</span> Features,
               <span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent"> Advanced</span> Capabilities
             </h2>
-            <p className="text-stone-600 text-xl font-medium">Everything you need for professional computer vision projects</p>
+            <p className="text-stone-600 text-lg lg:text-xl font-medium px-4">Everything you need for professional computer vision projects</p>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
@@ -393,19 +393,19 @@ export default function Home() {
         whileInView={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.5 }}
-        className="h-screen snap-start bg-stone-900 flex items-center justify-center px-6 lg:px-8 relative overflow-hidden"
+        className="min-h-screen md:h-screen snap-start bg-stone-900 flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0"
       >
         <div className="absolute inset-0 bg-gradient-to-br from-orange-900/40 via-stone-900 to-black"></div>
         <div className="max-w-7xl mx-auto text-center z-10 w-full px-4">
-          <div className="mb-16">
-            <h2 className="text-6xl lg:text-8xl font-bold text-white mb-6">
+          <div className="mb-8 lg:mb-16">
+            <h2 className="text-4xl lg:text-8xl font-bold text-white mb-6">
               Global Scale,
               <br />
               <span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">
                 Proven Impact
               </span>
             </h2>
-            <p className="text-xl text-stone-400 max-w-2xl mx-auto font-medium">
+            <p className="text-lg lg:text-xl text-stone-400 max-w-2xl mx-auto font-medium">
               Join 50K+ innovators transforming industries with our high-fidelity vision intelligence.
             </p>
           </div>
@@ -436,20 +436,20 @@ export default function Home() {
         whileInView={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.5 }}
-        className="h-screen snap-start bg-gradient-to-br from-[#FF7300] via-[#E66700] to-[#F1A222] flex items-center justify-center px-6 lg:px-8 relative overflow-hidden"
+        className="min-h-screen md:h-screen snap-start bg-gradient-to-br from-[#FF7300] via-[#E66700] to-[#F1A222] flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0"
       >
         <div className="absolute inset-0">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
           <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }}></div>
         </div>
 
-        <div className="max-w-5xl mx-auto text-center z-10">
-          <h2 className="text-7xl lg:text-9xl font-bold text-white mb-8 leading-tight">
+        <div className="max-w-5xl mx-auto text-center z-10 px-4">
+          <h2 className="text-4xl lg:text-9xl font-bold text-white mb-6 lg:mb-8 leading-tight">
             Ready to
             <br />
             get started?
           </h2>
-          <p className="text-2xl lg:text-3xl text-white/90 mb-12 max-w-3xl mx-auto leading-relaxed">
+          <p className="text-xl lg:text-3xl text-white/90 mb-8 lg:mb-12 max-w-3xl mx-auto leading-relaxed">
             Join thousands of teams transforming their visual data into insights
           </p>
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
@@ -474,7 +474,7 @@ export default function Home() {
         whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.4 }}
-        className="min-h-screen snap-start bg-[#f5f2ed] flex flex-col pt-16"
+        className="min-h-screen md:h-screen snap-start bg-[#f5f2ed] flex flex-col pt-16 py-10 lg:py-0"
       >
         <div className="flex-grow flex items-center justify-center px-6 lg:px-8">
           <div className="max-w-7xl mx-auto w-full py-8 text-center">

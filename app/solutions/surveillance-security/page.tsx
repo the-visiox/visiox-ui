@@ -7,19 +7,19 @@ import {
 } from "lucide-react";
 
 const config: SolutionPageConfig = {
-    accentColor: "blue",
-    accentHex: "#3B82F6",
-    bgTint: "bg-slate-50",
-    gradientFrom: "from-blue-600",
-    gradientTo: "to-blue-400",
+    accentColor: "orange",
+    accentHex: "#FF7300",
+    bgTint: "bg-[#fcfaf7]",
+    gradientFrom: "from-orange-600",
+    gradientTo: "to-orange-400",
 
     badge: "Surveillance",
     badgeIcon: <Lock className="w-4 h-4" />,
-    title: <>Smart Sight for a <br /><span className="text-blue-500">Safer World</span></>,
+    title: <>Smart Sight for a <br /><span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Safer World</span></>,
     subtitle: "Next-generation security solutions powered by deep learning for proactive threat detection and real-time situational awareness.",
     heroImage: "/solutions/surveillance-security.jpg",
-    heroCTAPrimary: "Deploy Now",
-    heroCTASecondary: "Watch Demo",
+    heroCTAPrimary: "Try Now",
+    heroCTASecondary: "Contact Sales",
 
     stats: [
         { label: "Uptime", value: "99.99%", icon: <Zap className="w-5 h-5" /> },
@@ -31,10 +31,10 @@ const config: SolutionPageConfig = {
     capabilitiesTitle: "The New Standard in Physical Security",
     capabilitiesSubtitle: "We combine edge computing with deep neural networks to provide instantaneous insights without compromising privacy.",
     capabilities: [
-        { title: "Intrusion Detection", description: "Instant alerts for unauthorized access in restricted zones using virtual fences.", icon: <ShieldCheck className="w-6 h-6 text-blue-500" /> },
-        { title: "Facial Recognition", description: "Highly accurate identification for secure access control and person-of-interest tracking.", icon: <Eye className="w-6 h-6 text-blue-500" /> },
-        { title: "Behavior Analysis", description: "Detect suspicious activities like loitering, running, or falling in public spaces.", icon: <BellRing className="w-6 h-6 text-blue-500" /> },
-        { title: "Crowd Management", description: "Real-time occupancy monitoring and density analysis for large-scale events.", icon: <MapPin className="w-6 h-6 text-blue-500" /> }
+        { title: "Intrusion Detection", description: "Instant alerts for unauthorized access in restricted zones using virtual fences.", icon: <ShieldCheck className="w-6 h-6 text-orange-500" /> },
+        { title: "Facial Recognition", description: "Highly accurate identification for secure access control and person-of-interest tracking.", icon: <Eye className="w-6 h-6 text-orange-500" /> },
+        { title: "Behavior Analysis", description: "Detect suspicious activities like loitering, running, or falling in public spaces.", icon: <BellRing className="w-6 h-6 text-orange-500" /> },
+        { title: "Crowd Management", description: "Real-time occupancy monitoring and density analysis for large-scale events.", icon: <MapPin className="w-6 h-6 text-orange-500" /> }
     ],
 
     useCasesTitle: "Deployment Scenarios",

@@ -39,7 +39,7 @@ export default function Sidebar() {
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <aside className="w-64 h-screen bg-[#1c1917] flex flex-col border-r border-stone-800 fixed left-0 top-0 z-50">
+    <aside className="hidden md:flex w-64 h-screen bg-[#1c1917] flex flex-col border-r border-stone-800 fixed left-0 top-0 z-50">
       {/* Brand */}
       <div className="p-6 flex items-center gap-3 border-b border-stone-800">
         <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-900/20">

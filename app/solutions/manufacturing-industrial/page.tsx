@@ -18,7 +18,7 @@ const config: SolutionPageConfig = {
     title: <>Precision Vision <br /><span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Modern Industry</span></>,
     subtitle: "Eliminate human error and maximize production efficiency with AI-powered inspection systems that see what the eye misses.",
     heroImage: "/solutions/manufacturing-industrial.jpg",
-    heroCTAPrimary: "Get Started",
+    heroCTAPrimary: "Try Now",
     heroCTASecondary: "Contact Sales",
 
     stats: [

@@ -7,19 +7,19 @@ import {
 } from "lucide-react";
 
 const config: SolutionPageConfig = {
-    accentColor: "yellow",
-    accentHex: "#EAB308",
-    bgTint: "bg-[#fffdf5]",
-    gradientFrom: "from-yellow-500",
+    accentColor: "orange",
+    accentHex: "#FF7300",
+    bgTint: "bg-[#fcfaf7]",
+    gradientFrom: "from-orange-600",
     gradientTo: "to-orange-400",
 
     badge: "Entertainment",
     badgeIcon: <PlayCircle className="w-4 h-4" />,
-    title: <>The Edge of <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 via-orange-500 to-rose-500">Sensation.</span></>,
+    title: <>The Edge of <br /><span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Sensation.</span></>,
     subtitle: "Where high-performance vision meets the thrill of the moment. We power the technical heart of modern entertainment and elite sports.",
     heroImage: "/solutions/entertainment-sports.jpg",
-    heroCTAPrimary: "Enhance Your Stadium",
-    heroCTASecondary: "Join Partner Network",
+    heroCTAPrimary: "Try Now",
+    heroCTASecondary: "Contact Sales",
 
     stats: [
         { label: "Tracking Precision", value: "<1cm", icon: <Target className="w-5 h-5" /> },
@@ -31,10 +31,10 @@ const config: SolutionPageConfig = {
     capabilitiesTitle: "Don't Just Watch. Experience.",
     capabilitiesSubtitle: "VisioX transforms raw broadcast and arena data into immersive assets for athletes and fans.",
     capabilities: [
-        { title: "Player Analytics", description: "High-precision tracking of player movement, velocity, and biomechanics for elite performance insights.", icon: <Trophy className="w-6 h-6 text-yellow-500" /> },
-        { title: "AR Broadcast Overlays", description: "Real-time visual effects and statistical overlays synced perfectly with live broadcast feeds.", icon: <Sparkles className="w-6 h-6 text-yellow-500" /> },
-        { title: "Interactive Experiences", description: "Gesture and posture recognition for theme parks, VR attractions, and interactive marketing.", icon: <Gamepad2 className="w-6 h-6 text-yellow-500" /> },
-        { title: "Crowd Insights", description: "Analyze fan engagement, sentiment, and dwell times during live events and concerts.", icon: <Users className="w-6 h-6 text-yellow-500" /> }
+        { title: "Player Analytics", description: "High-precision tracking of player movement, velocity, and biomechanics for elite performance insights.", icon: <Trophy className="w-6 h-6 text-orange-500" /> },
+        { title: "AR Broadcast Overlays", description: "Real-time visual effects and statistical overlays synced perfectly with live broadcast feeds.", icon: <Sparkles className="w-6 h-6 text-orange-500" /> },
+        { title: "Interactive Experiences", description: "Gesture and posture recognition for theme parks, VR attractions, and interactive marketing.", icon: <Gamepad2 className="w-6 h-6 text-orange-500" /> },
+        { title: "Crowd Insights", description: "Analyze fan engagement, sentiment, and dwell times during live events and concerts.", icon: <Users className="w-6 h-6 text-orange-500" /> }
     ],
 
     useCasesTitle: "Visions of Victory",

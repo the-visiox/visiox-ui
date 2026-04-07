@@ -7,18 +7,18 @@ import {
 } from "lucide-react";
 
 const config: SolutionPageConfig = {
-    accentColor: "indigo",
-    accentHex: "#4F46E5",
-    bgTint: "bg-indigo-50/20",
-    gradientFrom: "from-indigo-600",
-    gradientTo: "to-blue-400",
+    accentColor: "orange",
+    accentHex: "#FF7300",
+    bgTint: "bg-[#fcfaf7]",
+    gradientFrom: "from-orange-600",
+    gradientTo: "to-orange-400",
 
     badge: "Logistics",
     badgeIcon: <Package className="w-4 h-4" />,
-    title: <>Optimize Every <br /><span className="text-indigo-600">Parcel in Motion</span></>,
+    title: <>Optimize Every <br /><span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Parcel in Motion</span></>,
     subtitle: "Maximize warehouse throughput and eliminate sorting errors with high-speed visual intelligence designed for modern logistics.",
     heroImage: "/solutions/logistics-warehousing.jpg",
-    heroCTAPrimary: "Launch Your Solution",
+    heroCTAPrimary: "Try Now",
     heroCTASecondary: "Contact Sales",
 
     stats: [
@@ -31,10 +31,10 @@ const config: SolutionPageConfig = {
     capabilitiesTitle: "Unrivaled Precision",
     capabilitiesSubtitle: "Seamlessly integrate our vision stack with WMS, ERP, and industrial PLC systems for end-to-end operational visibility.",
     capabilities: [
-        { title: "High-Speed Sorting", description: "Automated classification of parcels on fast-moving conveyors using shape and label OCR.", icon: <Barcode className="w-6 h-6 text-indigo-500" /> },
-        { title: "Automated Dimensioning", description: "Instant 3D measurements of items for volumetric weight calculation and space optimization.", icon: <Maximize2 className="w-6 h-6 text-indigo-500" /> },
-        { title: "Depalletizing Guidance", description: "Vision-guided robotic arms for safe and efficient unloading of mixed-order pallets.", icon: <Layers className="w-6 h-6 text-indigo-500" /> },
-        { title: "Dock Occupancy", description: "Real-time monitoring of loading docks to optimize truck turnaround times.", icon: <Truck className="w-6 h-6 text-indigo-500" /> }
+        { title: "High-Speed Sorting", description: "Automated classification of parcels on fast-moving conveyors using shape and label OCR.", icon: <Barcode className="w-6 h-6 text-orange-500" /> },
+        { title: "Automated Dimensioning", description: "Instant 3D measurements of items for volumetric weight calculation and space optimization.", icon: <Maximize2 className="w-6 h-6 text-orange-500" /> },
+        { title: "Depalletizing Guidance", description: "Vision-guided robotic arms for safe and efficient unloading of mixed-order pallets.", icon: <Layers className="w-6 h-6 text-orange-500" /> },
+        { title: "Dock Occupancy", description: "Real-time monitoring of loading docks to optimize truck turnaround times.", icon: <Truck className="w-6 h-6 text-orange-500" /> }
     ],
 
     useCasesTitle: "Global Logistics Excellence",
