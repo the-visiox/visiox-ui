@@ -372,10 +372,13 @@ export default function TrainPage() {
                   <div className="text-center py-8 text-stone-400 text-sm">No training jobs yet.</div>
                 ) : (
                   jobs.map(job => (
-                    <button
+                    <div
                       key={job.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => { setSelectedJob(job); setMetrics([]); }}
-                      className={`w-full text-left bg-white rounded-2xl border p-5 transition-all hover:shadow-md ${selectedJob?.id === job.id ? 'border-orange-500/50 shadow-md' : 'border-stone-200'}`}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedJob(job); setMetrics([]); } }}
+                      className={`w-full text-left bg-white rounded-2xl border p-5 transition-all hover:shadow-md cursor-pointer ${selectedJob?.id === job.id ? 'border-orange-500/50 shadow-md' : 'border-stone-200'}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -397,7 +400,7 @@ export default function TrainPage() {
                           )}
                         </div>
                       </div>
-                    </button>
+                    </div>
                   ))
                 )}
               </div>
