@@ -73,54 +73,52 @@ export default function ProjectsPage() {
             </div>
           ) : (
             list.map((p, i) => (
-              <motion.div
-                key={p.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.07 }}
-                className="bg-white rounded-3xl border border-stone-200 p-1 flex flex-col group cursor-pointer hover:border-orange-500/50 transition-all shadow-sm"
-              >
-                <div className="h-48 rounded-[22px] bg-stone-100 relative overflow-hidden m-1">
-                  {p.thumbnail ? (
-                    <img
-                      src={p.thumbnail}
-                      alt={p.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  ) : (
-                    <>
-                      <div className={`absolute inset-0 opacity-10 ${TASK_TYPE_COLOR[p.task_type] ?? 'bg-stone-500'}`} />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-32 h-32 border-2 border-white/30 border-dashed rounded-full" />
-                      </div>
-                    </>
-                  )}
-                  <div className="absolute top-4 left-4">
-                    <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-[10px] font-bold text-stone-900 rounded-full shadow-sm">
-                      {p.task_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                    </span>
+              <Link key={p.id} href={`/projects/${p.id}`}>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: i * 0.07 }}
+                  className="bg-white rounded-3xl border border-stone-200 p-1 flex flex-col group cursor-pointer hover:border-orange-500/50 transition-all shadow-sm"
+                >
+                  <div className="h-48 rounded-[22px] bg-stone-100 relative overflow-hidden m-1">
+                    {p.thumbnail ? (
+                      <img
+                        src={p.thumbnail}
+                        alt={p.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <>
+                        <div className={`absolute inset-0 opacity-10 ${TASK_TYPE_COLOR[p.task_type] ?? 'bg-stone-500'}`} />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-32 h-32 border-2 border-white/30 border-dashed rounded-full" />
+                        </div>
+                      </>
+                    )}
+                    <div className="absolute top-4 left-4">
+                      <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-[10px] font-bold text-stone-900 rounded-full shadow-sm">
+                        {p.task_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="p-5 flex-1 flex flex-col">
-                  <div className="flex justify-between items-start mb-1">
-                    <h3 className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors">{p.name}</h3>
-                    <MoreHorizontal className="text-stone-400 w-5 h-5 shrink-0" />
+                  <div className="p-5 flex-1 flex flex-col">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3 className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors">{p.name}</h3>
+                      <MoreHorizontal className="text-stone-400 w-5 h-5 shrink-0" />
+                    </div>
+                    <p className="text-xs text-stone-400 font-medium mb-3">{p.team_name}</p>
+                    <div className="flex items-center justify-between mt-auto">
+                      <span className="text-xs text-stone-500">
+                        {new Date(p.created_at).toLocaleDateString()}
+                      </span>
+                      <span className="text-xs font-bold text-orange-500 hover:underline">
+                        Open Project →
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xs text-stone-400 font-medium mb-3">{p.team_name}</p>
-                  <div className="flex items-center justify-between mt-auto">
-                    <span className="text-xs text-stone-500">
-                      {new Date(p.created_at).toLocaleDateString()}
-                    </span>
-                    <Link
-                      href="/datasets"
-                      className="text-xs font-bold text-orange-500 hover:underline"
-                    >
-                      Datasets →
-                    </Link>
-                  </div>
-                </div>
-              </motion.div>
+                </motion.div>
+              </Link>
             ))
           )}
         </div>
