@@ -8,10 +8,14 @@ This is the **frontend** of the VisioX computer-vision platform, built with Next
 |--------|--------|
 | Framework | Next.js 16, React 19, Tailwind CSS v4 |
 | Package manager | pnpm v10 |
-| Dev server | `pnpm dev` → `http://localhost:3000` |
+| Dev server | `pnpm dev` → `http://localhost:3000` (see **Dev server port** below) |
 | Backend API | `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) |
 | CVAT URL | `NEXT_PUBLIC_CVAT_URL` (default `http://localhost:8080`) |
 | Output mode | Static export (`output: "export"`) for GitHub Pages |
+
+### Dev server port
+
+Next.js binds to **3000** by default. If something else is already listening on 3000 (often another `node` / old `next dev`), Next.js prints that the port is in use and picks the next free port (**3001**, **3002**, …). Free port 3000 (stop the other process) or pin the port explicitly, e.g. `pnpm exec next dev -p 3000`.
 
 ## Architecture
 
