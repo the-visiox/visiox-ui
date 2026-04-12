@@ -7,8 +7,8 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft, Download, ChevronDown, Tag, RefreshCw, Upload,
   Loader2, AlertTriangle, BarChart3, Layers, ExternalLink,
-  Image as ImageIcon, Box, Crosshair, Activity,
-  CheckCircle2, Circle, Users,
+  Image as ImageIcon, Box, Crosshair, Activity, Trash2,
+  CheckCircle2, Circle, Users, Check,
 } from 'lucide-react';
 import BlueprintGrid from '@/components/BlueprintGrid';
 import {
@@ -97,7 +97,13 @@ export default function DatasetDetailClient({ id }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Last frame row index for Shift+click range selection (in `browserData.frames` order). */
+  const anchorFrameIndexRef = useRef<number | null>(null);
+  /** Image browser card — clicks outside clear selection. */
+  const imageBrowserPanelRef = useRef<HTMLDivElement>(null);
 
   const refreshStatsAndBrowser = useCallback(async () => {
     const [statsResult, browserResult] = await Promise.allSettled([
@@ -129,6 +135,76 @@ export default function DatasetDetailClient({ id }: Props) {
     load();
     return () => { cancelled = true; };
   }, [numericId, refreshStatsAndBrowser]);
+
+  useEffect(() => {
+    setSelectedMediaIds([]);
+    anchorFrameIndexRef.current = null;
+  }, [numericId]);
+
+  useEffect(() => {
+    function handleDocMouseDown(e: MouseEvent) {
+      if (selectedMediaIds.length === 0) return;
+      const panel = imageBrowserPanelRef.current;
+      if (!panel) return;
+      if (panel.contains(e.target as Node)) return;
+      setSelectedMediaIds([]);
+      anchorFrameIndexRef.current = null;
+    }
+    document.addEventListener('mousedown', handleDocMouseDown);
+    return () => document.removeEventListener('mousedown', handleDocMouseDown);
+  }, [selectedMediaIds.length]);
+
+  const selectableMediaIds = browserData
+    ? browserData.frames.map((f) => f.media_id).filter((id): id is number => typeof id === 'number')
+    : [];
+
+  const toggleMediaSelection = (mediaId: number) => {
+    setSelectedMediaIds((prev) =>
+      prev.includes(mediaId) ? prev.filter((x) => x !== mediaId) : [...prev, mediaId],
+    );
+  };
+
+  const selectMediaRangeByFrameIndex = useCallback((from: number, to: number) => {
+    if (!browserData?.frames.length) return;
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    const ids: number[] = [];
+    for (let i = lo; i <= hi; i++) {
+      const f = browserData.frames[i];
+      if (typeof f.media_id === 'number') ids.push(f.media_id);
+    }
+    setSelectedMediaIds(ids);
+  }, [browserData]);
+
+  const allSelectableSelected =
+    selectableMediaIds.length > 0 &&
+    selectableMediaIds.every((id) => selectedMediaIds.includes(id));
+
+  const toggleSelectAllMedia = () => {
+    if (allSelectableSelected) {
+      setSelectedMediaIds([]);
+    } else {
+      setSelectedMediaIds([...selectableMediaIds]);
+    }
+    anchorFrameIndexRef.current = null;
+  };
+
+  const handleDeleteSelectedMedia = async () => {
+    if (!selectedMediaIds.length || isNaN(numericId)) return;
+    if (!window.confirm(`Delete ${selectedMediaIds.length} image(s)? This cannot be undone.`)) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await datasets.deleteMedia(numericId, selectedMediaIds);
+      setSelectedMediaIds([]);
+      anchorFrameIndexRef.current = null;
+      await refreshStatsAndBrowser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleUploadFiles = async (fileList: FileList | null) => {
     if (!fileList?.length || isNaN(numericId)) return;
@@ -470,43 +546,124 @@ export default function DatasetDetailClient({ id }: Props) {
         {/* Frame Browser */}
         {browserData && browserData.frames.length > 0 && (
           <motion.div
+            ref={imageBrowserPanelRef}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.28 }}
             className="bg-white rounded-2xl border border-stone-200 p-6"
           >
-            <div className="mb-4">
-              <h3 className="text-sm font-bold text-stone-900">Image Browser</h3>
-              <p className="text-xs text-stone-500 mt-1">
-                Click any image to open the annotation view
-              </p>
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-stone-900">Image Browser</h3>
+                <p className="text-xs text-stone-500 mt-1">
+                  Select images to delete, or click an image to open the annotation view. Hold Shift and click another checkbox to select a range.
+                </p>
+              </div>
+              {selectableMediaIds.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2.5 rounded-full bg-white/80 px-3 py-2 text-xs font-semibold text-stone-600 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md">
+                    <input
+                      type="checkbox"
+                      checked={allSelectableSelected}
+                      onChange={() => toggleSelectAllMedia()}
+                      className="peer sr-only"
+                    />
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-stone-100/95 text-white shadow-inner ring-1 ring-stone-200/80 transition-all duration-200 peer-checked:bg-gradient-to-br peer-checked:from-orange-500 peer-checked:to-amber-500 peer-checked:shadow-md peer-checked:shadow-orange-500/20 peer-checked:ring-orange-400/35 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50">
+                      <Check className="h-4 w-4 stroke-[2.75] opacity-0 transition-opacity duration-150 peer-checked:opacity-100" aria-hidden />
+                    </span>
+                    Select all
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteSelectedMedia()}
+                    disabled={deleting || selectedMediaIds.length === 0}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-red-50/90 px-3.5 py-1.5 text-xs font-bold text-red-700 shadow-sm backdrop-blur-sm transition hover:bg-red-100/95 hover:shadow-md disabled:pointer-events-none disabled:opacity-45"
+                  >
+                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    Delete ({selectedMediaIds.length})
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
-              {browserData.frames.map((frame) => (
-                <Link
-                  key={frame.frame}
-                  href={`/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`}
-                  className="group block overflow-hidden rounded-xl border border-stone-200 bg-stone-50 hover:border-orange-300 hover:shadow-md transition-all"
-                  title={`Open annotation for ${frame.name}`}
-                >
-                  <div className="aspect-[4/3] overflow-hidden bg-stone-100">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- JWT-backed frame URLs */}
-                    <img
-                      src={datasets.frameUrl(numericId, frame.frame)}
-                      alt={frame.name}
-                      loading="lazy"
-                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+              {browserData.frames.map((frame, frameIndex) => {
+                const isSelected =
+                  typeof frame.media_id === 'number' && selectedMediaIds.includes(frame.media_id);
+                return (
+                  <div
+                    key={frame.frame}
+                    className={`group/card relative overflow-hidden rounded-2xl border transition-all duration-300 ease-out ${
+                      isSelected
+                        ? 'border-orange-300/70 bg-gradient-to-br from-orange-50/90 to-amber-50/40 shadow-md shadow-orange-500/10 ring-1 ring-orange-400/25'
+                        : 'border-stone-200/90 bg-stone-50/80 hover:border-stone-300 hover:shadow-lg hover:shadow-stone-300/25'
+                    }`}
+                  >
+                    {typeof frame.media_id === 'number' && (
+                      <div
+                        className={`absolute left-2.5 top-2.5 z-20 transition-all duration-300 ease-out ${
+                          isSelected
+                            ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
+                            : 'pointer-events-none -translate-y-0.5 scale-90 opacity-0 group-hover/card:pointer-events-auto group-hover/card:translate-y-0 group-hover/card:scale-100 group-hover/card:opacity-100 group-focus-within/card:pointer-events-auto group-focus-within/card:translate-y-0 group-focus-within/card:scale-100 group-focus-within/card:opacity-100'
+                        }`}
+                      >
+                        <label
+                          className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-2xl bg-white/90 shadow-md backdrop-blur-md transition hover:bg-white hover:shadow-lg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-orange-400/45"
+                          onMouseDown={(e) => {
+                            if (e.button !== 0) return;
+                            if (!e.shiftKey) return;
+                            e.preventDefault();
+                            const anchor = anchorFrameIndexRef.current;
+                            if (anchor !== null) {
+                              selectMediaRangeByFrameIndex(anchor, frameIndex);
+                            } else {
+                              selectMediaRangeByFrameIndex(frameIndex, frameIndex);
+                            }
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              anchorFrameIndexRef.current = frameIndex;
+                              toggleMediaSelection(frame.media_id as number);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="peer sr-only"
+                          />
+                          <span className="pointer-events-none flex h-6 w-6 items-center justify-center rounded-xl bg-stone-100/95 text-white shadow-inner ring-1 ring-stone-200/85 transition-all duration-200 peer-checked:bg-gradient-to-br peer-checked:from-orange-500 peer-checked:to-amber-500 peer-checked:shadow-md peer-checked:shadow-orange-500/20 peer-checked:ring-orange-400/35">
+                            <Check
+                              className="h-5 w-5 stroke-[2.75] opacity-0 transition-opacity duration-150 peer-checked:opacity-100"
+                              aria-hidden
+                            />
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                    <Link
+                      href={`/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`}
+                      className="block outline-none ring-inset focus-visible:ring-2 focus-visible:ring-orange-400/50 rounded-2xl"
+                      title={`Open annotation for ${frame.name}`}
+                    >
+                      <div className="aspect-[4/3] overflow-hidden bg-gradient-to-br from-stone-100 to-stone-200/80">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- JWT-backed frame URLs */}
+                        <img
+                          src={datasets.frameUrl(numericId, frame.frame)}
+                          alt={frame.name}
+                          loading="lazy"
+                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover/card:scale-[1.03]"
+                        />
+                      </div>
+                      <div className="bg-white/60 px-2.5 py-2 backdrop-blur-[2px]">
+                        <p className="truncate text-[11px] font-semibold text-stone-800">{frame.name}</p>
+                        <p className="mt-0.5 text-[10px] font-medium text-stone-500">
+                          Frame {frame.frame} · {frame.annotations.length} labels
+                        </p>
+                      </div>
+                    </Link>
                   </div>
-                  <div className="p-2">
-                    <p className="text-[11px] font-semibold text-stone-700 truncate">{frame.name}</p>
-                    <p className="text-[10px] text-stone-500 mt-0.5">
-                      Frame {frame.frame} · {frame.annotations.length} labels
-                    </p>
-                  </div>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           </motion.div>
         )}

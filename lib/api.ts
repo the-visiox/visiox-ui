@@ -409,6 +409,8 @@ export interface FrameAnnotation {
 
 export interface BrowserFrame {
   frame: number;
+  /** Present when backend can map this frame to a VisioX Media row (standalone or aligned uploads). */
+  media_id?: number;
   name: string;
   width: number;
   height: number;
@@ -452,6 +454,12 @@ export const datasets = {
     form.append('file', file);
     form.append('type', type);
     return request<Media>(`/api/datasets/${id}/upload/`, { method: 'POST', body: form });
+  },
+  deleteMedia(id: number, mediaIds: number[]) {
+    return request<{ deleted: number; ids: number[] }>(`/api/datasets/${id}/delete-media/`, {
+      method: 'POST',
+      body: JSON.stringify({ media_ids: mediaIds }),
+    });
   },
   stats(id: number) {
     return request<DatasetStats>(`/api/datasets/${id}/stats/`);
