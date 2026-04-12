@@ -5,7 +5,7 @@ description: Enforces the premium, light-themed, animated design system of the V
 
 # VisioX Frontend Engineering Guidelines
 
-When acting as an AI coding assistant on the VisioX UI repository, follow these design, architectural, and API-integration rules. The product uses a **light**, workspace-first aesthetic and talks to the **Visiox Django API** via `lib/api.ts`.
+When acting as an AI coding assistant on the VisioX UI repository, follow these design, architectural, and API-integration rules. The product uses a **light**, workspace-first aesthetic and talks to the **Visiox Django API** via `lib/api.ts`. Some flows may embed or proxy **CVAT** (see optional route `/datasets/[id]/annotate/cvat` if present in the repo).
 
 ## 1. Core tech stack
 
@@ -13,7 +13,8 @@ When acting as an AI coding assistant on the VisioX UI repository, follow these 
 - **Styling**: Tailwind CSS v4. Avoid custom CSS unless necessary.
 - **Animations**: `framer-motion` for section entrances and lists; avoid heavy raw-CSS transitions for those.
 - **Icons**: `lucide-react` only.
-- **Canvas**: `konva` + `react-konva` for annotation (`AnnotationEditor`).
+- **Canvas**: `konva` + `react-konva` for in-app annotation (`AnnotationEditor`); `use-image` for loading images on the canvas.
+- **Lists**: `virtua` where virtualized lists are used.
 - **Package manager**: `pnpm` (v10) for installs and scripts.
 
 ## 2. Global aesthetics and colors
@@ -38,15 +39,15 @@ When acting as an AI coding assistant on the VisioX UI repository, follow these 
 
 ## 4. Configuration and deployment
 
-- **Config**: `next.config.mjs` (not `.ts`). Currently includes `images.unoptimized: true` and optional `basePath` for GitHub Actions / Pages-style deploys. If you add `output: "export"`, ensure all routes remain statically compatible (no `cookies()`, `headers()`, or server-only API routes on those pages).
-- **Env**: `NEXT_PUBLIC_API_URL` in `.env.local` points at the Django API (see `.env.local.example`).
-- **CI**: Check `.github/workflows` for active deploy targets (GitHub Pages / Vercel).
+- **Config**: `next.config.mjs` (not `.ts`). Typically includes `images.unoptimized: true` and optional `basePath` for GitHub Actions / Pages. If `output: "export"` is enabled, every route must stay statically compatible.
+- **Env**: `NEXT_PUBLIC_API_URL` in `.env.local` for the Django API (see `.env.local.example`). A separate `NEXT_PUBLIC_CVAT_URL` may exist when CVAT iframe flows are enabled.
+- **CI**: Check `.github/workflows` for deploy targets.
 
 ## 5. API integration
 
 - **Single client**: Prefer `lib/api.ts` — `API_BASE_URL`, `auth.login` / `register`, `datasets`, `projects`, `training`, `deployments`, JWT refresh on 401.
-- **Annotation jobs**: Additional helpers in `lib/api/jobs.ts` — `GET/PATCH /api/jobs/{id}/annotations/`, `POST` issues.
-- **CORS**: If the UI is opened from a non-default origin (e.g. LAN IP), that origin must appear in Django `CORS_ALLOWED_ORIGINS`.
+- **Annotation jobs**: `lib/api/jobs.ts` — `GET/PATCH /api/jobs/{id}/annotations/`, `POST` issues.
+- **CORS**: Non-default front-end origins must be listed in Django `CORS_ALLOWED_ORIGINS`.
 
 ## 6. Animation and micro-interactions
 
@@ -61,11 +62,12 @@ When acting as an AI coding assistant on the VisioX UI repository, follow these 
 | Component | Role |
 |-----------|------|
 | `LayoutShell` | Route-based chrome (marketing vs platform vs annotate). |
-| `AnnotationEditor` | Konva stage: **rectangle** (drag), **polygon** (click vertices; count from `polygonVertexCount` prop), select tool, Transformer on rects only. |
+| `AnnotationEditor` | Konva: rectangle (drag), polygon (vertex count prop), select, Transformer on rects. |
 | `AnnotatePageClient` | Toolbar, labels, `?jobId=` save/load, demo fallback. |
 | `ImageGrid` | Dataset thumbnails (virtualized where used). |
-| `BlueprintGrid` | Optional background grid on dense workspace views. |
+| `BlueprintGrid` | Background grid on workspace pages. |
 | `SolutionPageTemplate` | Industry solution pages. |
+| Dataset detail / CVAT | If present: data browser, frame proxy URLs, optional CVAT iframe — follow existing `lib/api.ts` helpers and `*Client.tsx` patterns in-repo. |
 
 ## 8. File naming
 

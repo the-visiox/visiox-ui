@@ -84,7 +84,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     width: number;
     height: number;
   } | null>(null);
-  /** Polygon being drawn (flat x,y in image space). */
   const [polyDraft, setPolyDraft] = useState<number[]>([]);
   const [polyHover, setPolyHover] = useState<{ x: number; y: number } | null>(null);
   const [stageScale, setStageScale] = useState(1);
@@ -315,11 +314,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           y={stageY}
         >
           {image && (
-            <KonvaImage
-              image={image}
-              name="background-image"
-              listening
-            />
+            <KonvaImage image={image} name="background-image" listening />
           )}
           {shapes.map((shape, i) => {
             const stroke = colorFor(labels, shape.classLabelId);
@@ -437,10 +432,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             cancels
           </span>
         )}
-        {activeTool === "polygon" && !canDrawPoly && (
-          <span>Add a label first</span>
+        {activeTool === "polygon" && !canDrawPoly && <span>Add a label first</span>}
+        {activeTool === "select" && (
+          <span>Click a shape · Del removes · Esc clears polygon draft</span>
         )}
-        {activeTool === "select" && <span>Click a shape · Del removes · Esc clears polygon draft</span>}
         {activeTool !== "rectangle" &&
           activeTool !== "select" &&
           activeTool !== "polygon" && (

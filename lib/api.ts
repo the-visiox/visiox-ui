@@ -48,6 +48,7 @@ export interface Project {
   thumbnail: string | null;
   created_at: string;
   updated_at: string;
+  cvat_project_id: number | null;
 }
 
 export interface Dataset {
@@ -58,6 +59,7 @@ export interface Dataset {
   version: number;
   media_count: number;
   thumbnail: string | null;
+  cvat_task_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -151,6 +153,7 @@ export interface PaginatedResponse<T> {
 // ── Core fetch wrapper ─────────────────────────────────────────────────────
 
 let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
 
 async function request<T>(
   path: string,
@@ -159,22 +162,49 @@ async function request<T>(
 ): Promise<T> {
   const token = getAccessToken();
   const headers: Record<string, string> = {
-    ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string>),
   };
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  // Only add Content-Type: application/json if there is a body and it's not FormData
+  if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
-  if (res.status === 401 && retryOn401 && !isRefreshing) {
-    isRefreshing = true;
-    const refreshed = await tryRefresh();
-    isRefreshing = false;
-    if (refreshed) {
-      return request<T>(path, options, false);
+  // Normalize URL to avoid double slashes or missing slashes
+  const baseUrl = BASE_URL.replace(/\/+$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${baseUrl}${cleanPath}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (err) {
+    throw new Error(`Connection failed (${url}): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (res.status === 401 && retryOn401) {
+    if (!isRefreshing) {
+      isRefreshing = true;
+      refreshPromise = tryRefresh().finally(() => {
+        isRefreshing = false;
+        refreshPromise = null;
+      });
     }
+
+    const refreshed = await refreshPromise;
+    if (refreshed) {
+      // Re-fetch token after refresh
+      const newToken = getAccessToken();
+      const retryHeaders = {
+        ...headers,
+        ...(newToken ? { Authorization: `Bearer ${newToken}` } : {}),
+      };
+      return request<T>(path, { ...options, headers: retryHeaders }, false);
+    }
+
     clearTokens();
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
       window.location.href = '/login';
     }
     throw new Error('Session expired');
@@ -185,26 +215,37 @@ async function request<T>(
     try {
       const err = await res.json();
       message = err.detail || err.error || JSON.stringify(err);
-    } catch {}
+    } catch {
+      // If not JSON, use the status text or the generic message
+      message = res.statusText || message;
+    }
     throw new Error(message);
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  
+  // Handle case where body might be empty despite 200/201 status
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    return res.json() as Promise<T>;
+  }
+  
+  return undefined as unknown as T;
 }
 
 async function tryRefresh(): Promise<boolean> {
   const refresh = localStorage.getItem(TOKEN_KEYS.refresh);
   if (!refresh) return false;
   try {
-    const res = await fetch(`${BASE_URL}/api/auth/token/refresh/`, {
+    const baseUrl = BASE_URL.replace(/\/+$/, '');
+    const res = await fetch(`${baseUrl}/api/auth/token/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh }),
     });
     if (!res.ok) return false;
     const data = await res.json();
-    localStorage.setItem(TOKEN_KEYS.access, data.access);
+    saveTokens(data.access, data.refresh || refresh);
     return true;
   } catch {
     return false;
@@ -242,6 +283,9 @@ export const projects = {
   list() {
     return request<PaginatedResponse<Project>>('/api/projects/');
   },
+  get(id: number) {
+    return request<Project>(`/api/projects/${id}/`);
+  },
   create(data: { team: number; name: string; task_type: string; description?: string }) {
     return request<Project>('/api/projects/', { method: 'POST', body: JSON.stringify(data) });
   },
@@ -267,7 +311,127 @@ export const teams = {
   },
 };
 
+// ── Annotation classes (labels per project) ────────────────────────────────
+
+export interface AnnotationClass {
+  id: number;
+  project: number;
+  name: string;
+  color: string;
+  attributes: Record<string, unknown>;
+  annotation_count: number;
+  created_at: string;
+}
+
+export const annotationClasses = {
+  list(projectId: number) {
+    return request<PaginatedResponse<AnnotationClass>>(`/api/classes/?project=${projectId}`);
+  },
+  create(data: {
+    project: number;
+    name: string;
+    color?: string;
+    attributes?: Record<string, unknown>;
+  }) {
+    return request<AnnotationClass>('/api/classes/', { method: 'POST', body: JSON.stringify(data) });
+  },
+  update(
+    id: number,
+    data: { name?: string; color?: string; attributes?: Record<string, unknown> },
+  ) {
+    return request<AnnotationClass>(`/api/classes/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+  delete(id: number) {
+    return request<void>(`/api/classes/${id}/`, { method: 'DELETE' });
+  },
+};
+
 // ── Datasets ───────────────────────────────────────────────────────────────
+
+export interface CvatJobStats {
+  id: number;
+  stage: string;
+  state: string;
+  frame_count: number;
+  assignee: string | null;
+}
+
+export interface CvatAnnotationStats {
+  shapes: number;
+  tags: number;
+  tracks: number;
+  total: number;
+}
+
+export interface CvatTaskStats {
+  exists: boolean;
+  task_id?: number;
+  name?: string;
+  status?: string;
+  size?: number;
+  mode?: string;
+  dimension?: string;
+  created_date?: string;
+  updated_date?: string;
+  image_quality?: number;
+  jobs?: CvatJobStats[];
+  annotations?: CvatAnnotationStats;
+  url?: string;
+  error?: string;
+}
+
+export interface DatasetStats {
+  id: number;
+  name: string;
+  version: number;
+  project_id: number;
+  project_name: string | null;
+  cvat_task_id: number | null;
+  created_at: string;
+  updated_at: string;
+  cvat: CvatTaskStats | null;
+}
+
+// ── Data Browser types ──────────────────────────────────────────────────────
+
+export interface FrameAnnotation {
+  id: number;
+  type: string;
+  label_id: number;
+  label: string;
+  color: string;
+  points: number[];
+  occluded: boolean;
+}
+
+export interface BrowserFrame {
+  frame: number;
+  name: string;
+  width: number;
+  height: number;
+  annotations: FrameAnnotation[];
+}
+
+export interface BrowserLabel {
+  id: number;
+  name: string;
+  color: string;
+  type: string;
+}
+
+export interface BrowserData {
+  dataset_id: number;
+  dataset_name: string;
+  version: number;
+  task_id: number;
+  frame_count: number;
+  labels: BrowserLabel[];
+  frames: BrowserFrame[];
+  annotation_count: number;
+}
 
 export const datasets = {
   list(projectId?: number) {
@@ -289,12 +453,33 @@ export const datasets = {
     form.append('type', type);
     return request<Media>(`/api/datasets/${id}/upload/`, { method: 'POST', body: form });
   },
+  stats(id: number) {
+    return request<DatasetStats>(`/api/datasets/${id}/stats/`);
+  },
+  browser(id: number) {
+    return request<BrowserData>(`/api/datasets/${id}/browser/`);
+  },
+  frameUrl(id: number, frameNum: number, quality: 'compressed' | 'original' = 'compressed') {
+    const token = getAccessToken();
+    const baseUrl = BASE_URL.replace(/\/+$/, '');
+    return `${baseUrl}/api/datasets/${id}/frames/${frameNum}/?quality=${quality}${token ? `&token=${token}` : ''}`;
+  },
   exportUrl(id: number, format: 'coco' | 'yolo' | 'voc') {
     const token = getAccessToken();
-    return `${BASE_URL}/api/datasets/${id}/export/?format=${format}${token ? `&token=${token}` : ''}`;
+    const baseUrl = BASE_URL.replace(/\/+$/, '');
+    return `${baseUrl}/api/datasets/${id}/export/?format=${format}${token ? `&token=${token}` : ''}`;
+  },
+  delete(id: number) {
+    return request<void>(`/api/datasets/${id}/`, { method: 'DELETE' });
   },
   newVersion(id: number) {
     return request<Dataset>(`/api/datasets/${id}/new_version/`, { method: 'POST' });
+  },
+  annotateUrl(id: string | number) {
+    return request<{ url?: string; error?: string }>(`/api/datasets/${id}/annotate_url/`);
+  },
+  syncCvat(id: string | number) {
+    return request<{ status: string; version: number; cvat_status?: string; total_labels?: number }>(`/api/datasets/${id}/sync_cvat/`, { method: 'POST' });
   },
 };
 
