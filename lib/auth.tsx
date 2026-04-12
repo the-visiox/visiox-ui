@@ -8,7 +8,25 @@ import React, {
   ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { auth as authApi, saveTokens, clearTokens, TOKEN_KEYS } from "./api";
+import {
+  auth as authApi,
+  saveTokens,
+  clearTokens,
+  TOKEN_KEYS,
+  API_BASE_URL,
+} from "./api";
+
+function formatAuthError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const isNetwork =
+    raw === "Failed to fetch" ||
+    raw === "NetworkError when attempting to fetch resource." ||
+    raw.startsWith("Load failed"); // Safari
+  if (isNetwork) {
+    return `Cannot reach the API (${API_BASE_URL}). Start the backend: cd visiox → python manage.py runserver 0.0.0.0:8000. Or set NEXT_PUBLIC_API_URL in visiox-ui/.env.local. If you use a LAN URL for the site, add it to Django CORS_ALLOWED_ORIGINS.`;
+  }
+  return raw;
+}
 
 interface UserInfo {
   user_id: number;
@@ -72,8 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoggedIn(true);
       return { ok: true };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Login failed";
-      return { ok: false, error: message };
+      return { ok: false, error: formatAuthError(err) };
     }
   };
 
@@ -104,8 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoggedIn(true);
       return { ok: true };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Registration failed";
-      return { ok: false, error: message };
+      return { ok: false, error: formatAuthError(err) };
     }
   };
 

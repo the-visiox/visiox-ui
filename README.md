@@ -1,73 +1,81 @@
-# VisioX — Intelligent Computer Vision Workspace
+# VisioX UI
 
-VisioX is a high-fidelity, enterprise-grade platform designed for managing end-to-end computer vision workflows. From high-speed data annotation and model training to seamless edge deployment, VisioX provides a workspace-dense environment focused on performance, precision, and world-class aesthetics.
+Next.js frontend for the **VisioX** computer vision platform: marketing site, authenticated workspace (datasets, training, deploy), and **image annotation** (Konva) wired to the **Visiox Django API**.
 
-## ✨ Key Features
-
-- **High-Fidelity Workspace**: A premium, workspace-dense environment inspired by industry leaders, featuring a light-themed, animated design system.
-- **Dynamic Annotation Visuals**: Interactive demo system with real-time bounding box visualization across multiple industries (Surveillance, Agriculture, Robotics, etc.).
-- **Infinite Partner Roll**: A seamless, position-based auto-hovering partner logo roll powered by Framer Motion.
-- **Snap-Scroll Experience**: A modern, full-screen snap-scroll landing page with smooth transitions and interactive navigation dots.
-- **Advanced CV Analytics**: Real-time metric visualization for model training, including mAP, Loss, and Accuracy.
-- **Modular Architecture**: Clean, scalable codebase using the latest React 19 and Next.js 16 features.
-
-## 🚀 Tech Stack
-
-VisioX is built with a cutting-edge frontend stack for maximum performance and visual excellence:
+## Tech stack
 
 | Layer | Technology |
-|---|---|
-| **Framework** | [Next.js 16.1.4](https://nextjs.org/) (App Router) |
-| **Runtime** | [React 19.2.3](https://reactjs.org/) |
-| **Styling** | [Tailwind CSS 4](https://tailwindcss.com/) |
-| **Animation** | [Framer Motion 12.29.0](https://www.framer.com/motion/) |
-| **Canvas** | [Konva & React-Konva](https://konvajs.org/) (for visual workflows) |
-| **Icons** | [Lucide React](https://lucide.dev/) |
+|--------|------------|
+| Framework | Next.js 16 (App Router), React 19 |
+| Styling | Tailwind CSS 4 |
+| Motion | Framer Motion |
+| Canvas | Konva + react-konva |
+| Icons | lucide-react |
+| Package manager | pnpm |
 
-## 📦 Getting Started
+## Prerequisites
 
-Ensure you have [pnpm](https://pnpm.io/) installed for the best experience.
+- Node 20+ recommended  
+- **visiox** Django API running for real auth and data — default `http://localhost:8000`
+
+## Environment
+
+Copy the example and adjust if the API is not on port 8000:
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Run the development server
-pnpm dev
-
-# Build for production
-pnpm build
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+| Variable | Purpose |
+|----------|---------|
+| `NEXT_PUBLIC_API_URL` | Base URL of the Visiox API (no trailing slash), e.g. `http://127.0.0.1:8000` |
 
-## 📁 Project Structure
+Restart `pnpm dev` after changing env vars.
+
+## Scripts
+
+```bash
+pnpm install
+pnpm dev          # http://localhost:3000
+pnpm build
+pnpm lint
+```
+
+## Project structure (high level)
 
 ```text
-visiox-ui/
-├── app/                  # Next.js App Router (Pages & Layouts)
-│   ├── about/            # Project vision and history
-│   ├── datasets/         # Image library and class distribution
-│   ├── deploy/           # Deployment dashboard and API keys
-│   ├── login/            # Authentication flow
-│   ├── overview/         # User workspace dashboard
-│   ├── products/         # Workflow and training hubs
-│   ├── solutions/        # Industry-specific solutions
-│   ├── train/            # Live training monitor
-│   └── workflows/        # Node-based pipeline builder
-├── components/           # Reusable UI components (Bento, Badge, etc.)
-├── hooks/                # Custom React hooks (Auth, Assets, etc.)
-├── lib/                  # Shared utilities and core logic
-├── public/               # Static assets (Logos, Demo Images, Videos)
-└── specs/                # Implementation plans and feature specs
+app/                    # Routes (marketing, login, overview, datasets, annotate, …)
+components/             # UI + platform + annotate (AnnotationEditor)
+lib/
+  api.ts                # JWT client: auth, projects, datasets, training, …
+  api/                  # Supplemental fetch helpers (jobs, classes, …)
+  types/annotation.ts   # Editor shape / tool types
+  auth.tsx              # AuthProvider (uses lib/api.ts)
 ```
 
-## 🎨 Design Philosophy
+## Annotation workspace
 
-VisioX adheres to a **Premium Design System** characterized by:
-- **Rich Aesthetics**: Vibrant gradients, sleek dark/light modes, and glassmorphism.
-- **Micro-Animations**: Subtle, purposeful motion to enhance user engagement without distraction.
-- **Visual Precision**: Accurate, position-based tracking and high-density data visualization.
+- Route: `/datasets/[datasetId]/annotate/[mediaId]`  
+- Optional query: `?jobId=<labelingTaskId>` to **load/save** via `GET` / `PATCH /api/jobs/{id}/annotations/`.  
+- **Box tool**: drag on the image. **Polygon tool**: choose vertex count in the toolbar, then click corners; **Esc** cancels in-progress polygon.  
+- **Demo mode**: no token → placeholder image and demo labels; API calls skipped until logged in.
+
+## Login
+
+1. Start the Visiox API (`python manage.py runserver 0.0.0.0:8000` or Docker).  
+2. Open `/login`.  
+3. Use a real user (e.g. after `seed_demo_data`: `demo@visiox.ai` / `Demo1234!`).  
+If the UI shows a network error, confirm `NEXT_PUBLIC_API_URL` and that the browser can reach `/api/docs/` on the API host.
+
+## Agent / AI skills
+
+- **VisioX design & patterns**: `.agents/skills/visiox-frontend-agent/SKILL.md`  
+- **Hub**: `.agents/AGENTS.md`
+
+## Design notes
+
+Premium **light** workspace aesthetic (`bg-[#fcfaf7]`, stone palette, orange accents). The annotation screen uses the same system; `LayoutShell` gives annotate routes a full-width shell without the main sidebar.
 
 ---
-Built with ❤️ by the VisioX Team.
+
+Built for the VisioX platform.

@@ -18,15 +18,16 @@ Test-Driven Development is the standard. Features must be defined by tests first
 Image processing and canvas-based annotation tools must be optimized for framerate and latency. Any UI blockage during image heavy operations is unacceptable.
 
 ### VI. Backend Integration Readiness
-Hard-coding of API URLs, static mock data arrays, or external source links directly within components is strictly prohibited. All data-fetching logic must be centralized in `lib/api.ts` or similar utilities, utilizing environment variables for configuration. This ensures that the frontend remains decoupled and easily integrable with a separate backend repository.
+Hard-coding API URLs or scattering ad-hoc `fetch` calls across UI components is prohibited. Use **`lib/api.ts`** as the primary JWT-aware client (`API_BASE_URL` from `NEXT_PUBLIC_API_URL`); feature-specific helpers may live under **`lib/api/`** (e.g. jobs, datasets) but must use the same base URL and auth patterns. Demo fallbacks belong in page-level or hook logic, not inlined magic URLs in presentational components.
 
 ## Technology Guidelines
-- **Framework**: Next.js 16 (App Router)
-- **Styling**: Tailwind CSS 4 + Framer Motion for smooth transitions
-- **State Management**: Optimized for complex nested objects (datasets/labels)
-- **API Strategy**: Centralized, modular fetchers using environment variables (e.g., `NEXT_PUBLIC_API_URL`) to support seamless integration with external AI inference and data services.
+- **Framework**: Next.js 16 (App Router), React 19
+- **Styling**: Tailwind CSS 4 + Framer Motion
+- **Canvas**: Konva / react-konva for annotation (`AnnotationEditor`)
+- **State Management**: Suited for nested dataset / label / shape models
+- **API Strategy**: Visiox Django REST API; env-driven base URL; OpenAPI at `/api/docs/` on the backend
 
 ## Governance
 This constitution is the source of truth for all architectural decisions. Any significant deviation must be documented and justified in a new RFC (Request for Comments).
 
-**Version**: 1.1.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-01
+**Version**: 1.2.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-04-12

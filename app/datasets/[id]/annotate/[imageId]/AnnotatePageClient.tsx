@@ -26,36 +26,77 @@ import { ApiError, getAccessToken } from "@/lib/api/client";
 import type { EditorShape, LabelDefinition } from "@/lib/types/annotation";
 import { useAuth } from "@/lib/auth";
 
+function bboxFromPoints(pts: number[]) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < pts.length; i += 2) {
+    minX = Math.min(minX, pts[i]);
+    maxX = Math.max(maxX, pts[i]);
+    minY = Math.min(minY, pts[i + 1]);
+    maxY = Math.max(maxY, pts[i + 1]);
+  }
+  if (!Number.isFinite(minX)) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
 function apiShapesToEditor(
   rows: { id: number; class_label: number; type: string; data: Record<string, unknown> }[]
 ): EditorShape[] {
-  return rows
-    .filter((r) => r.type === "bbox" || r.type === "rectangle")
-    .map((r) => {
+  const out: EditorShape[] = [];
+  for (const r of rows) {
+    if (r.type === "bbox" || r.type === "rectangle") {
       const d = r.data as { x: number; y: number; width: number; height: number };
-      return {
+      out.push({
         clientId: `srv-${r.id}`,
         classLabelId: r.class_label,
         x: d.x,
         y: d.y,
         width: d.width,
         height: d.height,
-      };
-    });
+      });
+    } else if (r.type === "polygon") {
+      const d = r.data as { points?: number[] };
+      const pts = d.points;
+      if (pts && pts.length >= 6) {
+        const bb = bboxFromPoints(pts);
+        out.push({
+          clientId: `srv-${r.id}`,
+          classLabelId: r.class_label,
+          ...bb,
+          points: pts,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 function editorToApiPayload(shapes: EditorShape[]) {
-  return shapes.map((s) => ({
-    class_label: s.classLabelId,
-    type: "bbox" as const,
-    data: {
-      x: s.x,
-      y: s.y,
-      width: s.width,
-      height: s.height,
-    },
-    frame: 0,
-  }));
+  return shapes.map((s) => {
+    if (s.points && s.points.length >= 6) {
+      return {
+        class_label: s.classLabelId,
+        type: "polygon" as const,
+        data: { points: s.points },
+        frame: 0,
+      };
+    }
+    return {
+      class_label: s.classLabelId,
+      type: "bbox" as const,
+      data: {
+        x: s.x,
+        y: s.y,
+        width: s.width,
+        height: s.height,
+      },
+      frame: 0,
+    };
+  });
 }
 
 const TOOLBAR: { tool: Tool; icon: React.ReactNode; label: string; key: string }[] = [
@@ -86,6 +127,8 @@ export default function AnnotatePageClient() {
   const [activeClassId, setActiveClassId] = useState(0);
   const [shapes, setShapes] = useState<EditorShape[]>([]);
   const [activeTool, setActiveTool] = useState<Tool>("rectangle");
+  /** Vertices for polygon tool (click to place each corner). */
+  const [polygonVertexCount, setPolygonVertexCount] = useState(4);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -200,23 +243,41 @@ export default function AnnotatePageClient() {
           </div>
         </div>
 
-        <div className="hidden md:flex items-center gap-1 bg-stone-100/80 p-1 rounded-2xl border border-stone-200/80">
-          {TOOLBAR.map(({ tool, icon, label, key }) => (
-            <button
-              key={tool}
-              type="button"
-              title={`${label} (${key})`}
-              onClick={() => setActiveTool(tool)}
-              className={`rounded-xl px-2 py-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-                activeTool === tool
-                  ? "bg-white text-orange-600 shadow-md shadow-orange-500/10"
-                  : "text-stone-500 hover:text-stone-900"
-              }`}
-            >
-              {icon}
-              <span className="hidden lg:inline">{label}</span>
-            </button>
-          ))}
+        <div className="hidden md:flex items-center gap-3 flex-wrap justify-center">
+          <div className="flex items-center gap-1 bg-stone-100/80 p-1 rounded-2xl border border-stone-200/80">
+            {TOOLBAR.map(({ tool, icon, label, key }) => (
+              <button
+                key={tool}
+                type="button"
+                title={`${label} (${key})`}
+                onClick={() => setActiveTool(tool)}
+                className={`rounded-xl px-2 py-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                  activeTool === tool
+                    ? "bg-white text-orange-600 shadow-md shadow-orange-500/10"
+                    : "text-stone-500 hover:text-stone-900"
+                }`}
+              >
+                {icon}
+                <span className="hidden lg:inline">{label}</span>
+              </button>
+            ))}
+          </div>
+          {activeTool === "polygon" && (
+            <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-stone-600">
+              <span>Points</span>
+              <select
+                value={polygonVertexCount}
+                onChange={(e) => setPolygonVertexCount(Number(e.target.value))}
+                className="rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-semibold text-stone-800 normal-case"
+              >
+                {[3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -287,6 +348,7 @@ export default function AnnotatePageClient() {
                 onShapesChange={setShapes}
                 activeTool={activeTool}
                 onToolChange={setActiveTool}
+                polygonVertexCount={polygonVertexCount}
               />
             </motion.div>
           )}
@@ -305,10 +367,10 @@ export default function AnnotatePageClient() {
           <div className="space-y-3">
             {shapes.length === 0 && (
               <p className="text-sm text-stone-500 leading-relaxed">
-                Draw with the rectangle tool (N). Switch class via the left palette. When
-                a <code className="text-orange-600">jobId</code> query is present and you are
-                authenticated, Save writes to{" "}
-                <code className="text-stone-700">PATCH /api/jobs/&#123;id&#125;/annotations/</code>.
+                Box: drag on the image (N). Polygon: choose point count, then click each
+                corner (P). <code className="text-orange-600">Esc</code> cancels polygon in
+                progress. With <code className="text-orange-600">jobId</code> + auth, Save
+                syncs to the API.
               </p>
             )}
             {shapes.map((s) => {
@@ -329,7 +391,9 @@ export default function AnnotatePageClient() {
                       <span className="text-xs font-bold text-stone-900">{name}</span>
                     </div>
                     <span className="text-[10px] text-stone-400 font-mono">
-                      {Math.round(s.width)}×{Math.round(s.height)}
+                      {s.points && s.points.length >= 6
+                        ? `${s.points.length / 2} pts`
+                        : `${Math.round(s.width)}×${Math.round(s.height)}`}
                     </span>
                   </div>
                 </div>

@@ -1,4 +1,8 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+/** Base URL for the Visiox Django API (set `NEXT_PUBLIC_API_URL` in `.env.local`). */
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:8000';
+
+const BASE_URL = API_BASE_URL;
 
 // ── Storage helpers ────────────────────────────────────────────────────────
 

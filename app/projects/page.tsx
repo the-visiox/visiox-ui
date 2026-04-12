@@ -73,12 +73,12 @@ export default function ProjectsPage() {
             </div>
           ) : (
             list.map((p, i) => (
+              <Link key={p.id} href={`/datasets?project=${p.id}`} className="block">
               <motion.div
-                key={p.id}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: i * 0.07 }}
-                className="bg-white rounded-3xl border border-stone-200 p-1 flex flex-col group cursor-pointer hover:border-orange-500/50 transition-all shadow-sm"
+                className="bg-white rounded-3xl border border-stone-200 p-1 flex flex-col group cursor-pointer hover:border-orange-500/50 transition-all shadow-sm h-full"
               >
                 <div className="h-48 rounded-[22px] bg-stone-100 relative overflow-hidden m-1">
                   {p.thumbnail ? (
@@ -112,15 +112,13 @@ export default function ProjectsPage() {
                     <span className="text-xs text-stone-500">
                       {new Date(p.created_at).toLocaleDateString()}
                     </span>
-                    <Link
-                      href="/datasets"
-                      className="text-xs font-bold text-orange-500 hover:underline"
-                    >
-                      Datasets →
-                    </Link>
+                    <span className="text-xs font-bold text-orange-500 group-hover:underline">
+                      View datasets →
+                    </span>
                   </div>
                 </div>
               </motion.div>
+              </Link>
             ))
           )}
         </div>
