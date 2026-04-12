@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
 import Sidebar from "@/components/platform/Sidebar";
 import TopBar from "@/components/platform/TopBar";
 import { useAuth } from "@/lib/auth";
-import { TOKEN_KEYS } from "@/lib/api";
+import { getAccessToken } from "@/lib/api";
 
 // Routes that belong to the authenticated platform workspace hubs.
 const PLATFORM_ROUTES = ["/overview", "/projects", "/teams", "/datasets", "/workflows", "/train", "/deploy"];
@@ -21,27 +21,33 @@ function isBareRoute(path: string) {
   return BARE_ROUTES.some((r) => path === r || path.startsWith(r + "/"));
 }
 
+/** Full-screen annotation workspace (no sidebar / top bar — canvas brings its own chrome). */
+function isAnnotateWorkspace(path: string) {
+  return /\/datasets\/[^/]+\/annotate\//.test(path);
+}
+
 export default function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, authReady } = useAuth();
   const router = useRouter();
 
-  // ── Auth Protection ───────────────────────────────────────────
-  // Redirect unauthenticated users trying to access platform hubs to /login
   useEffect(() => {
-    if (isPlatformRoute(pathname) && !isLoggedIn) {
-      // In a real app we might check a cookie or local session here
-      // But for this demo, we'll let existing sessions persist.
-      // If truly logged out, send to login.
-      if (!localStorage.getItem(TOKEN_KEYS.access)) {
-        router.push("/login");
-      }
+    if (!authReady) return;
+    if (isPlatformRoute(pathname) && !isLoggedIn && !getAccessToken()) {
+      router.push("/login");
     }
-  }, [pathname, isLoggedIn, router]);
+  }, [pathname, isLoggedIn, authReady, router]);
 
   // ── Auth / login pages — no chrome ─────────────────────────────
   if (isBareRoute(pathname)) {
     return <div className="min-h-screen bg-[#1c1917]">{children}</div>;
+  }
+
+  // ── Annotation terminal (datasets … / annotate / …) ──────────
+  if (isAnnotateWorkspace(pathname)) {
+    return (
+      <div className="min-h-screen bg-[#fcfaf7] text-stone-900">{children}</div>
+    );
   }
 
   // ── Authenticated platform workspace ───────────────────────────

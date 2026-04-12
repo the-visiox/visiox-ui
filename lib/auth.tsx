@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { auth as authApi, saveTokens, clearTokens, TOKEN_KEYS } from "./api";
 
@@ -13,9 +19,19 @@ interface UserInfo {
 
 interface AuthContextType {
   isLoggedIn: boolean;
+  authReady: boolean;
   user: UserInfo | null;
-  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  register: (username: string, email: string, password: string, firstName?: string, lastName?: string) => Promise<{ ok: boolean; error?: string }>;
+  login: (
+    email: string,
+    password: string
+  ) => Promise<{ ok: boolean; error?: string }>;
+  register: (
+    username: string,
+    email: string,
+    password: string,
+    firstName?: string,
+    lastName?: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
 }
 
@@ -23,6 +39,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<UserInfo | null>(null);
   const router = useRouter();
 
@@ -33,8 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setUser(JSON.parse(stored));
         setIsLoggedIn(true);
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }
+    setAuthReady(true);
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -61,11 +81,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: string,
     email: string,
     password: string,
-    firstName = '',
-    lastName = '',
+    firstName = "",
+    lastName = ""
   ) => {
     try {
-      const data = await authApi.register(username, email, password, firstName, lastName);
+      const data = await authApi.register(
+        username,
+        email,
+        password,
+        firstName,
+        lastName
+      );
       saveTokens(data.access_token, data.refresh_token);
       const userInfo: UserInfo = {
         user_id: data.user_id,
@@ -88,7 +114,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refresh) {
       try {
         await authApi.logout(refresh);
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }
     clearTokens();
     setIsLoggedIn(false);
@@ -97,7 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, user, login, register, logout }}>
+    <AuthContext.Provider
+      value={{ isLoggedIn, authReady, user, login, register, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

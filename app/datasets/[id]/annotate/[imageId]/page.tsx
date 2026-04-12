@@ -1,7 +1,17 @@
-import React from 'react';
-import AnnotateClient from './AnnotateClient';
+import { Suspense } from "react";
+import AnnotatePageClient from "./AnnotatePageClient";
+export { generateStaticParams } from "./params";
 
-export default async function AnnotatePage({ params }: { params: Promise<{ id: string; imageId: string }> }) {
-  const { id, imageId } = await params;
-  return <AnnotateClient id={id} imageId={imageId} />;
+export default function AnnotatePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#fcfaf7] flex items-center justify-center text-stone-500 text-sm font-medium">
+          Loading workspace…
+        </div>
+      }
+    >
+      <AnnotatePageClient />
+    </Suspense>
+  );
 }
