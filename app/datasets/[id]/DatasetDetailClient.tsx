@@ -568,8 +568,19 @@ export default function DatasetDetailClient({ id }: Props) {
                       onChange={() => toggleSelectAllMedia()}
                       className="peer sr-only"
                     />
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-stone-100/95 text-white shadow-inner ring-1 ring-stone-200/80 transition-all duration-200 peer-checked:bg-gradient-to-br peer-checked:from-orange-500 peer-checked:to-amber-500 peer-checked:shadow-md peer-checked:shadow-orange-500/20 peer-checked:ring-orange-400/35 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50">
-                      <Check className="h-4 w-4 stroke-[2.75] opacity-0 transition-opacity duration-150 peer-checked:opacity-100" aria-hidden />
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md shadow-inner ring-1 transition-all duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50 ${
+                        allSelectableSelected
+                          ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm ring-orange-400/40'
+                          : 'bg-stone-100/95 text-stone-500 ring-stone-200/80'
+                      }`}
+                    >
+                      <Check
+                        className={`h-3 w-3 stroke-[3] text-white transition-opacity duration-150 ${
+                          allSelectableSelected ? 'opacity-100' : 'opacity-0'
+                        }`}
+                        aria-hidden
+                      />
                     </span>
                     Select all
                   </label>
@@ -608,7 +619,7 @@ export default function DatasetDetailClient({ id }: Props) {
                         }`}
                       >
                         <label
-                          className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-2xl bg-white/90 shadow-md backdrop-blur-md transition hover:bg-white hover:shadow-lg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-orange-400/45"
+                          className="relative flex h-5 w-5 cursor-pointer items-center justify-center rounded-md bg-white/90 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-orange-400/45"
                           onMouseDown={(e) => {
                             if (e.button !== 0) return;
                             if (!e.shiftKey) return;
@@ -624,16 +635,30 @@ export default function DatasetDetailClient({ id }: Props) {
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => {
+                            onChange={(e) => {
+                              const event = e.nativeEvent as MouseEvent;
+                              if (event.shiftKey) return;
+                            
                               anchorFrameIndexRef.current = frameIndex;
                               toggleMediaSelection(frame.media_id as number);
                             }}
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (e.shiftKey) e.preventDefault();
+                            }}
                             className="peer sr-only"
                           />
-                          <span className="pointer-events-none flex h-6 w-6 items-center justify-center rounded-xl bg-stone-100/95 text-white shadow-inner ring-1 ring-stone-200/85 transition-all duration-200 peer-checked:bg-gradient-to-br peer-checked:from-orange-500 peer-checked:to-amber-500 peer-checked:shadow-md peer-checked:shadow-orange-500/20 peer-checked:ring-orange-400/35">
+                          <span
+                            className={`pointer-events-none flex h-4 w-4 items-center justify-center rounded-[5px] shadow-inner ring-1 transition-all duration-200 ${
+                              isSelected
+                                ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white ring-orange-400/40 shadow-sm'
+                                : 'bg-stone-100/95 text-stone-500 ring-stone-200/85'
+                            }`}
+                          >
                             <Check
-                              className="h-5 w-5 stroke-[2.75] opacity-0 transition-opacity duration-150 peer-checked:opacity-100"
+                              className={`h-2.5 w-2.5 stroke-[3] text-white transition-opacity duration-150 ${
+                                isSelected ? 'opacity-100' : 'opacity-0'
+                              }`}
                               aria-hidden
                             />
                           </span>
