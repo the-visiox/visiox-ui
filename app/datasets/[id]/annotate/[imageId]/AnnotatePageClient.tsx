@@ -1,16 +1,26 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
+  ChevronFirst,
+  ChevronLast,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Link2,
+  Play,
+  Redo2,
+  Trash2,
+  Undo2,
   Box,
   CircleDot,
   Cuboid,
   Hexagon,
   MousePointer2,
-  PenLine,
   Save,
   Spline,
   Tag,
@@ -19,7 +29,9 @@ import {
 } from "lucide-react";
 import AnnotationEditor from "@/components/annotate/AnnotationEditor";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
+import { datasets as visioxDatasets } from "@/lib/api";
 import { getDataset, getDatasetMedia } from "@/lib/api/datasets";
+import type { ClassDto } from "@/lib/api/classes";
 import { getClassesForProject } from "@/lib/api/classes";
 import { getJobAnnotations, patchJobAnnotations } from "@/lib/api/jobs";
 import { ApiError, getAccessToken } from "@/lib/api/client";
@@ -116,7 +128,14 @@ export default function AnnotatePageClient() {
   const { authReady } = useAuth();
 
   const datasetId = Number(params.id);
-  const mediaId = Number(params.imageId);
+  /** `/datasets/:id/annotate/native?frame=N` — imageId segment is the literal "native", not a media PK. */
+  const rawImageId = String(params.imageId ?? "");
+  const isNativeMode = rawImageId.toLowerCase() === "native";
+  const frameIndex = (() => {
+    const n = parseInt(searchParams.get("frame") ?? "0", 10);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  })();
+  const mediaId = isNativeMode ? NaN : Number(rawImageId);
   const jobIdParam = searchParams.get("jobId");
   const jobId = jobIdParam ? parseInt(jobIdParam, 10) : NaN;
 
@@ -125,7 +144,47 @@ export default function AnnotatePageClient() {
   const [imageUrl, setImageUrl] = useState<string>("");
   const [labels, setLabels] = useState<LabelDefinition[]>([]);
   const [activeClassId, setActiveClassId] = useState(0);
-  const [shapes, setShapes] = useState<EditorShape[]>([]);
+  const [mediaIndex, setMediaIndex] = useState<number | null>(null);
+  const [mediaTotal, setMediaTotal] = useState<number | null>(null);
+  const [mediaList, setMediaList] = useState<{ id: number; file_url?: string | null; filename?: string }[]>([]);
+  const [currentFilename, setCurrentFilename] = useState<string>("");
+  const [frameInput, setFrameInput] = useState<string>("");
+
+  const [shapes, _setShapes] = useState<EditorShape[]>([]);
+  const pastRef = useRef<EditorShape[][]>([]);
+  const futureRef = useRef<EditorShape[][]>([]);
+  const shapesRef = useRef<EditorShape[]>([]);
+  shapesRef.current = shapes;
+
+  const canUndo = pastRef.current.length > 0;
+  const canRedo = futureRef.current.length > 0;
+
+  const setShapes: React.Dispatch<React.SetStateAction<EditorShape[]>> = (action) => {
+    _setShapes((prev) => {
+      const next = typeof action === "function" ? (action as (p: EditorShape[]) => EditorShape[])(prev) : action;
+      if (next === prev) return prev;
+      pastRef.current.push(prev);
+      futureRef.current = [];
+      return next;
+    });
+  };
+
+  const undo = () => {
+    const past = pastRef.current;
+    if (!past.length) return;
+    const prev = past.pop()!;
+    futureRef.current.push(shapesRef.current);
+    _setShapes(prev);
+  };
+
+  const redo = () => {
+    const future = futureRef.current;
+    if (!future.length) return;
+    const next = future.pop()!;
+    pastRef.current.push(shapesRef.current);
+    _setShapes(next);
+  };
+
   const [activeTool, setActiveTool] = useState<Tool>("rectangle");
   /** Vertices for polygon tool (click to place each corner). */
   const [polygonVertexCount, setPolygonVertexCount] = useState(4);
@@ -139,7 +198,7 @@ export default function AnnotatePageClient() {
       setLoading(true);
       setError(null);
       const token = getAccessToken();
-      const demoUrl = `https://picsum.photos/seed/${params.imageId}/1200/800`;
+      const demoUrl = `https://picsum.photos/seed/${isNativeMode ? `native-${datasetId}-f${frameIndex}` : params.imageId}/1200/800`;
 
       if (!token) {
         setImageUrl(demoUrl);
@@ -153,33 +212,70 @@ export default function AnnotatePageClient() {
       }
 
       try {
+        if (!Number.isFinite(datasetId)) {
+          throw new Error("Invalid dataset id.");
+        }
+
         const ds = await getDataset(datasetId);
-        const mediaList = await getDatasetMedia(datasetId);
-        const media = mediaList.find((m) => m.id === mediaId);
-        const classes = await getClassesForProject(ds.project);
+
+        const classes = await getClassesForProject(ds.project).catch((): ClassDto[] => []);
+
+        let resolvedImageUrl = demoUrl;
+        if (isNativeMode) {
+          resolvedImageUrl = visioxDatasets.frameUrl(datasetId, frameIndex);
+          setMediaIndex(null);
+          setMediaTotal(null);
+          setMediaList([]);
+          setCurrentFilename(`Frame ${frameIndex}`);
+          setFrameInput(String(frameIndex));
+        } else {
+          const list = await getDatasetMedia(datasetId);
+          setMediaTotal(list.length);
+          setMediaList(list);
+          const media = list.find((m) => m.id === mediaId);
+          const idx = list.findIndex((m) => m.id === mediaId);
+          setMediaIndex(idx >= 0 ? idx + 1 : null);
+          setFrameInput(idx >= 0 ? String(idx + 1) : "1");
+          const fname = (media as { filename?: string })?.filename
+            ?? media?.file_url?.split("/").pop()
+            ?? `media-${mediaId}`;
+          setCurrentFilename(fname);
+          if (media?.file_url) {
+            resolvedImageUrl = media.file_url;
+          }
+        }
+
         if (cancelled) return;
 
-        setLabels(
-          classes.map((c) => ({ id: c.id, name: c.name, color: c.color || "#f97316" }))
-        );
-        if (classes.length) setActiveClassId(classes[0].id);
-
-        if (media?.file_url) {
-          setImageUrl(media.file_url);
+        if (classes.length) {
+          setLabels(
+            classes.map((c) => ({ id: c.id, name: c.name, color: c.color || "#f97316" }))
+          );
+          setActiveClassId(classes[0].id);
         } else {
-          setImageUrl(demoUrl);
+          setLabels([
+            { id: 1, name: "demo_a", color: "#ef4444" },
+            { id: 2, name: "demo_b", color: "#3b82f6" },
+          ]);
+          setActiveClassId(1);
         }
+
+        setImageUrl(resolvedImageUrl);
 
         if (!Number.isNaN(jobId)) {
           const ann = await getJobAnnotations(jobId);
-          if (!cancelled) setShapes(apiShapesToEditor(ann));
+          if (!cancelled) {
+            pastRef.current = [];
+            futureRef.current = [];
+            _setShapes(apiShapesToEditor(ann));
+          }
         }
       } catch (e) {
         if (cancelled) return;
         if (e instanceof ApiError) {
           setError(e.body || e.message);
         } else {
-          setError("Failed to load dataset.");
+          setError(e instanceof Error ? e.message : "Failed to load dataset.");
         }
         setImageUrl(demoUrl);
         setLabels([
@@ -187,6 +283,11 @@ export default function AnnotatePageClient() {
           { id: 2, name: "demo_b", color: "#3b82f6" },
         ]);
         setActiveClassId(1);
+        setMediaIndex(null);
+        setMediaTotal(null);
+        setMediaList([]);
+        setCurrentFilename("");
+        setFrameInput("");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -196,7 +297,48 @@ export default function AnnotatePageClient() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, datasetId, mediaId, jobId, params.imageId]);
+  }, [authReady, datasetId, mediaId, jobId, params.imageId, isNativeMode, frameIndex]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (!e.ctrlKey && !e.metaKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (k === "y" || (k === "z" && e.shiftKey)) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const total = mediaTotal ?? 0;
+  const current = mediaIndex ?? 1; // 1-based
+
+  const navigateTo = useCallback(
+    (oneBasedIdx: number) => {
+      if (isNativeMode) {
+        const clamped = Math.max(0, oneBasedIdx - 1);
+        router.push(`/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
+        return;
+      }
+      const clamped = Math.max(1, Math.min(total, oneBasedIdx));
+      const target = mediaList[clamped - 1];
+      if (!target) return;
+      router.push(`/datasets/${params.id}/annotate/${target.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
+    },
+    [isNativeMode, total, mediaList, params.id, router, jobIdParam]
+  );
+
+  const handleFrameInputCommit = () => {
+    const n = parseInt(frameInput, 10);
+    if (!Number.isNaN(n)) navigateTo(n);
+    else setFrameInput(String(current));
+  };
 
   const handleSave = async () => {
     if (Number.isNaN(jobId)) {
@@ -222,70 +364,56 @@ export default function AnnotatePageClient() {
 
   return (
     <div className="relative flex-1 flex flex-col min-h-screen bg-[#fcfaf7] overflow-hidden">
-      <nav className="z-30 px-6 py-3 bg-white/90 backdrop-blur-xl border-b border-stone-200/80 flex items-center justify-between shadow-sm shadow-stone-200/40">
-        <div className="flex items-center gap-4">
+      <nav className="z-30 px-4 py-2.5 bg-white/90 backdrop-blur-xl border-b border-stone-200/80 flex items-center justify-between gap-3 shadow-sm shadow-stone-200/40">
+        {/* LEFT: back + title + undo/redo */}
+        <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
-            onClick={() => router.back()}
-            className="p-2 hover:bg-stone-100 rounded-xl transition-colors text-stone-500 hover:text-stone-900"
+            onClick={() => router.push(`/datasets/${params.id}`)}
+            className="p-2 hover:bg-stone-100 rounded-xl transition-colors text-stone-500 hover:text-stone-900 shrink-0"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="h-6 w-px bg-stone-200" />
-          <div>
-            <h1 className="text-sm font-bold text-stone-900 leading-none">
-              Annotation workspace
-            </h1>
-            <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mt-1">
-              Dataset {params.id} · Media {params.imageId}
-              {!Number.isNaN(jobId) ? ` · Job ${jobId}` : " · Demo mode"}
+          <div className="h-6 w-px bg-stone-200 shrink-0" />
+          <div className="min-w-0 hidden sm:block">
+            <h1 className="text-sm font-bold text-stone-900 leading-none">Annotation workspace</h1>
+            <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mt-0.5 truncate">
+              Dataset {params.id}
+              {isNativeMode ? ` · Frame ${frameIndex}` : ` · Media ${params.imageId}`}
+              {!Number.isNaN(jobId) ? ` · Job ${jobId}` : " · Demo"}
             </p>
           </div>
-        </div>
-
-        <div className="hidden md:flex items-center gap-3 flex-wrap justify-center">
-          <div className="flex items-center gap-1 bg-stone-100/80 p-1 rounded-2xl border border-stone-200/80">
-            {TOOLBAR.map(({ tool, icon, label, key }) => (
-              <button
-                key={tool}
-                type="button"
-                title={`${label} (${key})`}
-                onClick={() => setActiveTool(tool)}
-                className={`rounded-xl px-2 py-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-                  activeTool === tool
-                    ? "bg-white text-orange-600 shadow-md shadow-orange-500/10"
-                    : "text-stone-500 hover:text-stone-900"
-                }`}
-              >
-                {icon}
-                <span className="hidden lg:inline">{label}</span>
-              </button>
-            ))}
+          <div className="h-6 w-px bg-stone-200 shrink-0 hidden sm:block" />
+          {/* Undo / Redo on the left */}
+          <div className="flex items-center gap-1 rounded-xl border border-stone-200/80 bg-stone-50 p-0.5">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!canUndo}
+              title="Undo (Ctrl+Z)"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-white hover:shadow-sm disabled:opacity-35"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!canRedo}
+              title="Redo (Ctrl+Y)"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-white hover:shadow-sm disabled:opacity-35"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
           </div>
-          {activeTool === "polygon" && (
-            <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-stone-600">
-              <span>Points</span>
-              <select
-                value={polygonVertexCount}
-                onChange={(e) => setPolygonVertexCount(Number(e.target.value))}
-                className="rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-semibold text-stone-800 normal-case"
-              >
-                {[3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* RIGHT: save */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-6 py-2.5 bg-stone-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:-translate-y-0.5 hover:shadow-lg shadow-stone-300/50 transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-xl shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
           >
             {saving ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -304,30 +432,68 @@ export default function AnnotatePageClient() {
         </div>
       )}
 
-      <main className="flex-grow flex overflow-hidden">
-        <aside className="w-16 flex flex-col items-center py-6 gap-4 bg-white/80 border-r border-stone-200/80 z-20">
-          <div className="flex flex-col gap-2">
-            {labels.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                title={l.name}
-                onClick={() => setActiveClassId(l.id)}
-                className={`w-9 h-9 rounded-xl border-2 transition-all ${
-                  activeClassId === l.id
-                    ? "border-stone-900 scale-105 shadow-md"
-                    : "border-white/30 opacity-60 hover:opacity-100"
-                }`}
-                style={{ backgroundColor: l.color }}
-              />
-            ))}
-          </div>
-          <div className="mt-auto flex flex-col gap-2 text-stone-400">
-            <PenLine className="w-5 h-5" />
+      <main className="flex-grow flex overflow-hidden min-h-0">
+        <aside className="w-[4.25rem] sm:w-[5.25rem] shrink-0 flex flex-col items-stretch gap-3 py-4 px-1.5 sm:px-2 bg-white/90 border-r border-stone-200/80 z-20 overflow-y-auto shadow-sm shadow-stone-200/30">
+          <div className="flex flex-col gap-1 rounded-2xl border border-stone-200/80 bg-stone-100/80 p-1">
+            {TOOLBAR.map(({ tool, icon, label, key }) =>
+              tool === "polygon" ? (
+                <div key="polygon" className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    title={`${label} (${key})`}
+                    onClick={() => setActiveTool(tool)}
+                    className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-2 text-[8px] font-bold uppercase tracking-wide transition-all ${
+                      activeTool === tool
+                        ? "bg-white text-orange-600 shadow-md shadow-orange-500/10"
+                        : "text-stone-500 hover:text-stone-900"
+                    }`}
+                  >
+                    {icon}
+                    <span className="leading-none text-center max-w-full truncate px-0.5">
+                      {label}
+                    </span>
+                  </button>
+                  {activeTool === "polygon" && (
+                    <label className="flex flex-col gap-1 rounded-xl border border-stone-200/80 bg-white/90 px-1.5 py-2">
+                      <span className="text-[7px] font-bold uppercase tracking-wider text-stone-500 text-center leading-none">
+                        Points
+                      </span>
+                      <select
+                        value={polygonVertexCount}
+                        onChange={(e) => setPolygonVertexCount(Number(e.target.value))}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full rounded-lg border border-stone-200 bg-stone-50 px-1 py-1 text-[10px] font-semibold text-stone-800"
+                      >
+                        {[3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              ) : (
+                <button
+                  key={tool}
+                  type="button"
+                  title={`${label} (${key})`}
+                  onClick={() => setActiveTool(tool)}
+                  className={`flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[8px] font-bold uppercase tracking-wide transition-all ${
+                    activeTool === tool
+                      ? "bg-white text-orange-600 shadow-md shadow-orange-500/10"
+                      : "text-stone-500 hover:text-stone-900"
+                  }`}
+                >
+                  {icon}
+                  <span className="leading-none text-center max-w-full truncate px-0.5">{label}</span>
+                </button>
+              )
+            )}
           </div>
         </aside>
 
-        <div className="flex-grow p-4 relative overflow-hidden flex items-center justify-center min-h-0">
+        <div className="flex-grow p-4 relative overflow-hidden flex items-stretch justify-stretch min-h-0">
           {loading ? (
             <div className="flex flex-col items-center gap-3 text-stone-500">
               <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
@@ -338,7 +504,7 @@ export default function AnnotatePageClient() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45 }}
-              className="w-full h-full min-h-[420px] max-h-[calc(100vh-8rem)]"
+              className="w-full h-full min-h-0"
             >
               <AnnotationEditor
                 imageUrl={imageUrl}
@@ -379,29 +545,134 @@ export default function AnnotatePageClient() {
               return (
                 <div
                   key={s.clientId}
-                  className="group p-4 bg-stone-50/80 rounded-2xl border border-stone-200/80 hover:border-orange-200 hover:bg-white transition-all cursor-pointer"
-                  onClick={() => setActiveClassId(s.classLabelId)}
+                  className="group space-y-2 rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4 transition-all hover:border-orange-200 hover:bg-white"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex cursor-pointer items-center justify-between" onClick={() => setActiveClassId(s.classLabelId)}>
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-2 h-2 rounded-full"
+                        className="h-2 w-2 shrink-0 rounded-full"
                         style={{ backgroundColor: col }}
                       />
                       <span className="text-xs font-bold text-stone-900">{name}</span>
                     </div>
-                    <span className="text-[10px] text-stone-400 font-mono">
+                    <span className="font-mono text-[10px] text-stone-400">
                       {s.points && s.points.length >= 6
                         ? `${s.points.length / 2} pts`
                         : `${Math.round(s.width)}×${Math.round(s.height)}`}
                     </span>
                   </div>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-stone-500">
+                    Class
+                    <select
+                      className="mt-1 w-full cursor-pointer rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs font-semibold text-stone-800 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
+                      value={s.classLabelId}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const nextClass = Number(e.target.value);
+                        setShapes((prev) =>
+                          prev.map((sh) =>
+                            sh.clientId === s.clientId ? { ...sh, classLabelId: nextClass } : sh
+                          )
+                        );
+                        setActiveClassId(nextClass);
+                      }}
+                    >
+                      {labels.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               );
             })}
           </div>
         </aside>
       </main>
+
+      {/* ───── Bottom navigation pane ───── */}
+      <div className="z-30 shrink-0 flex items-center gap-3 px-4 py-2 bg-white/95 backdrop-blur-xl border-t border-stone-200/80 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] select-none">
+        {/* Player buttons */}
+        <div className="flex items-center gap-0.5">
+          {(
+            [
+              { icon: <ChevronFirst className="w-3.5 h-3.5" />, label: "First", action: () => navigateTo(1) },
+              { icon: <ChevronsLeft className="w-3.5 h-3.5" />, label: "Back 10", action: () => navigateTo(current - 10) },
+              { icon: <ChevronLeft className="w-3.5 h-3.5" />, label: "Prev", action: () => navigateTo(current - 1) },
+              { icon: <Play className="w-3 h-3" />, label: "Play", action: () => {} },
+              { icon: <ChevronRight className="w-3.5 h-3.5" />, label: "Next", action: () => navigateTo(current + 1) },
+              { icon: <ChevronsRight className="w-3.5 h-3.5" />, label: "Forward 10", action: () => navigateTo(current + 10) },
+              { icon: <ChevronLast className="w-3.5 h-3.5" />, label: "Last", action: () => navigateTo(total || 1) },
+            ] as { icon: React.ReactNode; label: string; action: () => void }[]
+          ).map(({ icon, label, action }) => (
+            <button
+              key={label}
+              type="button"
+              title={label}
+              onClick={action}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200"
+            >
+              {icon}
+            </button>
+          ))}
+        </div>
+
+        {/* Slider */}
+        <div className="relative flex-1 flex items-center min-w-0">
+          <input
+            type="range"
+            min={1}
+            max={Math.max(1, total)}
+            value={current}
+            onChange={(e) => navigateTo(Number(e.target.value))}
+            className="w-full h-1.5 appearance-none rounded-full bg-stone-200 accent-orange-500 cursor-pointer"
+          />
+        </div>
+
+        {/* Filename + icons */}
+        <div className="flex items-center gap-2 min-w-0 max-w-[14rem]">
+          <span
+            className="truncate text-[11px] font-semibold text-stone-600"
+            title={currentFilename}
+          >
+            {currentFilename || (isNativeMode ? `Frame ${frameIndex}` : `Media ${params.imageId}`)}
+          </span>
+          <button
+            type="button"
+            title="Copy link"
+            onClick={() => navigator.clipboard?.writeText(window.location.href)}
+            className="shrink-0 text-stone-400 hover:text-stone-700 transition"
+          >
+            <Link2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Delete annotation"
+            onClick={() => { pastRef.current.push(shapes); futureRef.current = []; _setShapes([]); }}
+            className="shrink-0 text-stone-400 hover:text-red-500 transition"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Frame number input */}
+        <div className="flex items-center gap-1 shrink-0">
+          <input
+            type="number"
+            min={1}
+            max={Math.max(1, total)}
+            value={frameInput}
+            onChange={(e) => setFrameInput(e.target.value)}
+            onBlur={handleFrameInputCommit}
+            onKeyDown={(e) => { if (e.key === "Enter") handleFrameInputCommit(); }}
+            className="w-14 rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-center text-[11px] font-bold text-stone-800 tabular-nums outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
+          />
+          {total > 0 && (
+            <span className="text-[10px] font-semibold text-stone-400">/ {total}</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

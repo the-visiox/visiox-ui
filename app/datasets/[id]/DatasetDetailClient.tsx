@@ -8,8 +8,10 @@ import {
   ArrowLeft, Download, ChevronDown, Tag, RefreshCw, Upload,
   Loader2, AlertTriangle, BarChart3, Layers, ExternalLink,
   Image as ImageIcon, Box, Crosshair, Activity, Trash2,
-  CheckCircle2, Circle, Users, Check,
+  CheckCircle2, Circle, Users, Check, ChevronLeft, ChevronRight,
 } from 'lucide-react';
+
+const BATCH_SIZE = 50;
 import BlueprintGrid from '@/components/BlueprintGrid';
 import {
   datasets,
@@ -99,6 +101,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [uploading, setUploading] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Last frame row index for Shift+click range selection (in `browserData.frames` order). */
   const anchorFrameIndexRef = useRef<number | null>(null);
@@ -139,6 +142,7 @@ export default function DatasetDetailClient({ id }: Props) {
   useEffect(() => {
     setSelectedMediaIds([]);
     anchorFrameIndexRef.current = null;
+    setCurrentPage(1);
   }, [numericId]);
 
   useEffect(() => {
@@ -154,9 +158,14 @@ export default function DatasetDetailClient({ id }: Props) {
     return () => document.removeEventListener('mousedown', handleDocMouseDown);
   }, [selectedMediaIds.length]);
 
-  const selectableMediaIds = browserData
-    ? browserData.frames.map((f) => f.media_id).filter((id): id is number => typeof id === 'number')
-    : [];
+  const totalPages = browserData ? Math.max(1, Math.ceil(browserData.frames.length / BATCH_SIZE)) : 1;
+  const safePage = Math.min(currentPage, totalPages);
+  const pageOffset = (safePage - 1) * BATCH_SIZE;
+  const visibleFrames = browserData?.frames.slice(pageOffset, pageOffset + BATCH_SIZE) ?? [];
+
+  const selectableMediaIds = visibleFrames
+    .map((f) => f.media_id)
+    .filter((id): id is number => typeof id === 'number');
 
   const toggleMediaSelection = (mediaId: number) => {
     setSelectedMediaIds((prev) =>
@@ -199,6 +208,7 @@ export default function DatasetDetailClient({ id }: Props) {
       setSelectedMediaIds([]);
       anchorFrameIndexRef.current = null;
       await refreshStatsAndBrowser();
+      setCurrentPage((p) => Math.max(1, p));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
     } finally {
@@ -559,9 +569,10 @@ export default function DatasetDetailClient({ id }: Props) {
                   Select images to delete, or click an image to open the annotation view. Hold Shift and click another checkbox to select a range.
                 </p>
               </div>
-              {selectableMediaIds.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="inline-flex cursor-pointer items-center gap-2.5 rounded-full bg-white/80 px-3 py-2 text-xs font-semibold text-stone-600 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md">
+              {(selectableMediaIds.length > 0 || selectedMediaIds.length > 0) && (
+                <div className="relative z-10 flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:w-auto sm:min-w-[17.5rem]">
+                  {selectableMediaIds.length > 0 && (
+                  <label className="inline-flex min-w-[7.25rem] cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-2 text-xs font-semibold text-stone-600 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md">
                     <input
                       type="checkbox"
                       checked={allSelectableSelected}
@@ -584,11 +595,12 @@ export default function DatasetDetailClient({ id }: Props) {
                     </span>
                     Select all
                   </label>
+                  )}
                   <button
                     type="button"
                     onClick={() => void handleDeleteSelectedMedia()}
                     disabled={deleting || selectedMediaIds.length === 0}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-red-50/90 px-3.5 py-1.5 text-xs font-bold text-red-700 shadow-sm backdrop-blur-sm transition hover:bg-red-100/95 hover:shadow-md disabled:pointer-events-none disabled:opacity-45"
+                    className="inline-flex min-w-[9.5rem] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-full bg-red-50/90 px-3.5 py-2 text-xs font-bold tabular-nums text-red-700 shadow-sm backdrop-blur-sm transition hover:bg-red-100/95 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                     Delete ({selectedMediaIds.length})
@@ -598,7 +610,8 @@ export default function DatasetDetailClient({ id }: Props) {
             </div>
 
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-              {browserData.frames.map((frame, frameIndex) => {
+              {visibleFrames.map((frame, localIndex) => {
+                const frameIndex = pageOffset + localIndex;
                 const isSelected =
                   typeof frame.media_id === 'number' && selectedMediaIds.includes(frame.media_id);
                 return (
@@ -638,7 +651,6 @@ export default function DatasetDetailClient({ id }: Props) {
                             onChange={(e) => {
                               const event = e.nativeEvent as MouseEvent;
                               if (event.shiftKey) return;
-                            
                               anchorFrameIndexRef.current = frameIndex;
                               toggleMediaSelection(frame.media_id as number);
                             }}
@@ -690,6 +702,68 @@ export default function DatasetDetailClient({ id }: Props) {
                 );
               })}
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
+                <p className="text-xs font-medium text-stone-500">
+                  Showing {pageOffset + 1}–{Math.min(pageOffset + BATCH_SIZE, browserData?.frames.length ?? 0)} of{' '}
+                  <span className="font-bold text-stone-700">{browserData?.frames.length ?? 0}</span> images
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); setSelectedMediaIds([]); anchorFrameIndexRef.current = null; }}
+                    disabled={safePage <= 1}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-stone-300 hover:bg-stone-50 disabled:pointer-events-none disabled:opacity-40"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  {(() => {
+                    const pages: (number | 'ellipsis')[] = [];
+                    if (totalPages <= 7) {
+                      for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                      pages.push(1);
+                      if (safePage > 3) pages.push('ellipsis');
+                      for (let i = Math.max(2, safePage - 1); i <= Math.min(totalPages - 1, safePage + 1); i++) pages.push(i);
+                      if (safePage < totalPages - 2) pages.push('ellipsis');
+                      pages.push(totalPages);
+                    }
+                    return pages.map((p, idx) =>
+                      p === 'ellipsis' ? (
+                        <span key={`ell-${idx}`} className="px-1 text-xs text-stone-400">…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => { setCurrentPage(p as number); setSelectedMediaIds([]); anchorFrameIndexRef.current = null; }}
+                          className={`flex h-8 min-w-[2rem] items-center justify-center rounded-xl border px-2 text-xs font-bold transition ${
+                            safePage === p
+                              ? 'border-orange-400/40 bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
+                              : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    );
+                  })()}
+
+                  <button
+                    type="button"
+                    onClick={() => { setCurrentPage((p) => Math.min(totalPages, p + 1)); setSelectedMediaIds([]); anchorFrameIndexRef.current = null; }}
+                    disabled={safePage >= totalPages}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-stone-300 hover:bg-stone-50 disabled:pointer-events-none disabled:opacity-40"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </div>
