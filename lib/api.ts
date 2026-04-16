@@ -3,6 +3,26 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:8000';
 
 const BASE_URL = API_BASE_URL;
+const LOCALHOST_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
+
+function resolveBaseUrl(): string {
+  const normalized = BASE_URL.replace(/\/+$/, '');
+  if (typeof window === 'undefined') return normalized;
+
+  try {
+    const parsed = new URL(normalized);
+    const browserHost = window.location.hostname;
+    const browserIsLocalhost = LOCALHOST_HOSTNAMES.has(browserHost);
+
+    if (LOCALHOST_HOSTNAMES.has(parsed.hostname) && !browserIsLocalhost) {
+      parsed.hostname = browserHost;
+    }
+
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return normalized;
+  }
+}
 
 // ── Storage helpers ────────────────────────────────────────────────────────
 
@@ -172,7 +192,7 @@ async function request<T>(
   }
 
   // Normalize URL to avoid double slashes or missing slashes
-  const baseUrl = BASE_URL.replace(/\/+$/, '');
+  const baseUrl = resolveBaseUrl();
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${baseUrl}${cleanPath}`;
 
@@ -237,7 +257,7 @@ async function tryRefresh(): Promise<boolean> {
   const refresh = localStorage.getItem(TOKEN_KEYS.refresh);
   if (!refresh) return false;
   try {
-    const baseUrl = BASE_URL.replace(/\/+$/, '');
+    const baseUrl = resolveBaseUrl();
     const res = await fetch(`${baseUrl}/api/auth/token/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -469,12 +489,12 @@ export const datasets = {
   },
   frameUrl(id: number, frameNum: number, quality: 'compressed' | 'original' = 'compressed') {
     const token = getAccessToken();
-    const baseUrl = BASE_URL.replace(/\/+$/, '');
+    const baseUrl = resolveBaseUrl();
     return `${baseUrl}/api/datasets/${id}/frames/${frameNum}/?quality=${quality}${token ? `&token=${token}` : ''}`;
   },
   exportUrl(id: number, format: 'coco' | 'yolo' | 'voc') {
     const token = getAccessToken();
-    const baseUrl = BASE_URL.replace(/\/+$/, '');
+    const baseUrl = resolveBaseUrl();
     return `${baseUrl}/api/datasets/${id}/export/?format=${format}${token ? `&token=${token}` : ''}`;
   },
   delete(id: number) {

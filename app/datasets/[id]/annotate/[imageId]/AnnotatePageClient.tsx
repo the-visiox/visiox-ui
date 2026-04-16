@@ -26,6 +26,8 @@ import {
   Tag,
   Loader2,
   AlertCircle,
+  RectangleVertical,
+  Square,
 } from "lucide-react";
 import AnnotationEditor from "@/components/annotate/AnnotationEditor";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
@@ -113,11 +115,11 @@ function editorToApiPayload(shapes: EditorShape[]) {
 
 const TOOLBAR: { tool: Tool; icon: React.ReactNode; label: string; key: string }[] = [
   { tool: "select", icon: <MousePointer2 className="w-4 h-4" />, label: "Select", key: "V" },
-  { tool: "rectangle", icon: <Box className="w-4 h-4" />, label: "Box", key: "N" },
+  { tool: "rectangle", icon: <Square className="w-4 h-4" />, label: "Box", key: "N" },
   { tool: "polygon", icon: <Hexagon className="w-4 h-4" />, label: "Polygon", key: "P" },
   { tool: "polyline", icon: <Spline className="w-4 h-4" />, label: "Polyline", key: "L" },
   { tool: "points", icon: <CircleDot className="w-4 h-4" />, label: "Points", key: "K" },
-  { tool: "cuboid", icon: <Cuboid className="w-4 h-4" />, label: "Cuboid", key: "C" },
+  { tool: "cuboid", icon: <Box className="w-4 h-4" />, label: "Cuboid", key: "C" },
   { tool: "tag", icon: <Tag className="w-4 h-4" />, label: "Tag", key: "T" },
 ];
 
@@ -321,6 +323,7 @@ export default function AnnotatePageClient() {
 
   const navigateTo = useCallback(
     (oneBasedIdx: number) => {
+      setLoading(true);
       if (isNativeMode) {
         const clamped = Math.max(0, oneBasedIdx - 1);
         router.push(`/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
@@ -434,7 +437,7 @@ export default function AnnotatePageClient() {
 
       <main className="flex-grow flex overflow-hidden min-h-0">
         <aside className="w-[4.25rem] sm:w-[5.25rem] shrink-0 flex flex-col items-stretch gap-3 py-4 px-1.5 sm:px-2 bg-white/90 border-r border-stone-200/80 z-20 overflow-y-auto shadow-sm shadow-stone-200/30">
-          <div className="flex flex-col gap-1 rounded-2xl border border-stone-200/80 bg-stone-100/80 p-1">
+        <div className="flex flex-col gap-1 p-1">
             {TOOLBAR.map(({ tool, icon, label, key }) =>
               tool === "polygon" ? (
                 <div key="polygon" className="flex flex-col gap-1">
@@ -495,9 +498,11 @@ export default function AnnotatePageClient() {
 
         <div className="flex-grow p-4 relative overflow-hidden flex items-stretch justify-stretch min-h-0">
           {loading ? (
-            <div className="flex flex-col items-center gap-3 text-stone-500">
+            <div className="absolute inset-4 z-10 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3 text-stone-500">
               <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
               <span className="text-sm font-medium">Loading media…</span>
+              </div>
             </div>
           ) : (
             <motion.div
