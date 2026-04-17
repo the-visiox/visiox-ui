@@ -35,82 +35,38 @@ import { datasets as visioxDatasets } from "@/lib/api";
 import { getDataset, getDatasetMedia } from "@/lib/api/datasets";
 import type { ClassDto } from "@/lib/api/classes";
 import { getClassesForProject } from "@/lib/api/classes";
-import { getJobAnnotations, patchJobAnnotations } from "@/lib/api/jobs";
+import {
+  apiShapesToEditor,
+  editorToApiPayload,
+  mergeProjectClassesWithProfile,
+} from "@/lib/annotation-core";
+import {
+  getJobAnnotations,
+  patchJobAnnotations,
+  getMediaAnnotations,
+  putMediaAnnotations,
+  getFrameAnnotations,
+  putFrameAnnotations,
+} from "@/lib/api/jobs";
+import {
+  getFrameLabelProfile,
+  getMediaLabelProfile,
+  putFrameLabelProfile,
+  putMediaLabelProfile,
+} from "@/lib/api/labelProfile";
 import { ApiError, getAccessToken } from "@/lib/api/client";
 import type { EditorShape, LabelDefinition } from "@/lib/types/annotation";
 import { useAuth } from "@/lib/auth";
 
-function bboxFromPoints(pts: number[]) {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (let i = 0; i < pts.length; i += 2) {
-    minX = Math.min(minX, pts[i]);
-    maxX = Math.max(maxX, pts[i]);
-    minY = Math.min(minY, pts[i + 1]);
-    maxY = Math.max(maxY, pts[i + 1]);
-  }
-  if (!Number.isFinite(minX)) {
-    return { x: 0, y: 0, width: 0, height: 0 };
-  }
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-}
-
-function apiShapesToEditor(
-  rows: { id: number; class_label: number; type: string; data: Record<string, unknown> }[]
-): EditorShape[] {
-  const out: EditorShape[] = [];
-  for (const r of rows) {
-    if (r.type === "bbox" || r.type === "rectangle") {
-      const d = r.data as { x: number; y: number; width: number; height: number };
-      out.push({
-        clientId: `srv-${r.id}`,
-        classLabelId: r.class_label,
-        x: d.x,
-        y: d.y,
-        width: d.width,
-        height: d.height,
-      });
-    } else if (r.type === "polygon") {
-      const d = r.data as { points?: number[] };
-      const pts = d.points;
-      if (pts && pts.length >= 6) {
-        const bb = bboxFromPoints(pts);
-        out.push({
-          clientId: `srv-${r.id}`,
-          classLabelId: r.class_label,
-          ...bb,
-          points: pts,
-        });
-      }
-    }
-  }
-  return out;
-}
-
-function editorToApiPayload(shapes: EditorShape[]) {
-  return shapes.map((s) => {
-    if (s.points && s.points.length >= 6) {
-      return {
-        class_label: s.classLabelId,
-        type: "polygon" as const,
-        data: { points: s.points },
-        frame: 0,
-      };
-    }
-    return {
-      class_label: s.classLabelId,
-      type: "bbox" as const,
-      data: {
-        x: s.x,
-        y: s.y,
-        width: s.width,
-        height: s.height,
-      },
-      frame: 0,
-    };
-  });
+function draftStorageKey(
+  datasetId: number,
+  imageId: string,
+  isNativeMode: boolean,
+  frameIndex: number,
+  mediaId: number
+) {
+  if (isNativeMode) return `visiox-annotate-draft:dataset:${datasetId}:frame:${frameIndex}`;
+  return `visiox-annotate-draft:dataset:${datasetId}:media:${mediaId}:image:${imageId}`;
 }
 
 const TOOLBAR: { tool: Tool; icon: React.ReactNode; label: string; key: string }[] = [
@@ -122,6 +78,11 @@ const TOOLBAR: { tool: Tool; icon: React.ReactNode; label: string; key: string }
   { tool: "cuboid", icon: <Box className="w-4 h-4" />, label: "Cuboid", key: "C" },
   { tool: "tag", icon: <Tag className="w-4 h-4" />, label: "Tag", key: "T" },
 ];
+
+const DEMO_LABELS = [
+  { id: 1, name: "demo_a", color: "#ef4444" },
+  { id: 2, name: "demo_b", color: "#3b82f6" },
+] as const;
 
 export default function AnnotatePageClient() {
   const params = useParams();
@@ -157,6 +118,11 @@ export default function AnnotatePageClient() {
   const futureRef = useRef<EditorShape[][]>([]);
   const shapesRef = useRef<EditorShape[]>([]);
   shapesRef.current = shapes;
+  const isLoadingRef = useRef(false);
+  const currentDraftKey = useMemo(
+    () => draftStorageKey(datasetId, rawImageId, isNativeMode, frameIndex, mediaId),
+    [datasetId, rawImageId, isNativeMode, frameIndex, mediaId]
+  );
 
   const canUndo = pastRef.current.length > 0;
   const canRedo = futureRef.current.length > 0;
@@ -170,6 +136,16 @@ export default function AnnotatePageClient() {
       return next;
     });
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isLoadingRef.current) return;
+    try {
+      sessionStorage.setItem(currentDraftKey, JSON.stringify(shapes));
+    } catch {
+      // quota / security errors are harmless for drafts
+    }
+  }, [currentDraftKey, shapes]);
 
   const undo = () => {
     const past = pastRef.current;
@@ -197,18 +173,35 @@ export default function AnnotatePageClient() {
     let cancelled = false;
 
     async function load() {
+      // Snapshot the current shapes to sessionStorage for the PREVIOUS image
+      // before we clear them, so navigating back restores them.
+      if (typeof window !== "undefined" && shapesRef.current.length > 0) {
+        try {
+          const prevKey = sessionStorage.getItem("visiox-annotate-draft:active-key");
+          if (prevKey) {
+            sessionStorage.setItem(prevKey, JSON.stringify(shapesRef.current));
+          }
+        } catch { /* ignore */ }
+      }
+
+      isLoadingRef.current = true;
       setLoading(true);
       setError(null);
+      pastRef.current = [];
+      futureRef.current = [];
+      _setShapes([]);
+
+      // Track which key is currently active so we can snapshot on next navigate.
+      try { sessionStorage.setItem("visiox-annotate-draft:active-key", currentDraftKey); } catch { /* ignore */ }
+
       const token = getAccessToken();
       const demoUrl = `https://picsum.photos/seed/${isNativeMode ? `native-${datasetId}-f${frameIndex}` : params.imageId}/1200/800`;
 
       if (!token) {
         setImageUrl(demoUrl);
-        setLabels([
-          { id: 1, name: "demo_a", color: "#ef4444" },
-          { id: 2, name: "demo_b", color: "#3b82f6" },
-        ]);
+        setLabels([...DEMO_LABELS]);
         setActiveClassId(1);
+        isLoadingRef.current = false;
         setLoading(false);
         return;
       }
@@ -219,19 +212,51 @@ export default function AnnotatePageClient() {
         }
 
         const ds = await getDataset(datasetId);
-
-        const classes = await getClassesForProject(ds.project).catch((): ClassDto[] => []);
+        const classesPromise = getClassesForProject(ds.project).catch((): ClassDto[] => []);
+        const annotationsPromise: Promise<Awaited<ReturnType<typeof getJobAnnotations>>> = !Number.isNaN(jobId)
+          ? getJobAnnotations(jobId)
+          : !isNativeMode && Number.isFinite(mediaId)
+            ? getMediaAnnotations(mediaId).catch(() => [])
+            : isNativeMode && Number.isFinite(datasetId)
+              ? getFrameAnnotations(datasetId, frameIndex).catch(() => [])
+              : Promise.resolve([]);
+        const profilePromise: Promise<{ id: number; name: string; color: string }[]> = Number.isNaN(jobId)
+          ? isNativeMode && Number.isFinite(datasetId)
+            ? getFrameLabelProfile(datasetId, frameIndex).catch(() => [])
+            : !isNativeMode && Number.isFinite(mediaId)
+              ? getMediaLabelProfile(mediaId).catch(() => [])
+              : Promise.resolve([])
+          : Promise.resolve([]);
 
         let resolvedImageUrl = demoUrl;
+        let classes: ClassDto[] = [];
+        let ann: Awaited<ReturnType<typeof getJobAnnotations>> = [];
+        let profileItems: { id: number; name: string; color: string }[] = [];
+
         if (isNativeMode) {
+          // In native mode the image URL is deterministic from (datasetId, frameIndex)
+          // so we can start downloading it immediately — in parallel with all API calls.
           resolvedImageUrl = visioxDatasets.frameUrl(datasetId, frameIndex);
+          setImageUrl(resolvedImageUrl);
           setMediaIndex(null);
           setMediaTotal(null);
           setMediaList([]);
           setCurrentFilename(`Frame ${frameIndex}`);
           setFrameInput(String(frameIndex));
+
+          [classes, ann, profileItems] = await Promise.all([classesPromise, annotationsPromise, profilePromise]);
         } else {
-          const list = await getDatasetMedia(datasetId);
+          const mediaListPromise = getDatasetMedia(datasetId);
+
+          const [list, cls, annotations, profile] = await Promise.all([
+            mediaListPromise,
+            classesPromise,
+            annotationsPromise,
+            profilePromise,
+          ]);
+          classes = cls;
+          ann = annotations;
+          profileItems = profile;
           setMediaTotal(list.length);
           setMediaList(list);
           const media = list.find((m) => m.id === mediaId);
@@ -245,32 +270,39 @@ export default function AnnotatePageClient() {
           if (media?.file_url) {
             resolvedImageUrl = media.file_url;
           }
+          // We only know the URL after media list resolves — still kick it off ASAP.
+          setImageUrl(resolvedImageUrl);
         }
 
         if (cancelled) return;
 
         if (classes.length) {
-          setLabels(
-            classes.map((c) => ({ id: c.id, name: c.name, color: c.color || "#f97316" }))
-          );
-          setActiveClassId(classes[0].id);
+          const merged =
+            profileItems.length > 0
+              ? mergeProjectClassesWithProfile(classes, profileItems)
+              : classes.map((c) => ({ id: c.id, name: c.name, color: c.color || "#f97316" }));
+          setLabels(merged);
+          setActiveClassId(merged[0]?.id ?? classes[0].id);
         } else {
-          setLabels([
-            { id: 1, name: "demo_a", color: "#ef4444" },
-            { id: 2, name: "demo_b", color: "#3b82f6" },
-          ]);
+          setLabels([...DEMO_LABELS]);
           setActiveClassId(1);
         }
 
-        setImageUrl(resolvedImageUrl);
-
-        if (!Number.isNaN(jobId)) {
-          const ann = await getJobAnnotations(jobId);
-          if (!cancelled) {
-            pastRef.current = [];
-            futureRef.current = [];
-            _setShapes(apiShapesToEditor(ann));
+        if (!cancelled) {
+          const apiShapes = apiShapesToEditor(ann);
+          if (apiShapes.length > 0) {
+            _setShapes(apiShapes);
+          } else if (typeof window !== "undefined") {
+            try {
+              const rawDraft = sessionStorage.getItem(currentDraftKey);
+              _setShapes(rawDraft ? (JSON.parse(rawDraft) as EditorShape[]) : []);
+            } catch {
+              _setShapes([]);
+            }
+          } else {
+            _setShapes([]);
           }
+          isLoadingRef.current = false;
         }
       } catch (e) {
         if (cancelled) return;
@@ -280,10 +312,7 @@ export default function AnnotatePageClient() {
           setError(e instanceof Error ? e.message : "Failed to load dataset.");
         }
         setImageUrl(demoUrl);
-        setLabels([
-          { id: 1, name: "demo_a", color: "#ef4444" },
-          { id: 2, name: "demo_b", color: "#3b82f6" },
-        ]);
+        setLabels([...DEMO_LABELS]);
         setActiveClassId(1);
         setMediaIndex(null);
         setMediaTotal(null);
@@ -291,7 +320,10 @@ export default function AnnotatePageClient() {
         setCurrentFilename("");
         setFrameInput("");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          isLoadingRef.current = false;
+          setLoading(false);
+        }
       }
     }
 
@@ -299,7 +331,7 @@ export default function AnnotatePageClient() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, datasetId, mediaId, jobId, params.imageId, isNativeMode, frameIndex]);
+  }, [authReady, currentDraftKey, datasetId, mediaId, jobId, params.imageId, isNativeMode, frameIndex]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -320,6 +352,36 @@ export default function AnnotatePageClient() {
 
   const total = mediaTotal ?? 0;
   const current = mediaIndex ?? 1; // 1-based
+
+  // Warm the HTTP cache for prev/next frames so clicking navigation feels instant.
+  // Uses an off-DOM Image — the browser shares its cache with <img> / Konva use-image.
+  useEffect(() => {
+    if (loading) return;
+    if (typeof window === "undefined") return;
+    if (!imageUrl) return;
+
+    const urls: string[] = [];
+    if (isNativeMode) {
+      if (frameIndex > 0) urls.push(visioxDatasets.frameUrl(datasetId, frameIndex - 1));
+      urls.push(visioxDatasets.frameUrl(datasetId, frameIndex + 1));
+    } else if (mediaList.length && mediaIndex) {
+      const prev = mediaList[mediaIndex - 2]; // mediaIndex is 1-based
+      const next = mediaList[mediaIndex]; // already 1-based -> next element
+      if (prev?.file_url) urls.push(prev.file_url);
+      if (next?.file_url) urls.push(next.file_url);
+    }
+
+    const imgs = urls.map((u) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = u;
+      return img;
+    });
+
+    return () => {
+      for (const img of imgs) img.src = "";
+    };
+  }, [loading, imageUrl, isNativeMode, datasetId, frameIndex, mediaList, mediaIndex]);
 
   const navigateTo = useCallback(
     (oneBasedIdx: number) => {
@@ -343,17 +405,58 @@ export default function AnnotatePageClient() {
     else setFrameInput(String(current));
   };
 
+  // IMPORTANT: Avoid reading localStorage during render (SSR vs CSR mismatch).
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  useEffect(() => {
+    setAccessToken(getAccessToken());
+  }, []);
+
+  const isLoggedIn = !!accessToken;
+  const canSaveToApi =
+    isLoggedIn &&
+    (!Number.isNaN(jobId) ||
+      (!isNativeMode && Number.isFinite(mediaId)) ||
+      (isNativeMode && Number.isFinite(datasetId)));
+
   const handleSave = async () => {
-    if (Number.isNaN(jobId)) {
-      setError(
-        "Add ?jobId=<id> to the URL to save to the API (authenticated), or rely on local demo mode."
-      );
+    const tokenNow = getAccessToken();
+    const isLoggedInNow = !!tokenNow;
+    if (!isLoggedInNow) {
+      setError("Login required to save. In demo mode annotations are kept in-memory only.");
+      return;
+    }
+    if (!canSaveToApi) {
+      setError("Cannot determine save target. Check the URL has a valid dataset/media/job id.");
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      await patchJobAnnotations(jobId, editorToApiPayload(shapes));
+      const payload = editorToApiPayload(shapes);
+      if (!Number.isNaN(jobId)) {
+        await patchJobAnnotations(jobId, payload);
+      } else if (isNativeMode) {
+        await putFrameAnnotations(datasetId, frameIndex, payload);
+      } else {
+        await putMediaAnnotations(mediaId, payload);
+      }
+      // Persist per-image label roster (Postgres) alongside annotations.
+      if (Number.isNaN(jobId) && labels.length) {
+        const labelPayload = labels.map((l) => ({ id: l.id, name: l.name, color: l.color }));
+        try {
+          if (isNativeMode) {
+            await putFrameLabelProfile(datasetId, frameIndex, labelPayload);
+          } else if (Number.isFinite(mediaId)) {
+            await putMediaLabelProfile(mediaId, labelPayload);
+          }
+        } catch {
+          // Non-fatal: annotations already saved; surface a softer warning.
+          setError((prev) => prev || "Annotations saved, but label profile sync failed.");
+        }
+      }
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(currentDraftKey, JSON.stringify(shapes));
+      }
     } catch (e) {
       if (e instanceof ApiError) {
         setError(e.body || e.message);
@@ -383,7 +486,7 @@ export default function AnnotatePageClient() {
             <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mt-0.5 truncate">
               Dataset {params.id}
               {isNativeMode ? ` · Frame ${frameIndex}` : ` · Media ${params.imageId}`}
-              {!Number.isNaN(jobId) ? ` · Job ${jobId}` : " · Demo"}
+              {!Number.isNaN(jobId) ? ` · Job ${jobId}` : canSaveToApi ? " · Direct" : " · Demo"}
             </p>
           </div>
           <div className="h-6 w-px bg-stone-200 shrink-0 hidden sm:block" />
@@ -540,8 +643,7 @@ export default function AnnotatePageClient() {
               <p className="text-sm text-stone-500 leading-relaxed">
                 Box: drag on the image (N). Polygon: choose point count, then click each
                 corner (P). <code className="text-orange-600">Esc</code> cancels polygon in
-                progress. With <code className="text-orange-600">jobId</code> + auth, Save
-                syncs to the API.
+                progress. Save syncs annotations to the API per image.
               </p>
             )}
             {shapes.map((s) => {

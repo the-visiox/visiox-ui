@@ -9,10 +9,18 @@ import {
   Circle,
   Rect,
   Line,
+  Text,
   Transformer,
 } from "react-konva";
 import useImage from "use-image";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  bboxFromPoints,
+  buildLabelMetaMap,
+  clamp,
+  colorFromMap,
+  labelNameFromMap,
+} from "@/lib/annotation-core";
 import type { EditorShape, LabelDefinition, Tool } from "@/lib/types/annotation";
 
 export type { Tool };
@@ -27,31 +35,6 @@ interface AnnotationEditorProps {
   onToolChange: (tool: Tool) => void;
   /** Number of vertices for polygon tool (click to place each vertex). */
   polygonVertexCount: number;
-}
-
-function colorFor(labels: LabelDefinition[], classLabelId: number): string {
-  return labels.find((l) => l.id === classLabelId)?.color ?? "#f97316";
-}
-
-function bboxFromPoints(pts: number[]) {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (let i = 0; i < pts.length; i += 2) {
-    minX = Math.min(minX, pts[i]);
-    maxX = Math.max(maxX, pts[i]);
-    minY = Math.min(minY, pts[i + 1]);
-    maxY = Math.max(maxY, pts[i + 1]);
-  }
-  if (!Number.isFinite(minX)) {
-    return { x: 0, y: 0, width: 0, height: 0 };
-  }
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-}
-
-function clamp(n: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, n));
 }
 
 function layerPos(
@@ -116,6 +99,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   polyDraftRef.current = polyDraft;
   const [polyHover, setPolyHover] = useState<{ x: number; y: number } | null>(null);
   const [hoveredCorner, setHoveredCorner] = useState<{ shapeId: string; vertexIndex: number } | null>(null);
+  const [dragPreview, setDragPreview] = useState<Record<string, { x: number; y: number }>>({});
   /** Fit-to-viewport transform (image space → stage). */
   const [baseFit, setBaseFit] = useState({ scale: 1, x: 0, y: 0 });
   const [zoomMul, setZoomMul] = useState(1);
@@ -204,6 +188,22 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }, [isMiddlePan]);
 
   const transformTargetId = useMemo(() => selectedId ?? hoveredId ?? null, [selectedId, hoveredId]);
+  const transformTargetShape = useMemo(
+    () => shapes.find((shape) => shape.clientId === transformTargetId) ?? null,
+    [shapes, transformTargetId]
+  );
+  const labelMetaMap = useMemo(() => buildLabelMetaMap(labels), [labels]);
+  const getShapeColor = useCallback(
+    (classLabelId: number) => colorFromMap(labelMetaMap, classLabelId),
+    [labelMetaMap]
+  );
+  const getShapeLabel = useCallback(
+    (classLabelId: number) => labelNameFromMap(labelMetaMap, classLabelId),
+    [labelMetaMap]
+  );
+  const transformerColor = transformTargetShape
+    ? getShapeColor(transformTargetShape.classLabelId)
+    : "#ea580c";
 
   useEffect(() => {
     if (!trRef.current || !layerRef.current) return;
@@ -563,12 +563,39 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             />
           )}
           {shapes.map((shape) => {
-            const stroke = colorFor(labels, shape.classLabelId);
+            const stroke = getShapeColor(shape.classLabelId);
+            const shapeLabel = getShapeLabel(shape.classLabelId);
             const isHovered = hoveredId === shape.clientId;
+            const livePos = dragPreview[shape.clientId];
+            const shapeX = livePos?.x ?? shape.x;
+            const shapeY = livePos?.y ?? shape.y;
+            const tagX = shapeX;
+            const tagY = Math.max(0, shapeY - 22 / safeLayerScale);
+            const tagWidth = Math.max(34, shapeLabel.length * 7 + 12) / safeLayerScale;
+            const tagHeight = 18 / safeLayerScale;
             if (shape.points && shape.points.length >= 6) {
               const isSelected = selectedId === shape.clientId;
               return (
                 <React.Fragment key={shape.clientId}>
+                  <Rect
+                    x={tagX}
+                    y={tagY}
+                    width={tagWidth}
+                    height={tagHeight}
+                    cornerRadius={6 / safeLayerScale}
+                    fill={stroke}
+                    opacity={0.92}
+                    listening={false}
+                  />
+                  <Text
+                    x={tagX + 6 / safeLayerScale}
+                    y={tagY + 4 / safeLayerScale}
+                    text={shapeLabel}
+                    fontSize={10 / safeLayerScale}
+                    fontStyle="bold"
+                    fill="#ffffff"
+                    listening={false}
+                  />
                   {/* Visual polygon */}
                   <Line
                     id={shape.clientId}
@@ -628,7 +655,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       <Line
                         points={shape.points}
                         closed
-                        stroke="#ea580c"
+                        stroke={stroke}
                         strokeWidth={2.5 / layerScale}
                         dash={[6 / layerScale, 6 / layerScale]}
                         listening={false}
@@ -646,7 +673,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                             y={vy}
                             radius={(isCornerHovered ? 6.5 : 5.5) / layerScale}
                             fill={isCornerHovered ? "#ffedd5" : "#ffffff"}
-                            stroke="#ea580c"
+                            stroke={stroke}
                             strokeWidth={(isCornerHovered ? 2 : 1.5) / layerScale}
                             draggable={shapeDragEnabled}
                             onMouseEnter={() => {
@@ -682,116 +709,147 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               );
             }
             return (
-              <Rect
-                key={shape.clientId}
-                id={shape.clientId}
-                x={shape.x}
-                y={shape.y}
-                width={shape.width}
-                height={shape.height}
-                fill={`${stroke}22`}
-                stroke={stroke}
-                strokeWidth={(isHovered ? 2 : 1.25) / layerScale}
-                listening
-                perfectDrawEnabled={false}
-                draggable={shapeDragEnabled}
-                onMouseDown={(e) => selectShape(shape.clientId, e)}
-                onTap={(e) => selectShape(shape.clientId, e)}
-                onMouseEnter={(e) => {
-                  const stage = e.target.getStage();
-                  const p = stage?.getPointerPosition();
-                  setHoveredId(shape.clientId);
-                  if (p) setHoverPos({ x: p.x, y: p.y });
-                }}
-                onMouseMove={(e) => {
-                  const stage = e.target.getStage();
-                  const p = stage?.getPointerPosition();
-                  if (p) setHoverPos({ x: p.x, y: p.y });
-                }}
-                onMouseLeave={() => {
-                  setHoveredId((id) => (id === shape.clientId ? null : id));
-                }}
-                onDragMove={(ev) => {
-                  const node = ev.target;
-                  const bounded = clampRectToImage(node.x(), node.y(), shape.width, shape.height);
-                  if (bounded.x !== node.x() || bounded.y !== node.y()) {
-                    node.position({ x: bounded.x, y: bounded.y });
-                  }
-                }}
-                onDragEnd={(ev) => {
-                  const node = ev.target;
-                  onShapesChange((prev) => {
-                    const idx2 = prev.findIndex((s) => s.clientId === shape.clientId);
-                    if (idx2 < 0) return prev;
-                    const w = prev[idx2].width;
-                    const h = prev[idx2].height;
-                    const next = prev.slice();
-                    next[idx2] = {
-                      ...prev[idx2],
-                      x: clamp(node.x(), 0, Math.max(0, imageW - w)),
-                      y: clamp(node.y(), 0, Math.max(0, imageH - h)),
+              <React.Fragment key={shape.clientId}>
+                <Rect
+                  x={tagX}
+                  y={tagY}
+                  width={tagWidth}
+                  height={tagHeight}
+                  cornerRadius={6 / safeLayerScale}
+                  fill={stroke}
+                  opacity={0.92}
+                  listening={false}
+                />
+                <Text
+                  x={tagX + 6 / safeLayerScale}
+                  y={tagY + 4 / safeLayerScale}
+                  text={shapeLabel}
+                  fontSize={10 / safeLayerScale}
+                  fontStyle="bold"
+                  fill="#ffffff"
+                  listening={false}
+                />
+                <Rect
+                  id={shape.clientId}
+                  x={shapeX}
+                  y={shapeY}
+                  width={shape.width}
+                  height={shape.height}
+                  fill={`${stroke}22`}
+                  stroke={stroke}
+                  strokeWidth={(isHovered ? 2 : 1.25) / layerScale}
+                  listening
+                  perfectDrawEnabled={false}
+                  draggable={shapeDragEnabled}
+                  onMouseDown={(e) => selectShape(shape.clientId, e)}
+                  onTap={(e) => selectShape(shape.clientId, e)}
+                  onMouseEnter={(e) => {
+                    const stage = e.target.getStage();
+                    const p = stage?.getPointerPosition();
+                    setHoveredId(shape.clientId);
+                    if (p) setHoverPos({ x: p.x, y: p.y });
+                  }}
+                  onMouseMove={(e) => {
+                    const stage = e.target.getStage();
+                    const p = stage?.getPointerPosition();
+                    if (p) setHoverPos({ x: p.x, y: p.y });
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredId((id) => (id === shape.clientId ? null : id));
+                  }}
+                  onDragMove={(ev) => {
+                    const node = ev.target;
+                    const bounded = clampRectToImage(node.x(), node.y(), shape.width, shape.height);
+                    if (bounded.x !== node.x() || bounded.y !== node.y()) {
+                      node.position({ x: bounded.x, y: bounded.y });
+                    }
+                    setDragPreview((prev) => ({
+                      ...prev,
+                      [shape.clientId]: { x: bounded.x, y: bounded.y },
+                    }));
+                  }}
+                  onDragEnd={(ev) => {
+                    const node = ev.target;
+                    const nextX = clamp(node.x(), 0, Math.max(0, imageW - shape.width));
+                    const nextY = clamp(node.y(), 0, Math.max(0, imageH - shape.height));
+                    setDragPreview((prev) => {
+                      const next = { ...prev };
+                      delete next[shape.clientId];
+                      return next;
+                    });
+                    onShapesChange((prev) => {
+                      const idx2 = prev.findIndex((s) => s.clientId === shape.clientId);
+                      if (idx2 < 0) return prev;
+                      const w = prev[idx2].width;
+                      const h = prev[idx2].height;
+                      const next = prev.slice();
+                      next[idx2] = {
+                        ...prev[idx2],
+                        x: clamp(nextX, 0, Math.max(0, imageW - w)),
+                        y: clamp(nextY, 0, Math.max(0, imageH - h)),
+                      };
+                      return next;
+                    });
+                  }}
+                  onTransformStart={() => {
+                    transformStartRef.current = {
+                      id: shape.clientId,
+                      x: shape.x,
+                      y: shape.y,
+                      width: shape.width,
+                      height: shape.height,
                     };
-                    return next;
-                  });
-                }}
-                onTransformStart={() => {
-                  transformStartRef.current = {
-                    id: shape.clientId,
-                    x: shape.x,
-                    y: shape.y,
-                    width: shape.width,
-                    height: shape.height,
-                  };
-                }}
-                onTransform={(ev) => {
-                  const node = ev.target;
-                  const sx = node.scaleX();
-                  const sy = node.scaleY();
-                  const w = Math.max(RECT_MIN_SIZE, node.width() * Math.abs(sx));
-                  const h = Math.max(RECT_MIN_SIZE, node.height() * Math.abs(sy));
-                  let nx = node.x();
-                  let ny = node.y();
-                  if (sx < 0) nx = nx - w;
-                  if (sy < 0) ny = ny - h;
-                  nx = clamp(nx, 0, Math.max(0, imageW - RECT_MIN_SIZE));
-                  ny = clamp(ny, 0, Math.max(0, imageH - RECT_MIN_SIZE));
-                  const right = Math.min(nx + w, imageW);
-                  const bottom = Math.min(ny + h, imageH);
-                  node.setAttrs({
-                    x: nx,
-                    y: ny,
-                    width: right - nx,
-                    height: bottom - ny,
-                    scaleX: 1,
-                    scaleY: 1,
-                  });
-                }}
-                onTransformEnd={(ev) => {
-                  const node = ev.target;
-                  const w = Math.max(RECT_MIN_SIZE, node.width());
-                  const h = Math.max(RECT_MIN_SIZE, node.height());
-                  const nx = clamp(node.x(), 0, Math.max(0, imageW - w));
-                  const ny = clamp(node.y(), 0, Math.max(0, imageH - h));
-                  node.setAttrs({ x: nx, y: ny, width: w, height: h, scaleX: 1, scaleY: 1 });
-                  const start = transformStartRef.current;
-                  const noChange =
-                    start &&
-                    start.id === shape.clientId &&
-                    Math.abs(nx - start.x) < 0.5 &&
-                    Math.abs(ny - start.y) < 0.5 &&
-                    Math.abs(w - start.width) < 0.5 &&
-                    Math.abs(h - start.height) < 0.5;
-                  transformStartRef.current = null;
-                  if (noChange) return;
-                  onShapesChange((prev) => {
-                    const idx2 = prev.findIndex((s) => s.clientId === shape.clientId);
-                    if (idx2 < 0) return prev;
-                    const next = prev.slice();
-                    next[idx2] = { ...prev[idx2], x: nx, y: ny, width: w, height: h };
-                    return next;
-                  });
-                }}
-              />
+                  }}
+                  onTransform={(ev) => {
+                    const node = ev.target;
+                    const sx = node.scaleX();
+                    const sy = node.scaleY();
+                    const w = Math.max(RECT_MIN_SIZE, node.width() * Math.abs(sx));
+                    const h = Math.max(RECT_MIN_SIZE, node.height() * Math.abs(sy));
+                    let nx = node.x();
+                    let ny = node.y();
+                    if (sx < 0) nx = nx - w;
+                    if (sy < 0) ny = ny - h;
+                    nx = clamp(nx, 0, Math.max(0, imageW - RECT_MIN_SIZE));
+                    ny = clamp(ny, 0, Math.max(0, imageH - RECT_MIN_SIZE));
+                    const right = Math.min(nx + w, imageW);
+                    const bottom = Math.min(ny + h, imageH);
+                    node.setAttrs({
+                      x: nx,
+                      y: ny,
+                      width: right - nx,
+                      height: bottom - ny,
+                      scaleX: 1,
+                      scaleY: 1,
+                    });
+                  }}
+                  onTransformEnd={(ev) => {
+                    const node = ev.target;
+                    const w = Math.max(RECT_MIN_SIZE, node.width());
+                    const h = Math.max(RECT_MIN_SIZE, node.height());
+                    const nx = clamp(node.x(), 0, Math.max(0, imageW - w));
+                    const ny = clamp(node.y(), 0, Math.max(0, imageH - h));
+                    node.setAttrs({ x: nx, y: ny, width: w, height: h, scaleX: 1, scaleY: 1 });
+                    const start = transformStartRef.current;
+                    const noChange =
+                      start &&
+                      start.id === shape.clientId &&
+                      Math.abs(nx - start.x) < 0.5 &&
+                      Math.abs(ny - start.y) < 0.5 &&
+                      Math.abs(w - start.width) < 0.5 &&
+                      Math.abs(h - start.height) < 0.5;
+                    transformStartRef.current = null;
+                    if (noChange) return;
+                    onShapesChange((prev) => {
+                      const idx2 = prev.findIndex((s) => s.clientId === shape.clientId);
+                      if (idx2 < 0) return prev;
+                      const next = prev.slice();
+                      next[idx2] = { ...prev[idx2], x: nx, y: ny, width: w, height: h };
+                      return next;
+                    });
+                  }}
+                />
+              </React.Fragment>
             );
           })}
           {polyPreviewPoints.length >= 2 && (
@@ -809,7 +867,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           {newBox && (
             <Rect
               {...newBox}
-              stroke="#ea580c"
+              stroke={getShapeColor(activeClassId)}
               strokeWidth={2 / layerScale}
               dash={[6, 6]}
               listening={false}
@@ -824,9 +882,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             anchorSize={transformerAnchorPx}
             anchorCornerRadius={transformerAnchorPx / 2}
             anchorFill="#ffffff"
-            anchorStroke="#ea580c"
+            anchorStroke={transformerColor}
             anchorStrokeWidth={1.5 / safeBaseFitScale}
-            borderStroke="#ea580c"
+            borderStroke={transformerColor}
             borderStrokeWidth={1 / safeBaseFitScale}
             enabledAnchors={[
               "top-left",
@@ -873,10 +931,12 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       </Stage>
       {hoveredShape && hoverPos && (
         <div
-          className="pointer-events-none absolute z-[130] -translate-y-full rounded-md border border-orange-200 bg-white/95 px-2 py-1 text-[10px] font-bold text-orange-700 shadow-sm"
+          className="pointer-events-none absolute z-[130] -translate-y-full rounded-md bg-white/95 px-2 py-1 text-[10px] font-bold shadow-sm"
           style={{
             left: hoverPos.x + 10,
             top: hoverPos.y - 8,
+            border: `1px solid ${getShapeColor(hoveredShape.classLabelId)}`,
+            color: getShapeColor(hoveredShape.classLabelId),
           }}
         >
           {hoveredLabelName}

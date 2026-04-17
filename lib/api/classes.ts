@@ -7,6 +7,16 @@ export type ClassDto = {
   color: string;
 };
 
+type PaginatedResponse<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+};
+
 export async function getClassesForProject(projectId: number): Promise<ClassDto[]> {
-  return apiFetch<ClassDto[]>(`/api/classes/?project=${projectId}`);
+  const data = await apiFetch<ClassDto[] | PaginatedResponse<ClassDto>>(
+    `/api/classes/?project=${projectId}`
+  );
+  return Array.isArray(data) ? data : data.results;
 }

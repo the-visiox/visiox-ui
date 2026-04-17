@@ -18,6 +18,61 @@ Next.js frontend for the **VisioX** computer vision platform: marketing site, au
 - Node 20+ recommended  
 - **visiox** Django API running for real auth and data — default `http://localhost:8000`
 
+## Chạy tách riêng DB / Backend / Frontend
+
+Mô hình khuyến nghị: chạy mỗi phần ở một terminal riêng.
+
+### Terminal A — DB + Redis (repo `visiox`)
+
+```bash
+docker compose up -d db redis
+docker compose ps
+```
+
+### Terminal B — Backend API (repo `visiox`)
+
+```bash
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+# source .venv/bin/activate
+
+pip install -r requirements.txt
+cp env.example .env
+python manage.py migrate
+python manage.py setup_groups
+python manage.py seed_demo_data
+python manage.py runserver 0.0.0.0:8000
+```
+
+Nếu bạn chạy backend bằng Conda/env `py312`, dùng đúng executable:
+
+```bash
+C:\Users\Admin\miniconda3\envs\py312\python.exe manage.py migrate
+C:\Users\Admin\miniconda3\envs\py312\python.exe manage.py runserver 0.0.0.0:8000
+```
+
+Lưu ý: để save được label profile theo từng ảnh/frame, backend cần apply migration `datasets.0006_medialabelprofile` (bảng `media_label_profiles`).
+
+### Terminal C — Frontend UI (repo `visiox-ui`)
+
+```bash
+pnpm install
+cp .env.local.example .env.local
+pnpm dev
+```
+
+Mặc định frontend dùng:
+
+```env
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+```
+
+Đăng nhập demo:
+- `demo@visiox.ai`
+- `Demo1234!`
+
 ## Environment
 
 Copy the example and adjust if the API is not on port 8000:
