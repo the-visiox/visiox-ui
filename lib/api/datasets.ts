@@ -5,6 +5,7 @@ export type DatasetDto = {
   project: number;
   name: string;
   description?: string | null;
+  media_count?: number;
 };
 
 export type MediaDto = {

@@ -167,6 +167,17 @@ export default function DatasetDetailClient({ id }: Props) {
     .map((f) => f.media_id)
     .filter((id): id is number => typeof id === 'number');
 
+  useEffect(() => {
+    if (!browserData?.frames.length) return;
+    const warmFrames = browserData.frames.slice(0, Math.min(browserData.frames.length, 12));
+    warmFrames.forEach((frame) => {
+      router.prefetch(`/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`);
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = datasets.frameUrl(numericId, frame.frame);
+    });
+  }, [browserData, id, numericId, router]);
+
   const toggleMediaSelection = (mediaId: number) => {
     setSelectedMediaIds((prev) =>
       prev.includes(mediaId) ? prev.filter((x) => x !== mediaId) : [...prev, mediaId],

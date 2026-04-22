@@ -21,16 +21,20 @@ export const TOOL_SHORTCUTS: Record<string, Tool> = {
   v: "select",
 };
 
+export type ShapeType = "rectangle" | "polygon" | "polyline" | "points" | "tag";
+
 export type EditorShape = {
   clientId: string;
+  shapeType: ShapeType;
   classLabelId: number;
-  /** Bounding box (used for rectangles; for polygons, sync from points for UI). */
   x: number;
   y: number;
   width: number;
   height: number;
-  /** Closed polygon in image pixels [x1,y1,x2,y2,...] — omit for axis-aligned boxes. */
   points?: number[];
+  serverId?: number;
+  source?: "manual" | "imported";
+  frame?: number;
 };
 
 export type LabelDefinition = {

@@ -104,7 +104,7 @@ components/             # UI + platform + annotate (AnnotationEditor)
 lib/
   api.ts                # JWT client: auth, projects, datasets, training, …
   api/                  # Supplemental fetch helpers (jobs, classes, …)
-  types/annotation.ts   # Editor shape / tool types
+  annotation/           # Annotation runtime, geometry, mappers, and shared types
   auth.tsx              # AuthProvider (uses lib/api.ts)
 ```
 

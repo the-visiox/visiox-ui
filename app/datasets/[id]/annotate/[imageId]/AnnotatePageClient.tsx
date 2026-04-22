@@ -4,49 +4,43 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  AlertCircle,
   ArrowLeft,
+  Box,
   ChevronFirst,
   ChevronLast,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  CircleDot,
+  Hexagon,
   Link2,
+  Loader2,
+  MousePointer2,
   Play,
   Redo2,
-  Trash2,
-  Undo2,
-  Box,
-  CircleDot,
-  Cuboid,
-  Hexagon,
-  MousePointer2,
   Save,
   Spline,
-  Tag,
-  Loader2,
-  AlertCircle,
-  RectangleVertical,
   Square,
+  Tag,
+  Trash2,
+  Undo2,
 } from "lucide-react";
 import AnnotationEditor from "@/components/annotate/AnnotationEditor";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
+import { useAuth } from "@/lib/auth";
 import { datasets as visioxDatasets } from "@/lib/api";
-import { getDataset, getDatasetMedia } from "@/lib/api/datasets";
 import type { ClassDto } from "@/lib/api/classes";
 import { getClassesForProject } from "@/lib/api/classes";
+import { getDataset, getDatasetMedia } from "@/lib/api/datasets";
 import {
-  apiShapesToEditor,
-  editorToApiPayload,
-  mergeProjectClassesWithProfile,
-} from "@/lib/annotation-core";
-import {
-  getJobAnnotations,
-  patchJobAnnotations,
-  getMediaAnnotations,
-  putMediaAnnotations,
   getFrameAnnotations,
+  getJobAnnotations,
+  getMediaAnnotations,
+  patchJobAnnotations,
   putFrameAnnotations,
+  putMediaAnnotations,
 } from "@/lib/api/jobs";
 import {
   getFrameLabelProfile,
@@ -55,8 +49,13 @@ import {
   putMediaLabelProfile,
 } from "@/lib/api/labelProfile";
 import { ApiError, getAccessToken } from "@/lib/api/client";
-import type { EditorShape, LabelDefinition } from "@/lib/types/annotation";
-import { useAuth } from "@/lib/auth";
+import {
+  AnnotationSession,
+  apiShapesToEditor,
+  editorToApiPayload,
+  mergeProjectClassesWithProfile,
+} from "@/lib/annotation";
+import type { EditorShape, LabelDefinition } from "@/lib/annotation";
 
 function draftStorageKey(
   datasetId: number,
@@ -70,19 +69,34 @@ function draftStorageKey(
 }
 
 const TOOLBAR: { tool: Tool; icon: React.ReactNode; label: string; key: string }[] = [
-  { tool: "select", icon: <MousePointer2 className="w-4 h-4" />, label: "Select", key: "V" },
-  { tool: "rectangle", icon: <Square className="w-4 h-4" />, label: "Box", key: "N" },
-  { tool: "polygon", icon: <Hexagon className="w-4 h-4" />, label: "Polygon", key: "P" },
-  { tool: "polyline", icon: <Spline className="w-4 h-4" />, label: "Polyline", key: "L" },
-  { tool: "points", icon: <CircleDot className="w-4 h-4" />, label: "Points", key: "K" },
-  { tool: "cuboid", icon: <Box className="w-4 h-4" />, label: "Cuboid", key: "C" },
-  { tool: "tag", icon: <Tag className="w-4 h-4" />, label: "Tag", key: "T" },
+  { tool: "select", icon: <MousePointer2 className="h-4 w-4" />, label: "Select", key: "V" },
+  { tool: "rectangle", icon: <Square className="h-4 w-4" />, label: "Box", key: "N" },
+  { tool: "polygon", icon: <Hexagon className="h-4 w-4" />, label: "Polygon", key: "P" },
+  { tool: "polyline", icon: <Spline className="h-4 w-4" />, label: "Polyline", key: "L" },
+  { tool: "points", icon: <CircleDot className="h-4 w-4" />, label: "Points", key: "K" },
+  { tool: "cuboid", icon: <Box className="h-4 w-4" />, label: "Cuboid", key: "C" },
+  { tool: "tag", icon: <Tag className="h-4 w-4" />, label: "Tag", key: "T" },
 ];
 
 const DEMO_LABELS = [
   { id: 1, name: "demo_a", color: "#ef4444" },
   { id: 2, name: "demo_b", color: "#3b82f6" },
 ] as const;
+
+const PRELOAD_AHEAD = 6;
+const PRELOAD_BEHIND = 2;
+
+function objectSummary(shape: EditorShape): string {
+  if (shape.shapeType === "tag") return "tag";
+  if (shape.points && shape.points.length >= 2) return `${shape.shapeType} ${shape.points.length / 2} pts`;
+  return `${Math.round(shape.width)}x${Math.round(shape.height)}`;
+}
+
+function wrapIndex(oneBasedIdx: number, total: number): number {
+  if (total <= 0) return 1;
+  const wrapped = ((oneBasedIdx - 1) % total + total) % total;
+  return wrapped + 1;
+}
 
 export default function AnnotatePageClient() {
   const params = useParams();
@@ -91,111 +105,102 @@ export default function AnnotatePageClient() {
   const { authReady } = useAuth();
 
   const datasetId = Number(params.id);
-  /** `/datasets/:id/annotate/native?frame=N` — imageId segment is the literal "native", not a media PK. */
   const rawImageId = String(params.imageId ?? "");
   const isNativeMode = rawImageId.toLowerCase() === "native";
   const frameIndex = (() => {
     const n = parseInt(searchParams.get("frame") ?? "0", 10);
     return Number.isFinite(n) && n >= 0 ? n : 0;
   })();
-  const mediaId = isNativeMode ? NaN : Number(rawImageId);
+  const mediaId = isNativeMode ? Number.NaN : Number(rawImageId);
   const jobIdParam = searchParams.get("jobId");
-  const jobId = jobIdParam ? parseInt(jobIdParam, 10) : NaN;
+  const jobId = jobIdParam ? parseInt(jobIdParam, 10) : Number.NaN;
 
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string>("");
+  const [imageUrl, setImageUrl] = useState("");
   const [labels, setLabels] = useState<LabelDefinition[]>([]);
   const [activeClassId, setActiveClassId] = useState(0);
   const [mediaIndex, setMediaIndex] = useState<number | null>(null);
   const [mediaTotal, setMediaTotal] = useState<number | null>(null);
   const [mediaList, setMediaList] = useState<{ id: number; file_url?: string | null; filename?: string }[]>([]);
-  const [currentFilename, setCurrentFilename] = useState<string>("");
-  const [frameInput, setFrameInput] = useState<string>("");
-
+  const [currentFilename, setCurrentFilename] = useState("");
+  const [frameInput, setFrameInput] = useState("");
+  const [sliderValue, setSliderValue] = useState(1);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [pendingIndex, setPendingIndex] = useState<number | null>(null);
+  const [activeTool, setActiveTool] = useState<Tool>("rectangle");
+  const [polygonVertexCount, setPolygonVertexCount] = useState(4);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [shapes, _setShapes] = useState<EditorShape[]>([]);
-  const pastRef = useRef<EditorShape[][]>([]);
-  const futureRef = useRef<EditorShape[][]>([]);
+
+  const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
-  shapesRef.current = shapes;
   const isLoadingRef = useRef(false);
+  shapesRef.current = shapes;
+
   const currentDraftKey = useMemo(
     () => draftStorageKey(datasetId, rawImageId, isNativeMode, frameIndex, mediaId),
     [datasetId, rawImageId, isNativeMode, frameIndex, mediaId]
   );
 
-  const canUndo = pastRef.current.length > 0;
-  const canRedo = futureRef.current.length > 0;
+  const canUndo = sessionRef.current.canUndo;
+  const canRedo = sessionRef.current.canRedo;
 
   const setShapes: React.Dispatch<React.SetStateAction<EditorShape[]>> = (action) => {
-    _setShapes((prev) => {
-      const next = typeof action === "function" ? (action as (p: EditorShape[]) => EditorShape[])(prev) : action;
-      if (next === prev) return prev;
-      pastRef.current.push(prev);
-      futureRef.current = [];
-      return next;
-    });
+    _setShapes(sessionRef.current.update(action));
   };
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isLoadingRef.current) return;
+    setAccessToken(getAccessToken());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isLoadingRef.current) return;
     try {
       sessionStorage.setItem(currentDraftKey, JSON.stringify(shapes));
     } catch {
-      // quota / security errors are harmless for drafts
+      // ignore draft persistence failures
     }
   }, [currentDraftKey, shapes]);
 
   const undo = () => {
-    const past = pastRef.current;
-    if (!past.length) return;
-    const prev = past.pop()!;
-    futureRef.current.push(shapesRef.current);
-    _setShapes(prev);
+    const previous = sessionRef.current.undo();
+    if (previous) _setShapes(previous);
   };
 
   const redo = () => {
-    const future = futureRef.current;
-    if (!future.length) return;
-    const next = future.pop()!;
-    pastRef.current.push(shapesRef.current);
-    _setShapes(next);
+    const next = sessionRef.current.redo();
+    if (next) _setShapes(next);
   };
-
-  const [activeTool, setActiveTool] = useState<Tool>("rectangle");
-  /** Vertices for polygon tool (click to place each corner). */
-  const [polygonVertexCount, setPolygonVertexCount] = useState(4);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!authReady) return;
     let cancelled = false;
 
     async function load() {
-      // Snapshot the current shapes to sessionStorage for the PREVIOUS image
-      // before we clear them, so navigating back restores them.
       if (typeof window !== "undefined" && shapesRef.current.length > 0) {
         try {
           const prevKey = sessionStorage.getItem("visiox-annotate-draft:active-key");
-          if (prevKey) {
-            sessionStorage.setItem(prevKey, JSON.stringify(shapesRef.current));
-          }
-        } catch { /* ignore */ }
+          if (prevKey) sessionStorage.setItem(prevKey, JSON.stringify(shapesRef.current));
+        } catch {
+          // ignore
+        }
       }
 
       isLoadingRef.current = true;
       setLoading(true);
       setError(null);
-      pastRef.current = [];
-      futureRef.current = [];
-      _setShapes([]);
+      _setShapes(sessionRef.current.hydrate([]));
 
-      // Track which key is currently active so we can snapshot on next navigate.
-      try { sessionStorage.setItem("visiox-annotate-draft:active-key", currentDraftKey); } catch { /* ignore */ }
+      try {
+        sessionStorage.setItem("visiox-annotate-draft:active-key", currentDraftKey);
+      } catch {
+        // ignore
+      }
 
       const token = getAccessToken();
-      const demoUrl = `https://picsum.photos/seed/${isNativeMode ? `native-${datasetId}-f${frameIndex}` : params.imageId}/1200/800`;
+      const demoUrl = `https://picsum.photos/seed/${isNativeMode ? `native-${datasetId}-f${frameIndex}` : rawImageId}/1200/800`;
 
       if (!token) {
         setImageUrl(demoUrl);
@@ -207,80 +212,81 @@ export default function AnnotatePageClient() {
       }
 
       try {
-        if (!Number.isFinite(datasetId)) {
-          throw new Error("Invalid dataset id.");
-        }
+        if (!Number.isFinite(datasetId)) throw new Error("Invalid dataset id.");
 
         const ds = await getDataset(datasetId);
+        const statsPromise = visioxDatasets.stats(datasetId).catch(() => null);
         const classesPromise = getClassesForProject(ds.project).catch((): ClassDto[] => []);
         const annotationsPromise: Promise<Awaited<ReturnType<typeof getJobAnnotations>>> = !Number.isNaN(jobId)
           ? getJobAnnotations(jobId)
           : !isNativeMode && Number.isFinite(mediaId)
             ? getMediaAnnotations(mediaId).catch(() => [])
-            : isNativeMode && Number.isFinite(datasetId)
+            : isNativeMode
               ? getFrameAnnotations(datasetId, frameIndex).catch(() => [])
               : Promise.resolve([]);
         const profilePromise: Promise<{ id: number; name: string; color: string }[]> = Number.isNaN(jobId)
-          ? isNativeMode && Number.isFinite(datasetId)
+          ? isNativeMode
             ? getFrameLabelProfile(datasetId, frameIndex).catch(() => [])
-            : !isNativeMode && Number.isFinite(mediaId)
+            : Number.isFinite(mediaId)
               ? getMediaLabelProfile(mediaId).catch(() => [])
               : Promise.resolve([])
           : Promise.resolve([]);
 
         let resolvedImageUrl = demoUrl;
         let classes: ClassDto[] = [];
-        let ann: Awaited<ReturnType<typeof getJobAnnotations>> = [];
+        let annotations: Awaited<ReturnType<typeof getJobAnnotations>> = [];
         let profileItems: { id: number; name: string; color: string }[] = [];
 
         if (isNativeMode) {
-          // In native mode the image URL is deterministic from (datasetId, frameIndex)
-          // so we can start downloading it immediately — in parallel with all API calls.
           resolvedImageUrl = visioxDatasets.frameUrl(datasetId, frameIndex);
           setImageUrl(resolvedImageUrl);
           setMediaIndex(null);
-          setMediaTotal(null);
           setMediaList([]);
-          setCurrentFilename(`Frame ${frameIndex}`);
-          setFrameInput(String(frameIndex));
-
-          [classes, ann, profileItems] = await Promise.all([classesPromise, annotationsPromise, profilePromise]);
-        } else {
-          const mediaListPromise = getDatasetMedia(datasetId);
-
-          const [list, cls, annotations, profile] = await Promise.all([
-            mediaListPromise,
+          setCurrentFilename(`Frame ${frameIndex + 1}`);
+          setFrameInput(String(frameIndex + 1));
+          if (!cancelled) {
+            setLoading(false);
+          }
+          const [stats, loadedClasses, loadedAnnotations, loadedProfile] = await Promise.all([
+            statsPromise,
             classesPromise,
             annotationsPromise,
             profilePromise,
           ]);
-          classes = cls;
-          ann = annotations;
-          profileItems = profile;
+          classes = loadedClasses;
+          annotations = loadedAnnotations;
+          profileItems = loadedProfile;
+          setMediaTotal(stats?.cvat?.size ?? ds.media_count ?? null);
+        } else {
+          const mediaListPromise = getDatasetMedia(datasetId);
+          const list = await mediaListPromise;
           setMediaTotal(list.length);
           setMediaList(list);
-          const media = list.find((m) => m.id === mediaId);
-          const idx = list.findIndex((m) => m.id === mediaId);
+          const media = list.find((item) => item.id === mediaId);
+          const idx = list.findIndex((item) => item.id === mediaId);
           setMediaIndex(idx >= 0 ? idx + 1 : null);
           setFrameInput(idx >= 0 ? String(idx + 1) : "1");
-          const fname = (media as { filename?: string })?.filename
-            ?? media?.file_url?.split("/").pop()
-            ?? `media-${mediaId}`;
-          setCurrentFilename(fname);
-          if (media?.file_url) {
-            resolvedImageUrl = media.file_url;
-          }
-          // We only know the URL after media list resolves — still kick it off ASAP.
+          setCurrentFilename(
+            (media as { filename?: string })?.filename ?? media?.file_url?.split("/").pop() ?? `media-${mediaId}`
+          );
+          if (media?.file_url) resolvedImageUrl = media.file_url;
           setImageUrl(resolvedImageUrl);
+          if (!cancelled) {
+            setLoading(false);
+          }
+          [classes, annotations, profileItems] = await Promise.all([
+            classesPromise,
+            annotationsPromise,
+            profilePromise,
+          ]);
         }
 
         if (cancelled) return;
 
         if (classes.length) {
-          const merged =
-            profileItems.length > 0
-              ? mergeProjectClassesWithProfile(classes, profileItems)
-              : classes.map((c) => ({ id: c.id, name: c.name, color: c.color || "#f97316" }));
+          const merged = profileItems.length
+            ? mergeProjectClassesWithProfile(classes, profileItems)
+            : classes.map((item) => ({ id: item.id, name: item.name, color: item.color || "#f97316" }));
           setLabels(merged);
           setActiveClassId(merged[0]?.id ?? classes[0].id);
         } else {
@@ -288,29 +294,22 @@ export default function AnnotatePageClient() {
           setActiveClassId(1);
         }
 
-        if (!cancelled) {
-          const apiShapes = apiShapesToEditor(ann);
-          if (apiShapes.length > 0) {
-            _setShapes(apiShapes);
-          } else if (typeof window !== "undefined") {
-            try {
-              const rawDraft = sessionStorage.getItem(currentDraftKey);
-              _setShapes(rawDraft ? (JSON.parse(rawDraft) as EditorShape[]) : []);
-            } catch {
-              _setShapes([]);
-            }
-          } else {
-            _setShapes([]);
+        const apiShapes = apiShapesToEditor(annotations);
+        if (apiShapes.length > 0) {
+          _setShapes(sessionRef.current.hydrate(apiShapes));
+        } else if (typeof window !== "undefined") {
+          try {
+            const rawDraft = sessionStorage.getItem(currentDraftKey);
+            _setShapes(sessionRef.current.hydrate(rawDraft ? (JSON.parse(rawDraft) as EditorShape[]) : []));
+          } catch {
+            _setShapes(sessionRef.current.hydrate([]));
           }
-          isLoadingRef.current = false;
+        } else {
+          _setShapes(sessionRef.current.hydrate([]));
         }
       } catch (e) {
         if (cancelled) return;
-        if (e instanceof ApiError) {
-          setError(e.body || e.message);
-        } else {
-          setError(e instanceof Error ? e.message : "Failed to load dataset.");
-        }
+        setError(e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Failed to load dataset.");
         setImageUrl(demoUrl);
         setLabels([...DEMO_LABELS]);
         setActiveClassId(1);
@@ -331,72 +330,109 @@ export default function AnnotatePageClient() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, currentDraftKey, datasetId, mediaId, jobId, params.imageId, isNativeMode, frameIndex]);
+  }, [authReady, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, mediaId, rawImageId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (!e.ctrlKey && !e.metaKey) return;
-      const k = e.key.toLowerCase();
-      if (k === "z" && !e.shiftKey) {
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
         e.preventDefault();
         undo();
-      } else if (k === "y" || (k === "z" && e.shiftKey)) {
+      } else if (key === "y" || (key === "z" && e.shiftKey)) {
         e.preventDefault();
         redo();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  });
 
-  const total = mediaTotal ?? 0;
-  const current = mediaIndex ?? 1; // 1-based
-
-  // Warm the HTTP cache for prev/next frames so clicking navigation feels instant.
-  // Uses an off-DOM Image — the browser shares its cache with <img> / Konva use-image.
   useEffect(() => {
-    if (loading) return;
-    if (typeof window === "undefined") return;
-    if (!imageUrl) return;
-
+    if (loading || typeof window === "undefined" || !imageUrl) return;
     const urls: string[] = [];
     if (isNativeMode) {
-      if (frameIndex > 0) urls.push(visioxDatasets.frameUrl(datasetId, frameIndex - 1));
-      urls.push(visioxDatasets.frameUrl(datasetId, frameIndex + 1));
+      for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
+        urls.push(visioxDatasets.frameUrl(datasetId, frameIndex + offset));
+      }
+      for (let offset = 1; offset <= PRELOAD_BEHIND; offset += 1) {
+        if (frameIndex - offset >= 0) {
+          urls.push(visioxDatasets.frameUrl(datasetId, frameIndex - offset));
+        }
+      }
     } else if (mediaList.length && mediaIndex) {
-      const prev = mediaList[mediaIndex - 2]; // mediaIndex is 1-based
-      const next = mediaList[mediaIndex]; // already 1-based -> next element
-      if (prev?.file_url) urls.push(prev.file_url);
-      if (next?.file_url) urls.push(next.file_url);
+      for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
+        const next = mediaList[mediaIndex - 1 + offset];
+        if (next?.file_url) urls.push(next.file_url);
+      }
+      for (let offset = 1; offset <= PRELOAD_BEHIND; offset += 1) {
+        const prev = mediaList[mediaIndex - 1 - offset];
+        if (prev?.file_url) urls.push(prev.file_url);
+      }
     }
 
-    const imgs = urls.map((u) => {
+    const routeUrls: string[] = [];
+    if (isNativeMode) {
+      for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
+        routeUrls.push(`/datasets/${params.id}/annotate/native?frame=${frameIndex + offset}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
+      }
+    } else if (mediaList.length && mediaIndex) {
+      for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
+        const next = mediaList[mediaIndex - 1 + offset];
+        if (next) {
+          routeUrls.push(`/datasets/${params.id}/annotate/${next.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
+        }
+      }
+    }
+
+    routeUrls.forEach((url) => router.prefetch(url));
+
+    const imgs = urls.map((url) => {
       const img = new Image();
       img.decoding = "async";
-      img.src = u;
+      img.src = url;
       return img;
     });
-
     return () => {
       for (const img of imgs) img.src = "";
     };
-  }, [loading, imageUrl, isNativeMode, datasetId, frameIndex, mediaList, mediaIndex]);
+  }, [loading, imageUrl, isNativeMode, datasetId, frameIndex, mediaList, mediaIndex, params.id, router, jobIdParam]);
+
+  const total = mediaTotal ?? 0;
+  const current = isNativeMode ? frameIndex + 1 : mediaIndex ?? 1;
+  const isLoggedIn = !!accessToken;
+  const canSaveToApi =
+    isLoggedIn &&
+    (!Number.isNaN(jobId) || (!isNativeMode && Number.isFinite(mediaId)) || (isNativeMode && Number.isFinite(datasetId)));
+
+  useEffect(() => {
+    if (pendingIndex !== null && pendingIndex !== current) return;
+    setPendingIndex(null);
+    if (isScrubbing) return;
+    setSliderValue(current);
+  }, [current, isScrubbing, pendingIndex]);
 
   const navigateTo = useCallback(
-    (oneBasedIdx: number) => {
+    (oneBasedIdx: number, options?: { wrap?: boolean }) => {
+      const totalItems = Math.max(1, total);
+      const nextIndex = options?.wrap
+        ? wrapIndex(oneBasedIdx, totalItems)
+        : Math.max(1, Math.min(totalItems, oneBasedIdx));
+      setPendingIndex(nextIndex);
+      setSliderValue(nextIndex);
+      setFrameInput(String(nextIndex));
       setLoading(true);
       if (isNativeMode) {
-        const clamped = Math.max(0, oneBasedIdx - 1);
+        const clamped = Math.max(0, nextIndex - 1);
         router.push(`/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
         return;
       }
-      const clamped = Math.max(1, Math.min(total, oneBasedIdx));
-      const target = mediaList[clamped - 1];
+      const target = mediaList[nextIndex - 1];
       if (!target) return;
       router.push(`/datasets/${params.id}/annotate/${target.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
     },
-    [isNativeMode, total, mediaList, params.id, router, jobIdParam]
+    [isNativeMode, mediaList, params.id, router, total, jobIdParam]
   );
 
   const handleFrameInputCommit = () => {
@@ -405,23 +441,16 @@ export default function AnnotatePageClient() {
     else setFrameInput(String(current));
   };
 
-  // IMPORTANT: Avoid reading localStorage during render (SSR vs CSR mismatch).
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  useEffect(() => {
-    setAccessToken(getAccessToken());
-  }, []);
-
-  const isLoggedIn = !!accessToken;
-  const canSaveToApi =
-    isLoggedIn &&
-    (!Number.isNaN(jobId) ||
-      (!isNativeMode && Number.isFinite(mediaId)) ||
-      (isNativeMode && Number.isFinite(datasetId)));
+  const commitSlider = useCallback(() => {
+    setIsScrubbing(false);
+    if (sliderValue !== current) {
+      navigateTo(sliderValue);
+    }
+  }, [current, navigateTo, sliderValue]);
 
   const handleSave = async () => {
     const tokenNow = getAccessToken();
-    const isLoggedInNow = !!tokenNow;
-    if (!isLoggedInNow) {
+    if (!tokenNow) {
       setError("Login required to save. In demo mode annotations are kept in-memory only.");
       return;
     }
@@ -429,6 +458,7 @@ export default function AnnotatePageClient() {
       setError("Cannot determine save target. Check the URL has a valid dataset/media/job id.");
       return;
     }
+
     setSaving(true);
     setError(null);
     try {
@@ -440,128 +470,96 @@ export default function AnnotatePageClient() {
       } else {
         await putMediaAnnotations(mediaId, payload);
       }
-      // Persist per-image label roster (Postgres) alongside annotations.
+
       if (Number.isNaN(jobId) && labels.length) {
-        const labelPayload = labels.map((l) => ({ id: l.id, name: l.name, color: l.color }));
+        const labelPayload = labels.map((label) => ({ id: label.id, name: label.name, color: label.color }));
         try {
-          if (isNativeMode) {
-            await putFrameLabelProfile(datasetId, frameIndex, labelPayload);
-          } else if (Number.isFinite(mediaId)) {
-            await putMediaLabelProfile(mediaId, labelPayload);
-          }
+          if (isNativeMode) await putFrameLabelProfile(datasetId, frameIndex, labelPayload);
+          else if (Number.isFinite(mediaId)) await putMediaLabelProfile(mediaId, labelPayload);
         } catch {
-          // Non-fatal: annotations already saved; surface a softer warning.
           setError((prev) => prev || "Annotations saved, but label profile sync failed.");
         }
       }
+
       if (typeof window !== "undefined") {
         sessionStorage.setItem(currentDraftKey, JSON.stringify(shapes));
       }
     } catch (e) {
-      if (e instanceof ApiError) {
-        setError(e.body || e.message);
-      } else {
-        setError("Save failed.");
-      }
+      setError(e instanceof ApiError ? e.body || e.message : "Save failed.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="relative flex-1 flex flex-col min-h-screen bg-[#fcfaf7] overflow-hidden">
-      <nav className="z-30 px-4 py-2.5 bg-white/90 backdrop-blur-xl border-b border-stone-200/80 flex items-center justify-between gap-3 shadow-sm shadow-stone-200/40">
-        {/* LEFT: back + title + undo/redo */}
-        <div className="flex items-center gap-2 min-w-0">
+    <div className="relative flex min-h-screen flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
+      <nav className="z-30 flex items-center justify-between gap-3 border-b border-stone-200/80 bg-white/90 px-4 py-2.5 shadow-sm shadow-stone-200/40 backdrop-blur-xl">
+        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
             onClick={() => router.push(`/datasets/${params.id}`)}
-            className="p-2 hover:bg-stone-100 rounded-xl transition-colors text-stone-500 hover:text-stone-900 shrink-0"
+            className="shrink-0 rounded-xl p-2 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="h-5 w-5" />
           </button>
-          <div className="h-6 w-px bg-stone-200 shrink-0" />
-          <div className="min-w-0 hidden sm:block">
-            <h1 className="text-sm font-bold text-stone-900 leading-none">Annotation workspace</h1>
-            <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mt-0.5 truncate">
+          <div className="h-6 w-px shrink-0 bg-stone-200" />
+          <div className="hidden min-w-0 sm:block">
+            <h1 className="text-sm font-bold leading-none text-stone-900">Annotation workspace</h1>
+            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-widest text-orange-600">
               Dataset {params.id}
-              {isNativeMode ? ` · Frame ${frameIndex}` : ` · Media ${params.imageId}`}
+              {isNativeMode ? ` · Frame ${frameIndex + 1}` : ` · Media ${params.imageId}`}
               {!Number.isNaN(jobId) ? ` · Job ${jobId}` : canSaveToApi ? " · Direct" : " · Demo"}
             </p>
           </div>
-          <div className="h-6 w-px bg-stone-200 shrink-0 hidden sm:block" />
-          {/* Undo / Redo on the left */}
+          <div className="hidden h-6 w-px shrink-0 bg-stone-200 sm:block" />
           <div className="flex items-center gap-1 rounded-xl border border-stone-200/80 bg-stone-50 p-0.5">
-            <button
-              type="button"
-              onClick={undo}
-              disabled={!canUndo}
-              title="Undo (Ctrl+Z)"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-white hover:shadow-sm disabled:opacity-35"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
+            <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-white hover:shadow-sm disabled:opacity-35">
+              <Undo2 className="h-3.5 w-3.5" />
             </button>
-            <button
-              type="button"
-              onClick={redo}
-              disabled={!canRedo}
-              title="Redo (Ctrl+Y)"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-white hover:shadow-sm disabled:opacity-35"
-            >
-              <Redo2 className="w-3.5 h-3.5" />
+            <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-white hover:shadow-sm disabled:opacity-35">
+              <Redo2 className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
 
-        {/* RIGHT: save */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-xl shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
-          >
-            {saving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Save className="w-3.5 h-3.5" />
-            )}
-            <span>Save</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-bold text-white shadow-xl shadow-orange-500/20 transition-all hover:scale-105 active:scale-95"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          <span>Save</span>
+        </button>
       </nav>
 
       {error && (
         <div className="mx-6 mt-3 flex items-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
 
-      <main className="flex-grow flex overflow-hidden min-h-0">
-        <aside className="w-[4.25rem] sm:w-[5.25rem] shrink-0 flex flex-col items-stretch gap-3 py-4 px-1.5 sm:px-2 bg-white/90 border-r border-stone-200/80 z-20 overflow-y-auto shadow-sm shadow-stone-200/30">
-        <div className="flex flex-col gap-1 p-1">
+      <main className="flex min-h-0 flex-grow overflow-hidden">
+        <aside className="z-20 flex w-[4.25rem] shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-1.5 py-4 shadow-sm shadow-stone-200/30 sm:w-[5.25rem] sm:px-2">
+          <div className="flex flex-col gap-1 p-1">
             {TOOLBAR.map(({ tool, icon, label, key }) =>
-              tool === "polygon" ? (
-                <div key="polygon" className="flex flex-col gap-1">
+              tool === "polygon" || tool === "polyline" ? (
+                <div key={tool} className="flex flex-col gap-1">
                   <button
                     type="button"
                     title={`${label} (${key})`}
                     onClick={() => setActiveTool(tool)}
                     className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-2 text-[8px] font-bold uppercase tracking-wide transition-all ${
-                      activeTool === tool
-                        ? "bg-white text-orange-600 shadow-md shadow-orange-500/10"
-                        : "text-stone-500 hover:text-stone-900"
+                      activeTool === tool ? "bg-white text-orange-600 shadow-md shadow-orange-500/10" : "text-stone-500 hover:text-stone-900"
                     }`}
                   >
                     {icon}
-                    <span className="leading-none text-center max-w-full truncate px-0.5">
-                      {label}
-                    </span>
+                    <span className="max-w-full truncate px-0.5 text-center leading-none">{label}</span>
                   </button>
-                  {activeTool === "polygon" && (
+                  {activeTool === tool && (
                     <label className="flex flex-col gap-1 rounded-xl border border-stone-200/80 bg-white/90 px-1.5 py-2">
-                      <span className="text-[7px] font-bold uppercase tracking-wider text-stone-500 text-center leading-none">
+                      <span className="text-center text-[7px] font-bold uppercase leading-none tracking-wider text-stone-500">
                         Points
                       </span>
                       <select
@@ -570,8 +568,8 @@ export default function AnnotatePageClient() {
                         onClick={(e) => e.stopPropagation()}
                         className="w-full rounded-lg border border-stone-200 bg-stone-50 px-1 py-1 text-[10px] font-semibold text-stone-800"
                       >
-                        {[3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
-                          <option key={n} value={n}>
+                        {[(tool === "polyline" ? 2 : 3), 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
+                          <option key={`${tool}-${n}`} value={n}>
                             {n}
                           </option>
                         ))}
@@ -586,34 +584,27 @@ export default function AnnotatePageClient() {
                   title={`${label} (${key})`}
                   onClick={() => setActiveTool(tool)}
                   className={`flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[8px] font-bold uppercase tracking-wide transition-all ${
-                    activeTool === tool
-                      ? "bg-white text-orange-600 shadow-md shadow-orange-500/10"
-                      : "text-stone-500 hover:text-stone-900"
+                    activeTool === tool ? "bg-white text-orange-600 shadow-md shadow-orange-500/10" : "text-stone-500 hover:text-stone-900"
                   }`}
                 >
                   {icon}
-                  <span className="leading-none text-center max-w-full truncate px-0.5">{label}</span>
+                  <span className="max-w-full truncate px-0.5 text-center leading-none">{label}</span>
                 </button>
               )
             )}
           </div>
         </aside>
 
-        <div className="flex-grow p-4 relative overflow-hidden flex items-stretch justify-stretch min-h-0">
+        <div className="relative flex min-h-0 flex-grow items-stretch justify-stretch overflow-hidden p-4">
           {loading ? (
             <div className="absolute inset-4 z-10 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-stone-500">
-              <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-              <span className="text-sm font-medium">Loading media…</span>
+                <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+                <span className="text-sm font-medium">Loading media...</span>
               </div>
             </div>
           ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45 }}
-              className="w-full h-full min-h-0"
-            >
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="h-full w-full min-h-0">
               <AnnotationEditor
                 imageUrl={imageUrl}
                 labels={labels}
@@ -628,65 +619,47 @@ export default function AnnotatePageClient() {
           )}
         </div>
 
-        <aside className="w-80 bg-white/90 backdrop-blur-xl border-l border-stone-200/80 p-6 flex flex-col z-20 overflow-y-auto shadow-xl shadow-stone-200/30">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xs font-bold text-stone-900 uppercase tracking-widest">
-              Objects
-            </h3>
-            <span className="px-2 py-0.5 bg-stone-100 text-[10px] font-bold text-stone-500 rounded-lg">
-              {shapes.length} total
-            </span>
+        <aside className="z-20 flex w-80 flex-col overflow-y-auto border-l border-stone-200/80 bg-white/90 p-6 shadow-xl shadow-stone-200/30 backdrop-blur-xl">
+          <div className="mb-6 flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-stone-900">Objects</h3>
+            <span className="rounded-lg bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">{shapes.length} total</span>
           </div>
 
           <div className="space-y-3">
             {shapes.length === 0 && (
-              <p className="text-sm text-stone-500 leading-relaxed">
-                Box: drag on the image (N). Polygon: choose point count, then click each
-                corner (P). <code className="text-orange-600">Esc</code> cancels polygon in
-                progress. Save syncs annotations to the API per image.
+              <p className="text-sm leading-relaxed text-stone-500">
+                Box: drag on the image (N). Polygon or polyline: choose point count, then click each corner. Points and tags are single-click tools. Save syncs annotations to the API per image.
               </p>
             )}
-            {shapes.map((s) => {
-              const name = labels.find((x) => x.id === s.classLabelId)?.name ?? "?";
-              const col = labels.find((x) => x.id === s.classLabelId)?.color ?? "#999";
+            {shapes.map((shape) => {
+              const name = labels.find((item) => item.id === shape.classLabelId)?.name ?? "?";
+              const color = labels.find((item) => item.id === shape.classLabelId)?.color ?? "#999";
               return (
-                <div
-                  key={s.clientId}
-                  className="group space-y-2 rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4 transition-all hover:border-orange-200 hover:bg-white"
-                >
-                  <div className="flex cursor-pointer items-center justify-between" onClick={() => setActiveClassId(s.classLabelId)}>
+                <div key={shape.clientId} className="group space-y-2 rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4 transition-all hover:border-orange-200 hover:bg-white">
+                  <div className="flex cursor-pointer items-center justify-between" onClick={() => setActiveClassId(shape.classLabelId)}>
                     <div className="flex items-center gap-3">
-                      <div
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: col }}
-                      />
+                      <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                       <span className="text-xs font-bold text-stone-900">{name}</span>
                     </div>
-                    <span className="font-mono text-[10px] text-stone-400">
-                      {s.points && s.points.length >= 6
-                        ? `${s.points.length / 2} pts`
-                        : `${Math.round(s.width)}×${Math.round(s.height)}`}
-                    </span>
+                    <span className="font-mono text-[10px] text-stone-400">{objectSummary(shape)}</span>
                   </div>
                   <label className="block text-[9px] font-bold uppercase tracking-wider text-stone-500">
                     Class
                     <select
                       className="mt-1 w-full cursor-pointer rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs font-semibold text-stone-800 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
-                      value={s.classLabelId}
+                      value={shape.classLabelId}
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => {
                         const nextClass = Number(e.target.value);
                         setShapes((prev) =>
-                          prev.map((sh) =>
-                            sh.clientId === s.clientId ? { ...sh, classLabelId: nextClass } : sh
-                          )
+                          prev.map((item) => (item.clientId === shape.clientId ? { ...item, classLabelId: nextClass } : item))
                         );
                         setActiveClassId(nextClass);
                       }}
                     >
-                      {labels.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.name}
+                      {labels.map((label) => (
+                        <option key={label.id} value={label.id}>
+                          {label.name}
                         </option>
                       ))}
                     </select>
@@ -698,73 +671,61 @@ export default function AnnotatePageClient() {
         </aside>
       </main>
 
-      {/* ───── Bottom navigation pane ───── */}
-      <div className="z-30 shrink-0 flex items-center gap-3 px-4 py-2 bg-white/95 backdrop-blur-xl border-t border-stone-200/80 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] select-none">
-        {/* Player buttons */}
+      <div className="z-30 flex shrink-0 select-none items-center gap-3 border-t border-stone-200/80 bg-white/95 px-4 py-2 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl">
         <div className="flex items-center gap-0.5">
-          {(
-            [
-              { icon: <ChevronFirst className="w-3.5 h-3.5" />, label: "First", action: () => navigateTo(1) },
-              { icon: <ChevronsLeft className="w-3.5 h-3.5" />, label: "Back 10", action: () => navigateTo(current - 10) },
-              { icon: <ChevronLeft className="w-3.5 h-3.5" />, label: "Prev", action: () => navigateTo(current - 1) },
-              { icon: <Play className="w-3 h-3" />, label: "Play", action: () => {} },
-              { icon: <ChevronRight className="w-3.5 h-3.5" />, label: "Next", action: () => navigateTo(current + 1) },
-              { icon: <ChevronsRight className="w-3.5 h-3.5" />, label: "Forward 10", action: () => navigateTo(current + 10) },
-              { icon: <ChevronLast className="w-3.5 h-3.5" />, label: "Last", action: () => navigateTo(total || 1) },
-            ] as { icon: React.ReactNode; label: string; action: () => void }[]
-          ).map(({ icon, label, action }) => (
-            <button
-              key={label}
-              type="button"
-              title={label}
-              onClick={action}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200"
-            >
+          {[
+            { icon: <ChevronFirst className="h-3.5 w-3.5" />, label: "First", action: () => navigateTo(1) },
+            { icon: <ChevronsLeft className="h-3.5 w-3.5" />, label: "Back 10", action: () => navigateTo(current - 10, { wrap: true }) },
+            { icon: <ChevronLeft className="h-3.5 w-3.5" />, label: "Prev", action: () => navigateTo(current - 1, { wrap: true }) },
+            { icon: <Play className="h-3 w-3" />, label: "Play", action: () => {} },
+            { icon: <ChevronRight className="h-3.5 w-3.5" />, label: "Next", action: () => navigateTo(current + 1, { wrap: true }) },
+            { icon: <ChevronsRight className="h-3.5 w-3.5" />, label: "Forward 10", action: () => navigateTo(current + 10, { wrap: true }) },
+            { icon: <ChevronLast className="h-3.5 w-3.5" />, label: "Last", action: () => navigateTo(total || 1) },
+          ].map(({ icon, label, action }) => (
+            <button key={label} type="button" title={label} onClick={action} className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200">
               {icon}
             </button>
           ))}
         </div>
 
-        {/* Slider */}
-        <div className="relative flex-1 flex items-center min-w-0">
+        <div className="relative flex min-w-0 flex-1 items-center">
           <input
             type="range"
             min={1}
             max={Math.max(1, total)}
-            value={current}
-            onChange={(e) => navigateTo(Number(e.target.value))}
-            className="w-full h-1.5 appearance-none rounded-full bg-stone-200 accent-orange-500 cursor-pointer"
+            value={sliderValue}
+            onPointerDown={() => setIsScrubbing(true)}
+            onChange={(e) => setSliderValue(Number(e.target.value))}
+            onPointerUp={commitSlider}
+            onBlur={commitSlider}
+            onKeyUp={(e) => {
+              if (
+                e.key.startsWith("Arrow") ||
+                e.key === "Home" ||
+                e.key === "End" ||
+                e.key === "PageUp" ||
+                e.key === "PageDown"
+              ) {
+                commitSlider();
+              }
+            }}
+            className="h-1.5 w-full cursor-pointer touch-none appearance-none rounded-full bg-stone-200 accent-orange-500"
           />
         </div>
 
-        {/* Filename + icons */}
-        <div className="flex items-center gap-2 min-w-0 max-w-[14rem]">
-          <span
-            className="truncate text-[11px] font-semibold text-stone-600"
-            title={currentFilename}
-          >
-            {currentFilename || (isNativeMode ? `Frame ${frameIndex}` : `Media ${params.imageId}`)}
+        <div className="flex min-w-0 max-w-[14rem] items-center gap-2">
+          <span className="truncate text-[11px] font-semibold text-stone-600" title={currentFilename}>
+            {currentFilename || (isNativeMode ? `Frame ${frameIndex + 1}` : `Media ${params.imageId}`)}
           </span>
-          <button
-            type="button"
-            title="Copy link"
-            onClick={() => navigator.clipboard?.writeText(window.location.href)}
-            className="shrink-0 text-stone-400 hover:text-stone-700 transition"
-          >
-            <Link2 className="w-3.5 h-3.5" />
+          <button type="button" title="Copy link" onClick={() => navigator.clipboard?.writeText(window.location.href)} className="shrink-0 text-stone-400 transition hover:text-stone-700">
+            <Link2 className="h-3.5 w-3.5" />
           </button>
-          <button
-            type="button"
-            title="Delete annotation"
-            onClick={() => { pastRef.current.push(shapes); futureRef.current = []; _setShapes([]); }}
-            className="shrink-0 text-stone-400 hover:text-red-500 transition"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
+          <button type="button" title="Delete annotation" onClick={() => setShapes([])} className="shrink-0 text-stone-400 transition hover:text-red-500">
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        {/* Frame number input */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex shrink-0 items-center gap-1">
           <input
             type="number"
             min={1}
@@ -772,12 +733,12 @@ export default function AnnotatePageClient() {
             value={frameInput}
             onChange={(e) => setFrameInput(e.target.value)}
             onBlur={handleFrameInputCommit}
-            onKeyDown={(e) => { if (e.key === "Enter") handleFrameInputCommit(); }}
-            className="w-14 rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-center text-[11px] font-bold text-stone-800 tabular-nums outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleFrameInputCommit();
+            }}
+            className="w-14 rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-center text-[11px] font-bold tabular-nums text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
           />
-          {total > 0 && (
-            <span className="text-[10px] font-semibold text-stone-400">/ {total}</span>
-          )}
+          {total > 0 && <span className="text-[10px] font-semibold text-stone-400">/ {total}</span>}
         </div>
       </div>
     </div>
