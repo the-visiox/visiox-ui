@@ -21,6 +21,7 @@ interface AnnotationEditorProps {
   imageUrl: string;
   labels: LabelDefinition[];
   activeClassId: number;
+  onActiveClassIdChange: (classId: number) => void;
   shapes: EditorShape[];
   onShapesChange: React.Dispatch<React.SetStateAction<EditorShape[]>>;
   activeTool: Tool;
@@ -64,6 +65,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   imageUrl,
   labels,
   activeClassId,
+  onActiveClassIdChange,
   shapes,
   onShapesChange,
   activeTool,
@@ -85,9 +87,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [zoomMul, setZoomMul] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isMiddlePan, setIsMiddlePan] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ shapeId: string; x: number; y: number } | null>(null);
   const panOffsetRef = useRef(panOffset);
   const panOriginRef = useRef<{ cx: number; cy: number; ox: number; oy: number } | null>(null);
   const transformStartRef = useRef<{ id: string; x: number; y: number; width: number; height: number } | null>(null);
+  const MENU_WIDTH = 192;
+  const MENU_HEIGHT = 220;
+  const MENU_GAP = 8;
 
   const imageW = image?.width ?? 0;
   const imageH = image?.height ?? 0;
@@ -159,6 +165,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }, [isMiddlePan]);
 
   const labelMetaMap = useMemo(() => buildLabelMetaMap(labels), [labels]);
+  const labelShortcutMap = useMemo(
+    () => labels.map((label, index) => ({ ...label, shortcut: index + 1 })),
+    [labels]
+  );
   const getShapeColor = useCallback((classLabelId: number) => colorFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
   const getShapeLabel = useCallback((classLabelId: number) => labelNameFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
 
@@ -168,6 +178,18 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     [shapes, transformTargetId]
   );
   const transformerColor = transformTargetShape ? getShapeColor(transformTargetShape.classLabelId) : "#ea580c";
+
+  const applyShapeClass = useCallback(
+    (clientId: string, classId: number) => {
+      onShapesChange((prev) =>
+        prev.map((shape) => (shape.clientId === clientId ? { ...shape, classLabelId: classId } : shape))
+      );
+      setSelectedId(clientId);
+      onActiveClassIdChange(classId);
+      setContextMenu(null);
+    },
+    [onActiveClassIdChange, onShapesChange]
+  );
 
   useEffect(() => {
     if (!trRef.current || !layerRef.current) return;
@@ -189,9 +211,37 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     trRef.current.getLayer()?.batchDraw();
   }, [transformTargetId, transformTargetShape]);
 
+  const deleteSelectedShape = useCallback(() => {
+    if (!selectedId) return;
+    onShapesChange((prev) => prev.filter((shape) => shape.clientId !== selectedId));
+    setSelectedId(null);
+  }, [onShapesChange, selectedId]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      if (contextMenu) {
+        const shortcut = parseInt(e.key, 10);
+        if (Number.isFinite(shortcut)) {
+          const nextLabel = labelShortcutMap.find((label) => label.shortcut === shortcut);
+          if (nextLabel) {
+            e.preventDefault();
+            applyShapeClass(contextMenu.shapeId, nextLabel.id);
+            return;
+          }
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setContextMenu(null);
+          return;
+        }
+      }
       if (e.key === "Escape" && pathDraft.length > 0) {
         e.preventDefault();
         setPathDraft([]);
@@ -206,24 +256,40 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       if (k === "k") onToolChange("points");
       if (k === "c") onToolChange("cuboid");
       if (k === "t") onToolChange("tag");
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+      if ((e.key === "Delete" || e.key === "Backspace" || k === "d") && selectedId) {
         e.preventDefault();
-        onShapesChange((prev) => prev.filter((shape) => shape.clientId !== selectedId));
-        setSelectedId(null);
+        deleteSelectedShape();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, onShapesChange, onToolChange, pathDraft.length]);
+  }, [applyShapeClass, contextMenu, deleteSelectedShape, labelShortcutMap, onToolChange, pathDraft.length, selectedId]);
 
   const checkDeselect = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    if (isCanvasBackground(e)) setSelectedId(null);
+    if (isCanvasBackground(e)) {
+      setSelectedId(null);
+      setContextMenu(null);
+    }
   }, []);
 
   const selectShape = useCallback((clientId: string, e: KonvaEventObject<MouseEvent | TouchEvent>) => {
     e.cancelBubble = true;
     setSelectedId(clientId);
   }, []);
+
+  const openShapeContextMenu = useCallback(
+    (clientId: string, e: KonvaEventObject<PointerEvent>) => {
+      e.evt.preventDefault();
+      e.cancelBubble = true;
+      setSelectedId(clientId);
+      setContextMenu({
+        shapeId: clientId,
+        x: e.evt.clientX,
+        y: e.evt.clientY,
+      });
+    },
+    []
+  );
 
   const clampRectToImage = useCallback(
     (x: number, y: number, width: number, height: number) => {
@@ -429,6 +495,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         setIsMiddlePan(true);
       }}
       className={`relative h-full min-h-0 w-full overflow-hidden rounded-[2rem] bg-stone-100 shadow-xl shadow-stone-200/50 ${cursorClass}`}
+      onContextMenu={(e) => {
+        if (!contextMenu) return;
+        e.preventDefault();
+      }}
     >
       <div className="absolute right-3 top-3 z-[120] flex flex-col gap-1 rounded-2xl border border-stone-200/90 bg-white/95 p-1 shadow-lg shadow-stone-300/40 backdrop-blur-sm">
         <button type="button" title="Fit to window" onClick={fitToWindow} className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
@@ -488,6 +558,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     draggable={shapeDragEnabled}
                     onMouseDown={(e) => selectShape(shape.clientId, e)}
                     onTap={(e) => selectShape(shape.clientId, e)}
+                    onContextMenu={(e) => openShapeContextMenu(shape.clientId, e)}
                     onMouseEnter={(e) => {
                       const p = e.target.getStage()?.getPointerPosition();
                       setHoveredId(shape.clientId);
@@ -551,6 +622,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       draggable={shapeDragEnabled}
                       onMouseDown={(e) => selectShape(shape.clientId, e)}
                       onTap={(e) => selectShape(shape.clientId, e)}
+                      onContextMenu={(e) => openShapeContextMenu(shape.clientId, e)}
                       onMouseEnter={(e) => {
                         const p = e.target.getStage()?.getPointerPosition();
                         setHoveredId(shape.clientId);
@@ -603,6 +675,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                           e.cancelBubble = true;
                           setSelectedId(shape.clientId);
                         }}
+                        onContextMenu={(e) => openShapeContextMenu(shape.clientId, e)}
                         onTap={(e) => {
                           e.cancelBubble = true;
                           setSelectedId(shape.clientId);
@@ -636,6 +709,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                   draggable={shapeDragEnabled}
                   onMouseDown={(e) => selectShape(shape.clientId, e)}
                   onTap={(e) => selectShape(shape.clientId, e)}
+                  onContextMenu={(e) => openShapeContextMenu(shape.clientId, e)}
                   onMouseEnter={(e) => {
                     const p = e.target.getStage()?.getPointerPosition();
                     setHoveredId(shape.clientId);
@@ -789,6 +863,45 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         </div>
       )}
 
+      {contextMenu && (
+        <div
+          className="absolute z-[140] min-w-[12rem] rounded-2xl border border-stone-200/90 bg-white/95 p-2 shadow-2xl shadow-stone-300/40 backdrop-blur-md"
+          style={{
+            left: Math.max(
+              12,
+              Math.min(contextMenu.x + MENU_GAP, Math.max(12, dimensions.width - MENU_WIDTH - 12))
+            ),
+            top: Math.max(
+              12,
+              Math.min(contextMenu.y + MENU_GAP, Math.max(12, dimensions.height - MENU_HEIGHT - 12))
+            ),
+          }}
+        >
+          <div className="px-2 pb-2 text-[10px] font-bold uppercase tracking-widest text-stone-500">
+            Class Number
+          </div>
+          <div className="space-y-1">
+            {labelShortcutMap.map((label) => (
+              <button
+                key={label.id}
+                type="button"
+                onClick={() => applyShapeClass(contextMenu.shapeId, label.id)}
+                className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs font-semibold text-stone-700 transition hover:bg-stone-100"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-stone-100 text-[10px] font-bold text-stone-700">
+                  {label.shortcut}
+                </span>
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
+                <span className="truncate">{label.name}</span>
+              </button>
+            ))}
+          </div>
+          <div className="px-2 pt-2 text-[10px] font-semibold text-stone-400">
+            Press number key or click a class
+          </div>
+        </div>
+      )}
+
       <div className="pointer-events-none absolute bottom-6 left-1/2 max-w-[90%] -translate-x-1/2 rounded-full border border-stone-200/80 bg-white/90 px-5 py-2.5 text-center text-[10px] font-bold uppercase tracking-widest text-stone-600 shadow-lg shadow-stone-200/40 backdrop-blur-md">
         {(() => {
           let primary: React.ReactNode = null;
@@ -810,7 +923,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
           const shortcuts = (
             <span className="mt-1 block border-t border-stone-200/80 pt-2 text-[9px] font-semibold normal-case text-stone-500">
-              Wheel: zoom - Middle-drag: pan - Fit: corner buttons - Click shape: select and edit
+              Wheel: zoom - Middle-drag: pan - D: delete selected - Right-click shape: relabel by class number
             </span>
           );
           if (!primary) return shortcuts;

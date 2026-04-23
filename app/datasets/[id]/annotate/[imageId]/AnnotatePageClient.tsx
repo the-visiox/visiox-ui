@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -137,6 +137,8 @@ export default function AnnotatePageClient() {
   const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
   const isLoadingRef = useRef(false);
+  const previousDraftKeyRef = useRef<string | null>(null);
+  const draftCacheRef = useRef<Record<string, EditorShape[]>>({});
   shapesRef.current = shapes;
 
   const currentDraftKey = useMemo(
@@ -151,18 +153,57 @@ export default function AnnotatePageClient() {
     _setShapes(sessionRef.current.update(action));
   };
 
+  const persistDraft = useCallback((draftKey: string, draftShapes: EditorShape[]) => {
+    draftCacheRef.current[draftKey] = draftShapes;
+    if (typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(draftKey, JSON.stringify(draftShapes));
+    } catch {
+      // ignore draft persistence failures
+    }
+  }, []);
+
+  const readDraft = useCallback(
+    (draftKey: string): { exists: boolean; shapes: EditorShape[] } => {
+      const cached = draftCacheRef.current[draftKey];
+      if (cached) {
+        return { exists: true, shapes: cached };
+      }
+      if (typeof window === "undefined") {
+        return { exists: false, shapes: [] };
+      }
+      try {
+        const rawDraft = sessionStorage.getItem(draftKey);
+        if (rawDraft === null) return { exists: false, shapes: [] };
+        const parsed = JSON.parse(rawDraft) as EditorShape[];
+        draftCacheRef.current[draftKey] = parsed;
+        return { exists: true, shapes: parsed };
+      } catch {
+        return { exists: false, shapes: [] };
+      }
+    },
+    []
+  );
+
+  useLayoutEffect(() => {
+    const previousDraftKey = previousDraftKeyRef.current;
+    if (previousDraftKey && previousDraftKey !== currentDraftKey) {
+      persistDraft(previousDraftKey, shapesRef.current);
+    }
+    previousDraftKeyRef.current = currentDraftKey;
+    isLoadingRef.current = true;
+    setLoading(true);
+    _setShapes(sessionRef.current.hydrate([]));
+  }, [currentDraftKey, persistDraft]);
+
   useEffect(() => {
     setAccessToken(getAccessToken());
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || isLoadingRef.current) return;
-    try {
-      sessionStorage.setItem(currentDraftKey, JSON.stringify(shapes));
-    } catch {
-      // ignore draft persistence failures
-    }
-  }, [currentDraftKey, shapes]);
+    persistDraft(currentDraftKey, shapes);
+  }, [currentDraftKey, persistDraft, shapes]);
 
   const undo = () => {
     const previous = sessionRef.current.undo();
@@ -182,16 +223,13 @@ export default function AnnotatePageClient() {
       if (typeof window !== "undefined" && shapesRef.current.length > 0) {
         try {
           const prevKey = sessionStorage.getItem("visiox-annotate-draft:active-key");
-          if (prevKey) sessionStorage.setItem(prevKey, JSON.stringify(shapesRef.current));
+          if (prevKey) persistDraft(prevKey, shapesRef.current);
         } catch {
           // ignore
         }
       }
 
-      isLoadingRef.current = true;
-      setLoading(true);
       setError(null);
-      _setShapes(sessionRef.current.hydrate([]));
 
       try {
         sessionStorage.setItem("visiox-annotate-draft:active-key", currentDraftKey);
@@ -295,15 +333,11 @@ export default function AnnotatePageClient() {
         }
 
         const apiShapes = apiShapesToEditor(annotations);
-        if (apiShapes.length > 0) {
+        const draft = readDraft(currentDraftKey);
+        if (draft.exists) {
+          _setShapes(sessionRef.current.hydrate(draft.shapes));
+        } else if (apiShapes.length > 0) {
           _setShapes(sessionRef.current.hydrate(apiShapes));
-        } else if (typeof window !== "undefined") {
-          try {
-            const rawDraft = sessionStorage.getItem(currentDraftKey);
-            _setShapes(sessionRef.current.hydrate(rawDraft ? (JSON.parse(rawDraft) as EditorShape[]) : []));
-          } catch {
-            _setShapes(sessionRef.current.hydrate([]));
-          }
         } else {
           _setShapes(sessionRef.current.hydrate([]));
         }
@@ -330,24 +364,7 @@ export default function AnnotatePageClient() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, mediaId, rawImageId]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (!e.ctrlKey && !e.metaKey) return;
-      const key = e.key.toLowerCase();
-      if (key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      } else if (key === "y" || (key === "z" && e.shiftKey)) {
-        e.preventDefault();
-        redo();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [authReady, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, mediaId, persistDraft, rawImageId, readDraft]);
 
   useEffect(() => {
     if (loading || typeof window === "undefined" || !imageUrl) return;
@@ -401,6 +418,10 @@ export default function AnnotatePageClient() {
 
   const total = mediaTotal ?? 0;
   const current = isNativeMode ? frameIndex + 1 : mediaIndex ?? 1;
+  const numberedLabels = useMemo(
+    () => labels.map((label, index) => ({ ...label, shortcut: index + 1 })),
+    [labels]
+  );
   const isLoggedIn = !!accessToken;
   const canSaveToApi =
     isLoggedIn &&
@@ -422,6 +443,7 @@ export default function AnnotatePageClient() {
       setPendingIndex(nextIndex);
       setSliderValue(nextIndex);
       setFrameInput(String(nextIndex));
+      persistDraft(currentDraftKey, shapesRef.current);
       setLoading(true);
       if (isNativeMode) {
         const clamped = Math.max(0, nextIndex - 1);
@@ -432,7 +454,7 @@ export default function AnnotatePageClient() {
       if (!target) return;
       router.push(`/datasets/${params.id}/annotate/${target.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
     },
-    [isNativeMode, mediaList, params.id, router, total, jobIdParam]
+    [currentDraftKey, isNativeMode, mediaList, params.id, persistDraft, router, total, jobIdParam]
   );
 
   const handleFrameInputCommit = () => {
@@ -448,7 +470,7 @@ export default function AnnotatePageClient() {
     }
   }, [current, navigateTo, sliderValue]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     const tokenNow = getAccessToken();
     if (!tokenNow) {
       setError("Login required to save. In demo mode annotations are kept in-memory only.");
@@ -482,14 +504,53 @@ export default function AnnotatePageClient() {
       }
 
       if (typeof window !== "undefined") {
-        sessionStorage.setItem(currentDraftKey, JSON.stringify(shapes));
+        persistDraft(currentDraftKey, shapes);
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.body || e.message : "Save failed.");
     } finally {
       setSaving(false);
     }
-  };
+  }, [canSaveToApi, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, labels, mediaId, persistDraft, shapes]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (e.ctrlKey || e.metaKey) {
+        if (key === "z" && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+          return;
+        }
+        if (key === "y" || (key === "z" && e.shiftKey)) {
+          e.preventDefault();
+          redo();
+          return;
+        }
+        if (key === "s") {
+          e.preventDefault();
+          void handleSave();
+        }
+        return;
+      }
+      if (key === "arrowleft") {
+        e.preventDefault();
+        navigateTo(current - 1, { wrap: true });
+      } else if (key === "arrowright") {
+        e.preventDefault();
+        navigateTo(current + 1, { wrap: true });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [current, navigateTo, handleSave]);
 
   return (
     <div className="relative flex min-h-screen flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
@@ -606,9 +667,11 @@ export default function AnnotatePageClient() {
           ) : (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="h-full w-full min-h-0">
               <AnnotationEditor
+                key={currentDraftKey}
                 imageUrl={imageUrl}
                 labels={labels}
                 activeClassId={activeClassId}
+                onActiveClassIdChange={setActiveClassId}
                 shapes={shapes}
                 onShapesChange={setShapes}
                 activeTool={activeTool}
@@ -624,6 +687,23 @@ export default function AnnotatePageClient() {
             <h3 className="text-xs font-bold uppercase tracking-widest text-stone-900">Objects</h3>
             <span className="rounded-lg bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">{shapes.length} total</span>
           </div>
+
+          {numberedLabels.length > 0 && (
+            <div className="mb-5 rounded-2xl border border-stone-200/80 bg-stone-50/80 p-3">
+              <div className="mb-2 text-[9px] font-bold uppercase tracking-widest text-stone-500">Class Keys</div>
+              <div className="space-y-1.5">
+                {numberedLabels.map((label) => (
+                  <div key={label.id} className="flex items-center gap-2 text-[11px] font-semibold text-stone-700">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-white text-[10px] font-bold text-stone-700 shadow-sm">
+                      {label.shortcut}
+                    </span>
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
+                    <span className="truncate">{label.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-3">
             {shapes.length === 0 && (
@@ -657,9 +737,9 @@ export default function AnnotatePageClient() {
                         setActiveClassId(nextClass);
                       }}
                     >
-                      {labels.map((label) => (
+                      {numberedLabels.map((label) => (
                         <option key={label.id} value={label.id}>
-                          {label.name}
+                          {label.shortcut}. {label.name}
                         </option>
                       ))}
                     </select>
