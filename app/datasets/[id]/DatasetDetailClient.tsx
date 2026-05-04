@@ -17,6 +17,7 @@ import {
   datasets,
   type DatasetStats,
   type BrowserData,
+  type Media,
 } from '@/lib/api';
 
 const CVAT_URL = process.env.NEXT_PUBLIC_CVAT_URL || 'http://localhost:8080';
@@ -30,6 +31,50 @@ function inferUploadMediaType(file: File): 'image' | 'video' {
   const lower = file.name.toLowerCase();
   if (/\.(mp4|webm|mov|mkv|avi|m4v)$/.test(lower)) return 'video';
   return 'image';
+}
+
+function mediaDisplayName(media: Media): string {
+  return media.original_filename || media.file_url?.split('/').pop() || media.file?.split('/').pop() || `media-${media.id}`;
+}
+
+function mediaFallbackFrames(media: Media[]): BrowserData['frames'] {
+  return media
+    .filter((item) => item.type === 'image')
+    .map((item, index) => ({
+      frame: index,
+      media_id: item.id,
+      image_url: item.file_url,
+      name: mediaDisplayName(item),
+      width: item.width ?? 0,
+      height: item.height ?? 0,
+      annotations: [],
+    }));
+}
+
+function buildMediaFallbackBrowserData(media: Media[], datasetId: number): BrowserData {
+  const frames = mediaFallbackFrames(media);
+  return {
+    dataset_id: datasetId,
+    dataset_name: `Dataset #${datasetId}`,
+    version: 1,
+    task_id: 0,
+    frame_count: frames.length,
+    labels: [],
+    frames,
+    annotation_count: 0,
+  };
+}
+
+function buildBrowserDataWithMediaFallback(browser: BrowserData, media: Media[], datasetId: number): BrowserData {
+  if (browser.frames.length > 0 || !media.some((item) => item.type === 'image')) return browser;
+  return {
+    ...buildMediaFallbackBrowserData(media, datasetId),
+    dataset_name: browser.dataset_name,
+    version: browser.version,
+    task_id: browser.task_id,
+    labels: browser.labels,
+    annotation_count: browser.annotation_count,
+  };
 }
 
 function StatCard({ icon: Icon, label, value, sub, color = 'orange', delay = 0 }: {
@@ -109,12 +154,19 @@ export default function DatasetDetailClient({ id }: Props) {
   const imageBrowserPanelRef = useRef<HTMLDivElement>(null);
 
   const refreshStatsAndBrowser = useCallback(async () => {
-    const [statsResult, browserResult] = await Promise.allSettled([
+    const [statsResult, browserResult, mediaResult] = await Promise.allSettled([
       datasets.stats(numericId),
       datasets.browser(numericId),
+      datasets.media(numericId),
     ]);
     if (statsResult.status === 'fulfilled') setStats(statsResult.value);
-    if (browserResult.status === 'fulfilled') setBrowserData(browserResult.value);
+    if (browserResult.status === 'fulfilled') {
+      const browser = browserResult.value;
+      const media = mediaResult.status === 'fulfilled' ? mediaResult.value : [];
+      setBrowserData(buildBrowserDataWithMediaFallback(browser, media, numericId));
+    } else if (mediaResult.status === 'fulfilled' && mediaResult.value.some((item) => item.type === 'image')) {
+      setBrowserData(buildMediaFallbackBrowserData(mediaResult.value, numericId));
+    }
     if (statsResult.status === 'rejected' && browserResult.status === 'rejected') {
       setError('Failed to load dataset data');
     }
@@ -171,10 +223,14 @@ export default function DatasetDetailClient({ id }: Props) {
     if (!browserData?.frames.length) return;
     const warmFrames = browserData.frames.slice(0, Math.min(browserData.frames.length, 12));
     warmFrames.forEach((frame) => {
-      router.prefetch(`/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`);
+      const href =
+        frame.image_url && typeof frame.media_id === 'number'
+          ? `/datasets/${id}/annotate/${frame.media_id}?mode=simple`
+          : `/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`;
+      router.prefetch(href);
       const img = new Image();
       img.decoding = 'async';
-      img.src = datasets.frameUrl(numericId, frame.frame);
+      img.src = frame.image_url || datasets.frameUrl(numericId, frame.frame);
     });
   }, [browserData, id, numericId, router]);
 
@@ -262,7 +318,7 @@ export default function DatasetDetailClient({ id }: Props) {
   };
 
   const cvat = stats?.cvat;
-  const totalImages = cvat?.size ?? browserData?.frame_count ?? 0;
+  const totalImages = Math.max(cvat?.size ?? 0, browserData?.frame_count ?? 0);
   const totalAnnotations = cvat?.annotations?.total ?? browserData?.annotation_count ?? 0;
   const labels = browserData?.labels ?? [];
   const name = stats?.name ?? browserData?.dataset_name ?? `Dataset #${id}`;
@@ -625,6 +681,11 @@ export default function DatasetDetailClient({ id }: Props) {
                 const frameIndex = pageOffset + localIndex;
                 const isSelected =
                   typeof frame.media_id === 'number' && selectedMediaIds.includes(frame.media_id);
+                const annotateHref =
+                  frame.image_url && typeof frame.media_id === 'number'
+                    ? `/datasets/${id}/annotate/${frame.media_id}?mode=simple`
+                    : `/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`;
+                const imageSrc = frame.image_url || datasets.frameUrl(numericId, frame.frame);
                 return (
                   <div
                     key={frame.frame}
@@ -689,14 +750,14 @@ export default function DatasetDetailClient({ id }: Props) {
                       </div>
                     )}
                     <Link
-                      href={`/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`}
+                      href={annotateHref}
                       className="block outline-none ring-inset focus-visible:ring-2 focus-visible:ring-orange-400/50 rounded-2xl"
                       title={`Open annotation for ${frame.name}`}
                     >
                       <div className="aspect-[4/3] overflow-hidden bg-gradient-to-br from-stone-100 to-stone-200/80">
                         {/* eslint-disable-next-line @next/next/no-img-element -- JWT-backed frame URLs */}
                         <img
-                          src={datasets.frameUrl(numericId, frame.frame)}
+                          src={imageSrc}
                           alt={frame.name}
                           loading="lazy"
                           className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover/card:scale-[1.03]"

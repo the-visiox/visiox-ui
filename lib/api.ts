@@ -431,6 +431,8 @@ export interface BrowserFrame {
   frame: number;
   /** Present when backend can map this frame to a VisioX Media row (standalone or aligned uploads). */
   media_id?: number;
+  /** Direct media URL used when CVAT has no frame data but VisioX media rows exist. */
+  image_url?: string | null;
   name: string;
   width: number;
   height: number;
