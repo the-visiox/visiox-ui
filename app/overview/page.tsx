@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import {
   Plus,
-  Search,
   Filter,
   MoreHorizontal,
   ArrowUpRight,
@@ -98,14 +97,6 @@ export default function OverviewPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search projects..."
-                className="pl-10 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all w-64"
-              />
-            </div>
             <Link href="/projects/new">
               <button className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all">
                 <Plus className="w-4 h-4" />

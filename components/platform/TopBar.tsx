@@ -8,6 +8,7 @@ import Link from "next/link";
 function crumb(pathname: string): string {
   const seg = pathname.split("/").filter(Boolean);
   const last = seg[seg.length - 1] ?? "overview";
+  if (last === "overview") return "Home";
   return last.charAt(0).toUpperCase() + last.slice(1).replace(/-/g, " ");
 }
 
@@ -32,7 +33,7 @@ export default function TopBar() {
         <input
           type="text"
           placeholder="Search anything…"
-          className="pl-9 pr-4 py-1.5 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all w-52"
+          className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all w-52"
         />
       </div>
 

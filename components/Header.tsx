@@ -10,7 +10,7 @@ import { Menu, X } from "lucide-react";
 export default function Header() {
     const { isLoggedIn } = useAuth();
     const productLinks = [
-        { name: "DataHub", href: "/products/datahub" },
+        { name: "Data Hub", href: "/products/datahub" },
         { name: "Annotation", href: "/products/annotation" },
         { name: "Model Train", href: "/products/model-train" },
         { name: "Workflows", href: "/products/workflows" },

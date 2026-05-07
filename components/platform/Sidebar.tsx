@@ -19,11 +19,11 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 
 const navItems = [
-  { name: "Overview",  icon: LayoutDashboard, href: "/overview" },
+  { name: "Home",      icon: LayoutDashboard, href: "/overview" },
   { name: "Projects",  icon: FolderKanban,    href: "/projects" },
   { name: "Datasets",  icon: Database,        href: "/datasets" },
-  { name: "Workflows", icon: Workflow,         href: "/workflows" },
   { name: "Train",     icon: Cpu,             href: "/train" },
+  { name: "Workflows", icon: Workflow,        href: "/workflows" },
   { name: "Deploy",    icon: Send,            href: "/deploy" },
 ];
 
