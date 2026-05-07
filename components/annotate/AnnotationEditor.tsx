@@ -53,6 +53,17 @@ function isCanvasBackground(e: KonvaEventObject<MouseEvent>): boolean {
   return t === t.getStage() || name === "background-image" || name === "stage-background";
 }
 
+function menuPositionFromPointer(evt: MouseEvent | PointerEvent, container: HTMLDivElement | null) {
+  if (!container) {
+    return { x: evt.clientX, y: evt.clientY };
+  }
+  const rect = container.getBoundingClientRect();
+  return {
+    x: evt.clientX - rect.left,
+    y: evt.clientY - rect.top,
+  };
+}
+
 const ANCHOR_PX = 16;
 const RECT_MIN_SIZE = 5;
 const ZOOM_MIN = 0.12;
@@ -226,16 +237,17 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       ) {
         return;
       }
-      if (contextMenu) {
-        const shortcut = parseInt(e.key, 10);
-        if (Number.isFinite(shortcut)) {
-          const nextLabel = labelShortcutMap.find((label) => label.shortcut === shortcut);
-          if (nextLabel) {
-            e.preventDefault();
-            applyShapeClass(contextMenu.shapeId, nextLabel.id);
-            return;
-          }
+      const targetShapeId = contextMenu?.shapeId ?? selectedId;
+      const shortcut = parseInt(e.key, 10);
+      if (targetShapeId && Number.isFinite(shortcut)) {
+        const nextLabel = labelShortcutMap.find((label) => label.shortcut === shortcut);
+        if (nextLabel) {
+          e.preventDefault();
+          applyShapeClass(targetShapeId, nextLabel.id);
+          return;
         }
+      }
+      if (contextMenu) {
         if (e.key === "Escape") {
           e.preventDefault();
           setContextMenu(null);
@@ -277,19 +289,17 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     setSelectedId(clientId);
   }, []);
 
-  const openShapeContextMenu = useCallback(
-    (clientId: string, e: KonvaEventObject<PointerEvent>) => {
-      e.evt.preventDefault();
-      e.cancelBubble = true;
-      setSelectedId(clientId);
-      setContextMenu({
-        shapeId: clientId,
-        x: e.evt.clientX,
-        y: e.evt.clientY,
-      });
-    },
-    []
-  );
+  const openShapeClassMenu = useCallback((clientId: string, e: KonvaEventObject<MouseEvent | PointerEvent>) => {
+    e.evt.preventDefault();
+    e.cancelBubble = true;
+    const pos = menuPositionFromPointer(e.evt, containerRef.current);
+    setSelectedId(clientId);
+    setContextMenu({
+      shapeId: clientId,
+      x: pos.x,
+      y: pos.y,
+    });
+  }, []);
 
   const clampRectToImage = useCallback(
     (x: number, y: number, width: number, height: number) => {
@@ -557,8 +567,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     strokeWidth={(isSelected ? 2 : 1) / safeLayerScale}
                     draggable={shapeDragEnabled}
                     onMouseDown={(e) => selectShape(shape.clientId, e)}
+                    onClick={(e) => openShapeClassMenu(shape.clientId, e)}
                     onTap={(e) => selectShape(shape.clientId, e)}
-                    onContextMenu={(e) => openShapeContextMenu(shape.clientId, e)}
+                    onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                     onMouseEnter={(e) => {
                       const p = e.target.getStage()?.getPointerPosition();
                       setHoveredId(shape.clientId);
@@ -621,8 +632,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       perfectDrawEnabled={false}
                       draggable={shapeDragEnabled}
                       onMouseDown={(e) => selectShape(shape.clientId, e)}
+                      onClick={(e) => openShapeClassMenu(shape.clientId, e)}
                       onTap={(e) => selectShape(shape.clientId, e)}
-                      onContextMenu={(e) => openShapeContextMenu(shape.clientId, e)}
+                      onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                       onMouseEnter={(e) => {
                         const p = e.target.getStage()?.getPointerPosition();
                         setHoveredId(shape.clientId);
@@ -675,7 +687,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                           e.cancelBubble = true;
                           setSelectedId(shape.clientId);
                         }}
-                        onContextMenu={(e) => openShapeContextMenu(shape.clientId, e)}
+                        onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                         onTap={(e) => {
                           e.cancelBubble = true;
                           setSelectedId(shape.clientId);
@@ -708,8 +720,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                   perfectDrawEnabled={false}
                   draggable={shapeDragEnabled}
                   onMouseDown={(e) => selectShape(shape.clientId, e)}
+                  onClick={(e) => openShapeClassMenu(shape.clientId, e)}
                   onTap={(e) => selectShape(shape.clientId, e)}
-                  onContextMenu={(e) => openShapeContextMenu(shape.clientId, e)}
+                  onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                   onMouseEnter={(e) => {
                     const p = e.target.getStage()?.getPointerPosition();
                     setHoveredId(shape.clientId);
@@ -923,7 +936,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
           const shortcuts = (
             <span className="mt-1 block border-t border-stone-200/80 pt-2 text-[9px] font-semibold normal-case text-stone-500">
-              Wheel: zoom - Middle-drag: pan - D: delete selected - Right-click shape: relabel by class number
+              Wheel: zoom - Middle-drag: pan - D: delete selected - Click shape, then press class number to relabel
             </span>
           );
           if (!primary) return shortcuts;
