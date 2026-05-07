@@ -41,7 +41,6 @@ flowchart LR
         ApiClient["lib/api.ts<br/>JWT fetch wrapper"]
         ModularApi["lib/api/*<br/>jobs, datasets, classes, labels"]
         AnnotationCore["lib/annotation<br/>runtime, geometry, labels, mappers"]
-        Mocks["lib/mocks<br/>demo fallback data"]
     end
 
     subgraph UIComponents[UI Components]
@@ -76,7 +75,6 @@ flowchart LR
     Annotate --> ModularApi
     ApiClient --> VisioXAPI
     ModularApi --> VisioXAPI
-    DataGrid --> Mocks
 ```
 
 ## 2. Data Flow Diagram
@@ -100,8 +98,6 @@ flowchart TD
 
     D1[(localStorage JWT and user)]
     D2[(React component state)]
-    D3[(Mock demo data)]
-
     User --> UI
     UI --> P1
     P1 --> API
@@ -115,7 +111,6 @@ flowchart TD
     UI --> P3
     P3 --> API
     P3 --> D2
-    D3 --> P3
 
     UI --> P4
     P4 -->|FormData and JSON requests| API

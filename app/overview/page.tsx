@@ -13,7 +13,6 @@ import {
   Shield,
   Clock,
   Camera,
-  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { projects, datasets, training, deployments, type Project } from "@/lib/api";
@@ -26,12 +25,6 @@ const TASK_TYPE_COLOR: Record<string, string> = {
   instance_segmentation: "bg-green-500",
   keypoint_detection: "bg-pink-500",
   video_annotation: "bg-red-500",
-};
-
-const STATUS_DOT: Record<string, string> = {
-  Active: "bg-green-500",
-  Training: "bg-orange-500 animate-pulse",
-  Draft: "bg-stone-300",
 };
 
 function SkeletonCard() {

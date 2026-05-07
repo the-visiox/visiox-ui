@@ -3,7 +3,7 @@
 import SolutionPageTemplate, { SolutionPageConfig } from "@/components/SolutionPageTemplate";
 import {
     Car, TrafficCone, Signal, Navigation,
-    Zap, Wind, Map, Clock
+    Zap, Wind, Map
 } from "lucide-react";
 
 const config: SolutionPageConfig = {

@@ -3,7 +3,7 @@
 import SolutionPageTemplate, { SolutionPageConfig } from "@/components/SolutionPageTemplate";
 import {
     Leaf, Sprout, CloudSun, Droplets,
-    TrendingUp, Target, Scan
+    TrendingUp, Target
 } from "lucide-react";
 
 const config: SolutionPageConfig = {

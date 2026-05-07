@@ -4,9 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import {
-  Play, Square, RotateCcw, Cpu, Activity, ChevronRight,
+  Play, Square, Activity, ChevronRight,
   Target, BarChart3, FlaskConical, Settings2, X, Loader2,
-  Plus, Clock, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import {
   training, datasets, projects,
@@ -22,14 +21,7 @@ const STATUS_COLOR: Record<TrainingJob['status'], string> = {
   cancelled: 'text-stone-400',
 };
 
-const STATUS_BG: Record<TrainingJob['status'], string> = {
-  pending: 'bg-stone-100',
-  queued: 'bg-blue-50',
-  running: 'bg-orange-50',
-  completed: 'bg-green-50',
-  failed: 'bg-red-50',
-  cancelled: 'bg-stone-100',
-};
+const EMPTY_LOSS_PLACEHOLDER = [12, 18, 24, 22, 30, 28, 35, 26, 20, 16, 14, 18, 22, 19, 25, 29, 24, 18, 15, 12];
 
 function SkeletonJob() {
   return (
@@ -333,8 +325,8 @@ export default function TrainPage() {
                       />
                     ))
                   ) : (
-                    Array.from({ length: 20 }).map((_, i) => (
-                      <div key={i} className="flex-1 min-w-[4px] bg-stone-800 rounded-t-sm" style={{ height: `${Math.random() * 20 + 5}%` }} />
+                    EMPTY_LOSS_PLACEHOLDER.map((height, i) => (
+                      <div key={i} className="flex-1 min-w-[4px] bg-stone-800 rounded-t-sm" style={{ height: `${height}%` }} />
                     ))
                   )}
                 </div>

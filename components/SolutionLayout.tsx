@@ -22,6 +22,18 @@ interface Application {
 
 type ColorTheme = "orange";
 
+interface ThemeStyle {
+    accent: string;
+    bgGradient: string;
+    blob: string;
+    textGradient: string;
+    button: string;
+    border: string;
+    iconBg: string;
+    iconText: string;
+    subText: string;
+}
+
 interface SolutionLayoutProps {
     colorTheme?: ColorTheme;
     hero: {
@@ -52,7 +64,7 @@ interface SolutionLayoutProps {
     };
 }
 
-const themeStyles: Record<ColorTheme, any> = {
+const themeStyles: Record<ColorTheme, ThemeStyle> = {
     orange: {
         accent: "orange",
         bgGradient: "from-orange-100/50",

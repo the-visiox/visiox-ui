@@ -66,7 +66,7 @@ export interface SolutionPageConfig {
 /* ───── Component ───── */
 export default function SolutionPageTemplate({ config }: { config: SolutionPageConfig }) {
     const {
-        accentColor, accentHex, bgTint, gradientFrom, gradientTo,
+        accentHex, bgTint,
         badge, badgeIcon, title, subtitle, heroImage,
         heroCTAPrimary, heroCTASecondary,
         stats,

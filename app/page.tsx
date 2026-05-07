@@ -511,7 +511,6 @@ export default function Home() {
                   if (typeof latest.x !== "string" || !containerRef.current) return;
 
                   const container = containerRef.current;
-                  const rect = container.getBoundingClientRect();
                   const centerLine = window.innerWidth / 2;
 
                   const children = container.children;

@@ -1,14 +1,26 @@
 "use client";
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Server, Layers, Settings, ArrowRight, Zap, Combine } from 'lucide-react';
+import { X, Server, Layers, Settings, Zap } from 'lucide-react';
+
+interface VersionConfig {
+  trainSplit: number;
+  valSplit: number;
+  testSplit: number;
+  preprocessing: {
+    autoOrient: boolean;
+    resize: boolean;
+    resizeWidth: number;
+    resizeHeight: number;
+  };
+}
 
 interface GenerateVersionSlideoverProps {
   isOpen: boolean;
   onClose: () => void;
   datasetId: string;
-  onGenerate: (name: string, config: any) => void;
+  onGenerate: (name: string, config: VersionConfig) => void;
 }
 
 export default function GenerateVersionSlideover({ isOpen, onClose, datasetId, onGenerate }: GenerateVersionSlideoverProps) {

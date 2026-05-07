@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
-import { motion, useMotionValue, useTransform } from "framer-motion";
+import { type ComponentPropsWithoutRef, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { 
   Camera, 
   Cpu, 
-  Database, 
   Play, 
   Plus, 
   Settings, 
@@ -33,13 +32,12 @@ const INITIAL_CONNECTIONS = [
 ];
 
 const NODE_WIDTH = 224; // w-56
-const NODE_HEIGHT = 160; 
 
 export default function WorkflowsPage() {
   const [nodes, setNodes] = useState(INITIAL_NODES);
-  const [connections, setConnections] = useState(INITIAL_CONNECTIONS);
   const [isSaving, setIsSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const connections = INITIAL_CONNECTIONS;
 
   const handleSave = () => {
     setIsSaving(true);
@@ -143,7 +141,7 @@ export default function WorkflowsPage() {
                 >
                   <animateMotion 
                     path={path} 
-                    dur={`${2 + Math.random()}s`}
+                    dur={`${2 + (idx % 3) * 0.5}s`}
                     repeatCount="indefinite" 
                   />
                 </motion.circle>
@@ -163,7 +161,7 @@ export default function WorkflowsPage() {
                 // Stabilized position update using absolute point relative to container
                 if (!containerRef.current) return;
                 const rect = containerRef.current.getBoundingClientRect();
-                const newX = info.point.x - rect.left - (info.offset.x / 2); // Still tricky, let's use delta but with better state handling
+                void rect;
                 // info.delta is safer for incremental updates in frame-motion if used carefully
                 updateNodePos(node.id, node.x + info.delta.x, node.y + info.delta.y);
               }}
@@ -262,7 +260,7 @@ export default function WorkflowsPage() {
   );
 }
 
-function ChevronRight(props: any) {
+function ChevronRight(props: ComponentPropsWithoutRef<"svg">) {
   return (
     <svg 
       {...props}

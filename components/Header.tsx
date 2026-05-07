@@ -2,10 +2,10 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import React, { useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { assetPath } from "@/lib/assets";
-import { Menu, X, ChevronDown } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 export default function Header() {
     const { isLoggedIn } = useAuth();
