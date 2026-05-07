@@ -22,3 +22,10 @@ This repo is the **Next.js** frontend for the VisioX computer vision platform. I
 ## Package manager
 
 Use **pnpm** for this project (`pnpm install`, `pnpm dev`, `pnpm build`).
+
+## Testing rule
+
+- After creating or changing functionality, the agent must run the most relevant verification before handing work back.
+- For UI and Next.js changes, prefer the smallest useful check first, usually `pnpm lint`, then add `pnpm build` when routing, typing, or app-level integration may be affected.
+- Do not claim a feature is done without reporting which verification command was run and whether it passed.
+- If a test or build cannot be run because of missing environment, time, or unrelated repo issues, the agent must say that clearly and explain the blocker.
