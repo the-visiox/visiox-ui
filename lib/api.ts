@@ -311,6 +311,13 @@ export const auth = {
     }, false);
   },
 
+  oauth(provider: 'google' | 'github', code: string, redirect_uri: string) {
+    return request<User>('/api/auth/oauth/', {
+      method: 'POST',
+      body: JSON.stringify({ provider, code, redirect_uri }),
+    }, false);
+  },
+
   logout(refresh_token: string) {
     return request<void>('/api/auth/logout/', {
       method: 'POST',

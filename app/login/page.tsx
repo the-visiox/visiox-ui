@@ -1,14 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { Fingerprint, ArrowRight, Loader2, ArrowLeft } from "lucide-react";
-import Badge from "@/components/Badge";
-import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { ArrowLeft, ArrowRight, Gift, Github, Loader2, Mail } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth";
+
+type LoginMode = "choices" | "email";
+type OAuthProvider = "google" | "github";
+
+function randomState() {
+  const values = new Uint8Array(16);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function getRedirectUri() {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+  return `${window.location.origin}${basePath}/auth/callback`;
+}
+
+function hasOAuthClientId(value: string | undefined) {
+  return Boolean(value && !value.startsWith("PASTE_"));
+}
 
 export default function LoginPage() {
+  const [mode, setMode] = useState<LoginMode>("choices");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,118 +40,182 @@ export default function LoginPage() {
     setError("");
 
     const res = await login(email, password);
+    setLoading(false);
+
     if (res.ok) {
-      setLoading(false);
-      router.push("/overview");
-    } else if (res.error) {
-      setError(res.error);
-      setLoading(false);
+      router.push("/home");
+      return;
     }
+
+    if (res.error) setError(res.error);
+  };
+
+  const handleSocialLogin = (provider: OAuthProvider) => {
+    const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    const githubClientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID;
+    const clientId = provider === "google" ? googleClientId : githubClientId;
+
+    if (!hasOAuthClientId(clientId)) {
+      setError(`${provider === "google" ? "Google" : "GitHub"} OAuth client ID is missing. Set it in .env.local.`);
+      return;
+    }
+
+    const state = randomState();
+    const redirectUri = getRedirectUri();
+    localStorage.setItem("visiox_oauth_state", state);
+    localStorage.setItem("visiox_oauth_provider", provider);
+
+    const url =
+      provider === "google"
+        ? new URL("https://accounts.google.com/o/oauth2/v2/auth")
+        : new URL("https://github.com/login/oauth/authorize");
+
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("state", state);
+
+    if (provider === "google") {
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("scope", "openid email profile");
+      url.searchParams.set("prompt", "select_account");
+      url.searchParams.set("access_type", "offline");
+      url.searchParams.set("include_granted_scopes", "true");
+    } else {
+      url.searchParams.set("scope", "read:user user:email");
+    }
+
+    window.location.href = url.toString();
   };
 
   return (
-    <div className="flex w-full min-h-screen">
-      {/* Left Form Side */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center px-12 sm:px-24 xl:px-32 bg-white relative">
-        <div className="max-w-md w-full mx-auto">
-          <Link href="/" className="group mb-12 inline-flex items-center gap-2 text-stone-500 hover:text-stone-900 transition-colors text-sm font-medium">
-            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-            Back to website
-          </Link>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-orange-100 via-amber-100 to-orange-300 px-6 py-12">
+      <Link
+        href="/"
+        className="absolute left-6 top-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-bold text-white backdrop-blur transition hover:bg-white/30"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back
+      </Link>
 
-          <div className="mb-10 flex items-center gap-3">
-             <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-900/20">
-               <Fingerprint className="text-white w-6 h-6" />
-             </div>
-             <span className="text-stone-900 font-bold text-xl tracking-tight">VisioX</span>
+      <motion.section
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.35 }}
+        className="w-full max-w-[450px] rounded-md bg-white px-7 py-12 shadow-2xl shadow-slate-900/10"
+      >
+        <div className="text-center">
+          <h1 className="text-4xl font-black tracking-tight text-orange-600">VisioX</h1>
+          <p className="mt-2 text-sm font-medium text-slate-500">Sign In or Sign Up</p>
+        </div>
+
+        <div className="mt-8 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-center text-xs font-medium text-slate-700">
+          <Gift className="mr-2 inline h-4 w-4 text-orange-500" />
+          Get <span className="font-bold text-orange-600">$20 extra credits</span> in your first month with company email
+        </div>
+
+        {error && (
+          <div className="mt-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {error}
           </div>
+        )}
 
-          <h2 className="text-3xl font-bold text-stone-900 mb-2">Welcome Back</h2>
-          <p className="text-stone-500 mb-8 text-sm">Sign in to your VisioX Workspace to manage your pipelines.</p>
-
-          {error && (
-             <div className="mb-6 px-4 py-3 bg-red-50 border border-red-100 text-red-600 text-sm font-medium rounded-xl">
-                {error}
-             </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Email Address</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
-                placeholder="you@company.com"
+        {mode === "choices" ? (
+          <div className="mt-6 space-y-5">
+            <button
+              type="button"
+              onClick={() => handleSocialLogin("google")}
+              className="relative flex h-11 w-full items-center justify-center gap-3 rounded-md border border-slate-300 bg-white text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+            >
+              <span className="absolute -top-3 right-[-8px] rounded-md bg-orange-500 px-2 py-1 text-[10px] font-bold text-white">
+                Last Used
+              </span>
+              <img
+                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                alt=""
+                className="h-5 w-5"
               />
-            </div>
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                 <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest">Password</label>
-                 <a href="#" className="text-[10px] font-bold text-orange-500 hover:underline">Forgot?</a>
-              </div>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
-                placeholder="••••••••"
-              />
-            </div>
+              Continue with Google
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSocialLogin("github")}
+              className="flex h-11 w-full items-center justify-center gap-3 rounded-md bg-[#333333] text-sm font-bold text-white transition hover:bg-[#242424]"
+            >
+              <Github className="h-5 w-5" />
+              Continue with Github
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMode("email");
+                setError("");
+              }}
+              className="flex h-11 w-full items-center justify-center gap-3 rounded-md bg-orange-500 text-sm font-bold text-white transition hover:bg-orange-600"
+            >
+              <Mail className="h-4 w-4" />
+              Continue with Email
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleLogin} className="mt-6 space-y-4">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("choices");
+                setError("");
+              }}
+              className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 transition hover:text-orange-600"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Login options
+            </button>
+
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-11 w-full rounded-md border border-slate-300 px-4 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15"
+              placeholder="you@company.com"
+            />
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-11 w-full rounded-md border border-slate-300 px-4 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15"
+              placeholder="Password"
+            />
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-4 bg-[#1c1917] text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all disabled:opacity-50"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-orange-500 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-60"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                 <>
-                    Sign In <ArrowRight className="w-4 h-4" />
-                 </>
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  Sign In <ArrowRight className="h-4 w-4" />
+                </>
               )}
             </button>
           </form>
+        )}
 
-          <p className="mt-8 text-center text-sm text-stone-500">
-             Don't have an account? <a href="#" className="text-stone-900 font-bold hover:underline">Request Access</a>
-          </p>
-        </div>
-      </div>
-
-      {/* Right Marketing Side */}
-      <div className="hidden lg:flex flex-1 bg-[#1c1917] flex-col items-center justify-center relative overflow-hidden">
-         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1541888941255-0816962f28fb?q=80&w=1200')] bg-cover bg-center opacity-20" />
-         <div className="absolute inset-0 bg-gradient-to-t from-[#1c1917] via-transparent to-transparent" />
-         
-         <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="relative z-10 max-w-lg text-center"
-         >
-            <Badge className="mb-6" accentHex="#ffffff">
-               Enterprise Grade
-            </Badge>
-            <h3 className="text-4xl font-bold text-white mb-6 leading-tight">Secure. Fast. Infinite Scale.</h3>
-            <p className="text-stone-400 text-lg leading-relaxed mb-12 px-8">
-               VisioX's platform is designed to handle thousands of concurrent video streams with sub-millisecond latency.
-            </p>
-            
-            <div className="grid grid-cols-2 gap-4 text-left px-8">
-               <div className="p-4 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
-                  <h4 className="text-white font-bold mb-1">99.99%</h4>
-                  <p className="text-stone-500 text-xs uppercase tracking-widest font-bold">Uptime SLA</p>
-               </div>
-               <div className="p-4 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
-                  <h4 className="text-white font-bold mb-1">SOC 2</h4>
-                  <p className="text-stone-500 text-xs uppercase tracking-widest font-bold">Type II Certified</p>
-               </div>
-            </div>
-         </motion.div>
-      </div>
-    </div>
+        <p className="mx-auto mt-10 max-w-xs text-center text-xs leading-relaxed text-slate-500">
+          By continuing, you are indicating that you accept our{" "}
+          <a href="#" className="font-medium text-orange-600 hover:underline">
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a href="#" className="font-medium text-orange-600 hover:underline">
+            Privacy Policy
+          </a>.
+        </p>
+      </motion.section>
+    </main>
   );
 }

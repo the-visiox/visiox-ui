@@ -166,7 +166,7 @@ export default function Home() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <Link href={isLoggedIn ? "/overview" : "/login"} className="w-full sm:w-auto">
+                <Link href={isLoggedIn ? "/home" : "/login"} className="w-full sm:w-auto">
                   <button className="group w-full sm:w-56 h-16 px-8 
                                     bg-gradient-to-r from-orange-600 to-orange-400 
                                     hover:scale-105 active:scale-95 hover:from-orange-400 hover:to-orange-300 

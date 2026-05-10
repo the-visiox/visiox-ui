@@ -69,7 +69,7 @@ export default function NewProjectPage() {
       <BlueprintGrid />
       <main className="flex-grow p-8 z-10 max-w-xl mx-auto w-full">
         <Link
-          href="/overview"
+          href="/home"
           className="inline-flex items-center gap-2 text-sm font-medium text-stone-500 hover:text-stone-900 mb-8 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -188,7 +188,7 @@ export default function NewProjectPage() {
                   {saving ? "Creating…" : "Create project"}
                 </button>
                 <Link
-                  href="/overview"
+                  href="/home"
                   className="px-4 py-3 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors"
                 >
                   Cancel

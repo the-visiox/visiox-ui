@@ -17,10 +17,10 @@ export default function TopBar() {
   const title = crumb(pathname);
 
   return (
-    <header className="fixed top-0 md:left-64 left-0 right-0 h-16 z-40 bg-[#fcfaf7]/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 md:px-8 gap-4">
+    <header className="fixed top-0 md:left-56 left-0 right-0 h-16 z-40 bg-[#fcfaf7]/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 md:px-8 gap-4">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-stone-400 text-[10px] font-bold uppercase tracking-widest flex-1">
-        <Link href="/overview" className="hover:text-stone-900 transition-colors">
+        <Link href="/home" className="hover:text-stone-900 transition-colors">
           Workspace
         </Link>
         <ChevronRight className="w-3 h-3" />
@@ -33,14 +33,14 @@ export default function TopBar() {
         <input
           type="text"
           placeholder="Search anything…"
-          className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all w-52"
+          className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/20 transition-all w-52"
         />
       </div>
 
       {/* Notification */}
       <button className="relative p-2 bg-white border border-stone-200 rounded-xl text-stone-500 hover:text-stone-900 transition-all">
         <Bell className="w-4 h-4" />
-        <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-orange-500 rounded-full" />
+        <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-violet-400 rounded-full" />
       </button>
 
       {/* Avatar */}

@@ -73,7 +73,7 @@ function NewJobModal({ projectList, datasetList, architectures, onClose, onCreat
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/20 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -268,7 +268,7 @@ export default function TrainPage() {
             </div>
             <button
               onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-6 py-2.5 bg-[#1c1917] text-white rounded-xl font-bold text-sm shadow-xl hover:scale-105 transition-all"
+              className="flex items-center gap-2 px-6 py-2.5 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 transition-all"
             >
               <FlaskConical className="w-4 h-4 text-orange-500" />
               <span>New Experiment</span>
@@ -279,17 +279,17 @@ export default function TrainPage() {
         <div className="grid grid-cols-12 gap-8">
           {/* Main Monitor */}
           <div className="col-span-12 lg:col-span-8 space-y-8">
-            <div className="bg-[#1c1917] rounded-3xl p-8 border border-stone-800 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-[120px] -mr-48 -mt-48" />
-              <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#6735E0]/10 rounded-full blur-[100px] -ml-32 -mb-32" />
+            <div className="bg-orange-50 rounded-3xl p-8 border border-orange-100 shadow-2xl shadow-orange-100/70 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-orange-200/40 rounded-full blur-[120px] -mr-48 -mt-48" />
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-amber-200/30 rounded-full blur-[100px] -ml-32 -mb-32" />
 
               <div className="relative z-10">
                 <div className="flex justify-between items-start mb-8">
                   <div>
-                    <h2 className="text-2xl font-bold text-white mb-2">
+                    <h2 className="text-2xl font-bold text-stone-900 mb-2">
                       {selectedJob ? selectedJob.name : 'No job selected'}
                     </h2>
-                    <p className="text-stone-400 text-sm">
+                    <p className="text-stone-500 text-sm">
                       {selectedJob ? (
                         <>Status: <span className={`font-mono ${STATUS_COLOR[selectedJob.status]}`}>{selectedJob.status}</span></>
                       ) : (
@@ -303,7 +303,7 @@ export default function TrainPage() {
                         <button
                           onClick={() => handleStop(selectedJob.id)}
                           disabled={stoppingId === selectedJob.id}
-                          className="p-3 bg-stone-800 text-stone-400 rounded-2xl hover:text-red-400 hover:bg-red-900/20 transition-all disabled:opacity-50"
+                          className="p-3 bg-white text-stone-500 border border-orange-100 rounded-2xl hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-50"
                         >
                           {stoppingId === selectedJob.id ? <Loader2 className="w-5 h-5 animate-spin" /> : <Square className="w-5 h-5" />}
                         </button>
@@ -326,27 +326,27 @@ export default function TrainPage() {
                     ))
                   ) : (
                     EMPTY_LOSS_PLACEHOLDER.map((height, i) => (
-                      <div key={i} className="flex-1 min-w-[4px] bg-stone-800 rounded-t-sm" style={{ height: `${height}%` }} />
+                      <div key={i} className="flex-1 min-w-[4px] bg-orange-300 rounded-t-sm" style={{ height: `${height}%` }} />
                     ))
                   )}
                 </div>
 
-                <div className="flex justify-between items-center text-stone-400 text-xs font-bold uppercase tracking-widest border-t border-stone-800 pt-6">
+                <div className="flex justify-between items-center text-stone-500 text-xs font-bold uppercase tracking-widest border-t border-orange-100 pt-6">
                   <div className="flex items-center gap-2">
                     <Activity className="w-4 h-4 text-green-500" />
-                    <span>Loss: <span className="text-white font-mono">
+                    <span>Loss: <span className="text-stone-900 font-mono">
                       {latestMetric?.loss != null ? latestMetric.loss.toFixed(4) : '—'}
                     </span></span>
                   </div>
                   <div className="flex items-center gap-2">
                     <BarChart3 className="w-4 h-4 text-[#6735E0]" />
-                    <span>mAP@.5: <span className="text-white font-mono">
+                    <span>mAP@.5: <span className="text-stone-900 font-mono">
                       {latestMetric?.map50 != null ? latestMetric.map50.toFixed(3) : '—'}
                     </span></span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Target className="w-4 h-4 text-blue-500" />
-                    <span>Epoch: <span className="text-white font-mono">
+                    <span>Epoch: <span className="text-stone-900 font-mono">
                       {latestMetric?.epoch ?? '—'}
                     </span></span>
                   </div>
@@ -431,13 +431,13 @@ export default function TrainPage() {
               </div>
             </div>
 
-            <div className="p-8 bg-gradient-to-br from-stone-900 to-[#1c1917] rounded-3xl border border-stone-800 text-white relative overflow-hidden">
+            <div className="p-8 bg-orange-50 rounded-3xl border border-orange-100 text-stone-900 relative overflow-hidden shadow-sm">
               <div className="relative z-10">
                 <h3 className="text-xl font-bold mb-4">Export Result</h3>
-                <p className="text-stone-400 text-sm mb-8 leading-relaxed">
+                <p className="text-stone-500 text-sm mb-8 leading-relaxed">
                   Your model can be exported to OpenVINO, ONNX, or CoreML once training completes.
                 </p>
-                <button className="w-full flex justify-between items-center px-6 py-4 bg-orange-500 rounded-2xl font-bold hover:scale-105 transition-all shadow-xl shadow-orange-500/10">
+                <button className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all">
                   <span>Choose Export Format</span>
                   <ChevronRight className="w-5 h-5" />
                 </button>

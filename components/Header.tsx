@@ -161,7 +161,7 @@ export default function Header() {
                         className="flex items-center space-x-6"
                     >
                         {isLoggedIn ? (
-                            <Link href="/overview">
+                            <Link href="/home">
                                 <span className="hidden md:block text-[#FF7300] hover:text-stone-900 transition-colors font-bold cursor-pointer">
                                     Go to Workspace
                                 </span>
@@ -174,7 +174,7 @@ export default function Header() {
                             </Link>
                         )}
 
-                        <Link href={isLoggedIn ? "/overview" : "/login"}>
+                        <Link href={isLoggedIn ? "/home" : "/login"}>
                             <motion.button
                                 whileHover={{ scale: 1.05 }}
                                 whileTap={{ scale: 0.95 }}

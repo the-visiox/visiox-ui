@@ -5,8 +5,8 @@ export default function NotFound() {
   return (
     <div className="min-h-screen bg-[#fcfaf7] flex items-center justify-center px-6">
       <div className="text-center max-w-md">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-stone-100 mb-6">
-          <Search className="w-8 h-8 text-stone-400" />
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-orange-50 mb-6">
+          <Search className="w-8 h-8 text-orange-400" />
         </div>
 
         <p className="text-sm font-bold uppercase tracking-widest text-stone-400 mb-3">
@@ -20,8 +20,8 @@ export default function NotFound() {
         </p>
 
         <Link
-          href="/overview"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-stone-900 text-white text-sm font-medium hover:-translate-y-0.5 hover:shadow-lg hover:shadow-stone-900/20 active:scale-95 transition-all duration-200"
+          href="/home"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-orange-100 text-orange-700 border border-orange-200 text-sm font-bold hover:bg-orange-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-orange-100 active:scale-95 transition-all duration-200"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to overview

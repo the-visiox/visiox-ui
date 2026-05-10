@@ -6,7 +6,7 @@ export default function BlueprintGrid() {
       <div 
         className="absolute inset-0 opacity-[0.03]" 
         style={{
-          backgroundImage: `radial-gradient(#1c1917 1px, transparent 1px)`,
+          backgroundImage: `radial-gradient(rgba(251, 146, 60, 0.28) 1px, transparent 1px)`,
           backgroundSize: '24px 24px'
         }}
       />

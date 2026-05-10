@@ -81,7 +81,7 @@ export default function WorkflowsPage() {
           </div>
           <button 
             onClick={handleSave}
-            className="px-6 py-2 bg-[#1c1917] text-white rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl hover:scale-105 active:scale-95 transition-all"
+            className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"
           >
             <Play className="w-4 h-4 text-orange-500 fill-orange-500" />
             <span>Deploy Workflow</span>
@@ -209,9 +209,9 @@ export default function WorkflowsPage() {
                 )}
 
                 {node.type === 'source' && (
-                  <div className="relative rounded-2xl overflow-hidden h-24 bg-stone-900 group/video">
-                     <img src="https://images.unsplash.com/photo-1541888941255-0816962f28fb?q=80&w=400" className="w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700" alt="stream" />
-                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <div className="relative rounded-2xl overflow-hidden h-24 bg-orange-50 group/video">
+                     <img src="https://images.unsplash.com/photo-1541888941255-0816962f28fb?q=80&w=400" className="w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform duration-700" alt="stream" />
+                     <div className="absolute inset-0 bg-gradient-to-t from-orange-950/25 to-transparent" />
                      <div className="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-red-500 text-[8px] font-bold text-white rounded-full uppercase shadow-lg shadow-red-500/20">
                         <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
                         Live Feed
@@ -248,11 +248,11 @@ export default function WorkflowsPage() {
         <div className="absolute right-8 bottom-8 z-30 flex flex-col gap-3">
           <button className="p-4 bg-white border border-stone-200 rounded-2xl shadow-2xl text-stone-600 hover:text-orange-500 hover:scale-110 active:scale-95 transition-all group relative">
              <Plus className="w-6 h-6" />
-             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-stone-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl">Add Pipeline Node</div>
+             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-orange-100 text-orange-700 border border-orange-200 text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl">Add Pipeline Node</div>
           </button>
           <button className="p-4 bg-white border border-stone-200 rounded-2xl shadow-2xl text-stone-600 hover:text-[#6735E0] hover:scale-110 transition-all group relative">
              <Monitor className="w-6 h-6" />
-             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-stone-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl">Open Cloud Monitor</div>
+             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-orange-100 text-orange-700 border border-orange-200 text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl">Open Cloud Monitor</div>
           </button>
         </div>
       </div>

@@ -54,7 +54,7 @@ export default function ProjectsPage() {
           </div>
           <Link
             href="/projects/new"
-            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
+            className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"
           >
             <Plus className="w-4 h-4" />
             New project

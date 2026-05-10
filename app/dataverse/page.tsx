@@ -131,8 +131,8 @@ export default function DataversePage() {
                 className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
               />
             </div>
-            <button className="inline-flex items-center gap-2 rounded-xl bg-[#1c1917] px-4 py-2.5 text-sm font-bold text-white transition-all hover:scale-105 active:scale-95">
-              <Search className="w-4 h-4 text-orange-400" />
+            <button className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-4 py-2.5 text-sm font-bold text-orange-700 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95">
+              <Search className="w-4 h-4 text-orange-500" />
               Search
             </button>
           </form>

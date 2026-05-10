@@ -91,7 +91,7 @@ function CreateDatasetModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/20 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -254,7 +254,7 @@ export default function DatasetsPageClient() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
           <div>
             <div className="flex flex-wrap items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">
-              <Link href="/overview" className="hover:text-orange-600 transition-colors">
+              <Link href="/home" className="hover:text-orange-600 transition-colors">
                 Workspace
               </Link>
               <span>/</span>
@@ -300,7 +300,7 @@ export default function DatasetsPageClient() {
             <button
               type="button"
               onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-6 py-2.5 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-xl shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
+              className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"
             >
               <Plus className="w-4 h-4" />
               <span>Create Dataset</span>
@@ -312,7 +312,7 @@ export default function DatasetsPageClient() {
           <div className="flex items-center gap-1 p-1">
             <button
               type="button"
-              className="px-4 py-1.5 bg-stone-900 text-white rounded-xl text-xs font-bold flex items-center gap-2"
+              className="px-4 py-1.5 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl text-xs font-bold flex items-center gap-2"
             >
               <Grid className="w-3.5 h-3.5" />
               <span>Grid View</span>
@@ -391,11 +391,11 @@ export default function DatasetsPageClient() {
                         </div>
                       )}
 
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                        <span className="p-3 bg-white text-stone-900 rounded-2xl hover:bg-orange-500 hover:text-white transition-all shadow-xl">
+                      <div className="absolute inset-0 bg-orange-950/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                        <span className="p-3 bg-white text-orange-700 rounded-2xl hover:bg-orange-100 transition-all shadow-xl">
                           <Download className="w-5 h-5" />
                         </span>
-                        <span className="p-3 bg-white text-stone-900 rounded-2xl hover:bg-[#6735E0] hover:text-white transition-all shadow-xl">
+                        <span className="p-3 bg-white text-orange-700 rounded-2xl hover:bg-orange-100 transition-all shadow-xl">
                           <Tag className="w-5 h-5" />
                         </span>
                       </div>

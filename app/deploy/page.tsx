@@ -70,7 +70,7 @@ function NewEndpointModal({ registryList, onClose, onCreated }: NewEndpointModal
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/20 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -215,7 +215,7 @@ export default function DeployPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-6 py-2.5 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-xl shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
+              className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"
             >
               <Plus className="w-4 h-4" />
               <span>New Endpoint</span>
@@ -294,13 +294,13 @@ export default function DeployPage() {
                       View Docs
                     </button>
                   </div>
-                  <div className="bg-[#1c1917] rounded-2xl p-6 font-mono text-xs text-stone-300 leading-relaxed shadow-inner">
-                    <p><span className="text-purple-400">import</span> requests</p>
+                  <div className="bg-orange-50 rounded-2xl border border-orange-100 p-6 font-mono text-xs text-stone-700 leading-relaxed shadow-inner">
+                    <p><span className="text-orange-600">import</span> requests</p>
                     <p className="mt-2 text-stone-500"># Predict using the REST endpoint</p>
                     <p>response = requests.post(</p>
-                    <p className="pl-4"><span className="text-orange-300">"{endpointUrl}"</span>,</p>
-                    <p className="pl-4">headers={'{'}Authorization: <span className="text-orange-300">"Bearer {selectedEndpoint.auth_token}"</span>{'}'}</p>
-                    <p className="pl-4">json={'{'}image_url: <span className="text-orange-300">"https://..."</span>{'}'}</p>
+                    <p className="pl-4"><span className="text-orange-600">{`"${endpointUrl}"`}</span>,</p>
+                    <p className="pl-4">headers={'{'}Authorization: <span className="text-orange-600">{`"Bearer ${selectedEndpoint.auth_token}"`}</span>{'}'}</p>
+                    <p className="pl-4">json={'{'}image_url: <span className="text-orange-600">{`"https://..."`}</span>{'}'}</p>
                     <p>)</p>
                     <p>print(response.json())</p>
                   </div>
@@ -391,15 +391,15 @@ export default function DeployPage() {
 
           {/* Sidebar */}
           <div className="col-span-12 lg:col-span-4 space-y-6">
-            <div className="bg-[#1c1917] rounded-3xl p-8 border border-stone-800 text-white shadow-2xl relative overflow-hidden">
+            <div className="bg-orange-50 rounded-3xl p-8 border border-orange-100 text-stone-900 shadow-2xl shadow-orange-100/70 relative overflow-hidden">
               <h3 className="text-xl font-bold mb-4">Usage Analytics</h3>
               <div className="space-y-6">
                 <div>
-                  <div className="flex justify-between text-xs font-bold mb-2 uppercase tracking-widest text-stone-400">
+                  <div className="flex justify-between text-xs font-bold mb-2 uppercase tracking-widest text-stone-500">
                     <span>Active Endpoints</span>
-                    <span className="text-white">{endpoints.filter(e => e.status === 'active').length} / {endpoints.length}</span>
+                    <span className="text-stone-900">{endpoints.filter(e => e.status === 'active').length} / {endpoints.length}</span>
                   </div>
-                  <div className="h-1.5 w-full bg-stone-800 rounded-full overflow-hidden">
+                  <div className="h-1.5 w-full bg-orange-100 rounded-full overflow-hidden">
                     <motion.div
                       className="h-full bg-orange-500"
                       initial={{ width: 0 }}
@@ -409,23 +409,23 @@ export default function DeployPage() {
                   </div>
                 </div>
                 <div>
-                  <div className="flex justify-between text-xs font-bold mb-2 uppercase tracking-widest text-stone-400">
+                  <div className="flex justify-between text-xs font-bold mb-2 uppercase tracking-widest text-stone-500">
                     <span>Safety SLA</span>
-                    <span className="text-white">99.99%</span>
+                    <span className="text-stone-900">99.99%</span>
                   </div>
-                  <div className="h-1.5 w-full bg-stone-800 rounded-full overflow-hidden">
+                  <div className="h-1.5 w-full bg-orange-100 rounded-full overflow-hidden">
                     <div className="h-full w-[99%] bg-green-500" />
                   </div>
                 </div>
               </div>
 
-              <div className="mt-12 pt-8 border-t border-stone-800 flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center">
+              <div className="mt-12 pt-8 border-t border-orange-100 flex items-center gap-3">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center border border-orange-100">
                   <ShieldCheck className="w-6 h-6 text-green-500" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest leading-none mb-1">Security Status</p>
-                  <p className="text-xs font-bold text-white">SOC2 & GDPR Compliant</p>
+                  <p className="text-[10px] font-bold text-stone-500 uppercase tracking-widest leading-none mb-1">Security Status</p>
+                  <p className="text-xs font-bold text-stone-900">SOC2 & GDPR Compliant</p>
                 </div>
               </div>
 
