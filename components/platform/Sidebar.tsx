@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   FolderKanban,
   Database,
+  Globe2,
   Workflow,
   Cpu,
   Send,
@@ -22,6 +23,7 @@ const navItems = [
   { name: "Home",      icon: LayoutDashboard, href: "/overview" },
   { name: "Projects",  icon: FolderKanban,    href: "/projects" },
   { name: "Datasets",  icon: Database,        href: "/datasets" },
+  { name: "Dataverse", icon: Globe2,          href: "/dataverse" },
   { name: "Train",     icon: Cpu,             href: "/train" },
   { name: "Workflows", icon: Workflow,        href: "/workflows" },
   { name: "Deploy",    icon: Send,            href: "/deploy" },
@@ -126,7 +128,7 @@ export default function Sidebar() {
               JS
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="text-white text-[11px] font-bold truncate">John's Workspace</p>
+              <p className="text-white text-[11px] font-bold truncate">John&apos;s Workspace</p>
               <p className="text-[9px] text-stone-500 truncate">Professional Plan</p>
             </div>
           </div>

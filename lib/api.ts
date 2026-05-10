@@ -84,6 +84,28 @@ export interface Dataset {
   updated_at: string;
 }
 
+export interface DataverseProject {
+  id: number;
+  source_project: number;
+  owner: number;
+  owner_username: string;
+  team_name: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  license: string;
+  is_public: boolean;
+  task_type: string;
+  dataset_count: number;
+  media_count: number;
+  class_count: number;
+  thumbnail: string | null;
+  fork_count: number;
+  view_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Media {
   id: number;
   dataset: number;
@@ -510,6 +532,37 @@ export const datasets = {
   },
   syncCvat(id: string | number) {
     return request<{ status: string; version: number; cvat_status?: string; total_labels?: number }>(`/api/datasets/${id}/sync_cvat/`, { method: 'POST' });
+  },
+};
+
+// ── Dataverse ───────────────────────────────────────────────────────────────
+
+export const dataverse = {
+  list(search?: string) {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+    return request<PaginatedResponse<DataverseProject>>(`/api/dataverse/${qs}`);
+  },
+  get(id: number) {
+    return request<DataverseProject>(`/api/dataverse/${id}/`);
+  },
+  shareProject(data: {
+    project: number;
+    title?: string;
+    summary?: string;
+    tags?: string[];
+    license?: string;
+    is_public?: boolean;
+  }) {
+    return request<DataverseProject>('/api/dataverse/share-project/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  fork(id: number, data: { team: number; name?: string }) {
+    return request<{ project_id: number; name: string }>(`/api/dataverse/${id}/fork/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 };
 

@@ -17,10 +17,12 @@ import {
   Pencil,
   Trash2,
   ExternalLink,
+  Globe2,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import {
   annotationClasses,
+  dataverse,
   datasets,
   projects,
   type AnnotationClass,
@@ -54,8 +56,8 @@ function CreateDatasetModal({ project, onClose, onCreated }: { project: Project,
     try {
       const created = await datasets.create({ project: project.id, name, description });
       onCreated(created);
-    } catch (err: any) {
-      setError(err.message || "Failed to create dataset");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create dataset");
       setSaving(false);
     }
   };
@@ -254,6 +256,7 @@ export default function ProjectDetailPage() {
   const [showModal, setShowModal] = useState(false);
   const [classModalOpen, setClassModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<AnnotationClass | null>(null);
+  const [sharing, setSharing] = useState(false);
 
   const projectIdNum = id ? parseInt(id as string, 10) : NaN;
 
@@ -291,6 +294,26 @@ export default function ProjectDetailPage() {
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-stone-300" /></div>;
   if (!project) return <div className="flex-1 flex flex-col items-center justify-center p-8"><p className="text-stone-500 mb-4">Project not found</p><button onClick={() => router.push('/projects')} className="text-orange-500 font-bold">Back to Projects</button></div>;
+
+  async function handleShareToDataverse() {
+    if (!project) return;
+    setSharing(true);
+    try {
+      await dataverse.shareProject({
+        project: project.id,
+        title: project.name,
+        summary: project.description || "",
+        tags: [project.task_type.replace(/_/g, "-")],
+        license: "Community",
+        is_public: true,
+      });
+      window.alert("Project shared to Dataverse.");
+    } catch (err: unknown) {
+      window.alert(err instanceof Error ? err.message : "Could not share project.");
+    } finally {
+      setSharing(false);
+    }
+  }
 
   return (
     <div className="relative flex-1 flex flex-col min-h-screen">
@@ -345,6 +368,15 @@ export default function ProjectDetailPage() {
                 <ExternalLink className="w-4 h-4" />
                 Dataset library
               </Link>
+              <button
+                type="button"
+                onClick={() => void handleShareToDataverse()}
+                disabled={sharing}
+                className="flex items-center gap-2 px-5 py-2.5 bg-white border border-stone-200 text-stone-600 rounded-xl font-bold text-sm hover:bg-stone-50 transition-all disabled:opacity-60"
+              >
+                {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe2 className="w-4 h-4" />}
+                Share to Dataverse
+              </button>
               {project.cvat_project_id && (
                 <a
                   href={`${CVAT_PUBLIC_URL}/projects/${project.cvat_project_id}`}

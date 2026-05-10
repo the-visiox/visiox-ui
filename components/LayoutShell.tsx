@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth";
 import { getAccessToken } from "@/lib/api";
 
 // Routes that belong to the authenticated platform workspace hubs.
-const PLATFORM_ROUTES = ["/overview", "/projects", "/teams", "/datasets", "/workflows", "/train", "/deploy"];
+const PLATFORM_ROUTES = ["/overview", "/projects", "/teams", "/datasets", "/dataverse", "/workflows", "/train", "/deploy"];
 // Routes that show no shell at all (auth pages).
 const BARE_ROUTES = ["/login", "/register"];
 

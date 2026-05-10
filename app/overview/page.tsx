@@ -8,6 +8,7 @@ import {
   Filter,
   MoreHorizontal,
   ArrowUpRight,
+  Globe2,
   Zap,
   Shield,
   Clock,
@@ -97,6 +98,12 @@ export default function OverviewPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link href="/dataverse">
+              <button className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 text-stone-700 rounded-xl font-bold text-sm shadow-sm hover:bg-stone-50 hover:scale-105 active:scale-95 transition-all">
+                <Globe2 className="w-4 h-4 text-orange-500" />
+                <span>Explore dataset</span>
+              </button>
+            </Link>
             <Link href="/projects/new">
               <button className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all">
                 <Plus className="w-4 h-4" />

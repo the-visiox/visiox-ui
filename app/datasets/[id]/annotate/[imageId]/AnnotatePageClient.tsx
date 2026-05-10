@@ -85,6 +85,17 @@ const DEMO_LABELS = [
 
 const PRELOAD_AHEAD = 6;
 const PRELOAD_BEHIND = 2;
+const PANE_WIDTH_STORAGE_KEY = "visiox-annotate-pane-widths";
+const TOOL_PANE_DEFAULT = 84;
+const TOOL_PANE_MIN = 68;
+const TOOL_PANE_MAX = 180;
+const OBJECTS_PANE_DEFAULT = 320;
+const OBJECTS_PANE_MIN = 260;
+const OBJECTS_PANE_MAX = 520;
+
+function clampPaneWidth(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
 
 function objectSummary(shape: EditorShape): string {
   if (shape.shapeType === "tag") return "tag";
@@ -133,12 +144,19 @@ export default function AnnotatePageClient() {
   const [polygonVertexCount, setPolygonVertexCount] = useState(4);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [shapes, _setShapes] = useState<EditorShape[]>([]);
+  const [toolPaneWidth, setToolPaneWidth] = useState(TOOL_PANE_DEFAULT);
+  const [objectsPaneWidth, setObjectsPaneWidth] = useState(OBJECTS_PANE_DEFAULT);
 
   const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
   const isLoadingRef = useRef(false);
   const previousDraftKeyRef = useRef<string | null>(null);
   const draftCacheRef = useRef<Record<string, EditorShape[]>>({});
+  const paneResizeRef = useRef<{
+    target: "tools" | "objects";
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   shapesRef.current = shapes;
 
   const currentDraftKey = useMemo(
@@ -199,6 +217,36 @@ export default function AnnotatePageClient() {
   useEffect(() => {
     setAccessToken(getAccessToken());
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(PANE_WIDTH_STORAGE_KEY) ?? "{}") as {
+        tools?: number;
+        objects?: number;
+      };
+      if (Number.isFinite(saved.tools)) {
+        setToolPaneWidth(clampPaneWidth(saved.tools!, TOOL_PANE_MIN, TOOL_PANE_MAX));
+      }
+      if (Number.isFinite(saved.objects)) {
+        setObjectsPaneWidth(clampPaneWidth(saved.objects!, OBJECTS_PANE_MIN, OBJECTS_PANE_MAX));
+      }
+    } catch {
+      // Ignore invalid local pane preferences.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(
+        PANE_WIDTH_STORAGE_KEY,
+        JSON.stringify({ tools: toolPaneWidth, objects: objectsPaneWidth })
+      );
+    } catch {
+      // Ignore preference persistence failures.
+    }
+  }, [objectsPaneWidth, toolPaneWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined" || isLoadingRef.current) return;
@@ -513,6 +561,38 @@ export default function AnnotatePageClient() {
     }
   }, [canSaveToApi, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, labels, mediaId, persistDraft, shapes]);
 
+  const startPaneResize = useCallback(
+    (target: "tools" | "objects", e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      paneResizeRef.current = {
+        target,
+        startX: e.clientX,
+        startWidth: target === "tools" ? toolPaneWidth : objectsPaneWidth,
+      };
+    },
+    [objectsPaneWidth, toolPaneWidth]
+  );
+
+  const updatePaneResize = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const resize = paneResizeRef.current;
+    if (!resize) return;
+    const delta = e.clientX - resize.startX;
+    if (resize.target === "tools") {
+      setToolPaneWidth(clampPaneWidth(resize.startWidth + delta, TOOL_PANE_MIN, TOOL_PANE_MAX));
+      return;
+    }
+    setObjectsPaneWidth(clampPaneWidth(resize.startWidth - delta, OBJECTS_PANE_MIN, OBJECTS_PANE_MAX));
+  }, []);
+
+  const stopPaneResize = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!paneResizeRef.current) return;
+    paneResizeRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
@@ -602,7 +682,10 @@ export default function AnnotatePageClient() {
       )}
 
       <main className="flex min-h-0 flex-grow overflow-hidden">
-        <aside className="z-20 flex w-[4.25rem] shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-1.5 py-4 shadow-sm shadow-stone-200/30 sm:w-[5.25rem] sm:px-2">
+        <aside
+          className="z-20 flex shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-1.5 py-4 shadow-sm shadow-stone-200/30 sm:px-2"
+          style={{ width: toolPaneWidth }}
+        >
           <div className="flex flex-col gap-1 p-1">
             {TOOLBAR.map(({ tool, icon, label, key }) =>
               tool === "polygon" || tool === "polyline" ? (
@@ -656,7 +739,20 @@ export default function AnnotatePageClient() {
           </div>
         </aside>
 
-        <div className="relative flex min-h-0 flex-grow items-stretch justify-stretch overflow-hidden p-4">
+        <button
+          type="button"
+          aria-label="Resize tool pane"
+          title="Resize tool pane"
+          onPointerDown={(e) => startPaneResize("tools", e)}
+          onPointerMove={updatePaneResize}
+          onPointerUp={stopPaneResize}
+          onPointerCancel={stopPaneResize}
+          className="group relative z-30 w-2 shrink-0 cursor-col-resize touch-none bg-transparent outline-none"
+        >
+          <span className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 rounded-full bg-stone-200 transition group-hover:w-1 group-hover:bg-orange-400 group-focus-visible:w-1 group-focus-visible:bg-orange-500" />
+        </button>
+
+        <div className="relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch overflow-hidden p-4">
           {loading ? (
             <div className="absolute inset-4 z-10 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-stone-500">
@@ -682,7 +778,23 @@ export default function AnnotatePageClient() {
           )}
         </div>
 
-        <aside className="z-20 flex w-80 flex-col overflow-y-auto border-l border-stone-200/80 bg-white/90 p-6 shadow-xl shadow-stone-200/30 backdrop-blur-xl">
+        <button
+          type="button"
+          aria-label="Resize objects pane"
+          title="Resize objects pane"
+          onPointerDown={(e) => startPaneResize("objects", e)}
+          onPointerMove={updatePaneResize}
+          onPointerUp={stopPaneResize}
+          onPointerCancel={stopPaneResize}
+          className="group relative z-30 w-2 shrink-0 cursor-col-resize touch-none bg-transparent outline-none"
+        >
+          <span className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 rounded-full bg-stone-200 transition group-hover:w-1 group-hover:bg-orange-400 group-focus-visible:w-1 group-focus-visible:bg-orange-500" />
+        </button>
+
+        <aside
+          className="z-20 flex shrink-0 flex-col overflow-y-auto border-l border-stone-200/80 bg-white/90 p-6 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
+          style={{ width: objectsPaneWidth }}
+        >
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-widest text-stone-900">Objects</h3>
             <span className="rounded-lg bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">{shapes.length} total</span>
