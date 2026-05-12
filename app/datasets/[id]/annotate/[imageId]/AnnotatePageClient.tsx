@@ -476,11 +476,12 @@ export default function AnnotatePageClient() {
     (!Number.isNaN(jobId) || (!isNativeMode && Number.isFinite(mediaId)) || (isNativeMode && Number.isFinite(datasetId)));
 
   useEffect(() => {
+    if (loading) return;
     if (pendingIndex !== null && pendingIndex !== current) return;
     setPendingIndex(null);
     if (isScrubbing) return;
     setSliderValue(current);
-  }, [current, isScrubbing, pendingIndex]);
+  }, [current, isScrubbing, loading, pendingIndex]);
 
   const navigateTo = useCallback(
     (oneBasedIdx: number, options?: { wrap?: boolean }) => {
