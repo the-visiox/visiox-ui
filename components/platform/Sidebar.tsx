@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Fingerprint,
   LogOut,
-  Activity,
+  Bell,
   Bug,
   FileText,
   Lock,
@@ -38,11 +38,6 @@ const navItems = [
   { name: "Deploy",    icon: Send,            href: "/deploy" },
 ];
 
-const solutionItems = [
-  { name: "Manufacturing", href: "/solutions/manufacturing-industrial" },
-  { name: "Security",      href: "/solutions/surveillance-security" },
-  { name: "Smart Cities",  href: "/solutions/transportation-smart-cities" },
-];
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -117,36 +112,14 @@ export default function Sidebar() {
           );
         })}
 
-        <p className="text-[9px] font-bold text-orange-700/60 uppercase tracking-widest px-3 mt-6 mb-3">
-          Industry Solutions
-        </p>
-        {solutionItems.map((item) => {
-          const active = isActive(item.href);
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 ${
-                active
-                  ? "bg-white text-orange-700 ring-1 ring-orange-200 shadow-sm shadow-orange-200/50"
-                  : "text-orange-950/60 hover:bg-white/70 hover:text-orange-950"
-              }`}
-            >
-              <span>{item.name}</span>
-              <ChevronRight
-                className={`w-3 h-3 ${active ? "text-orange-500" : "text-orange-700/40"}`}
-              />
-            </Link>
-          );
-        })}
       </nav>
 
       {/* Bottom */}
       <div className="p-2 border-t border-orange-200 space-y-2">
-        <button className="w-full flex items-center gap-3 px-3 py-2 text-orange-950/65 hover:text-orange-950 hover:bg-white/70 rounded-lg transition-all text-xs">
-          <Activity className="w-4 h-4" />
-          <span>Activity</span>
-        </button>
+          <button className="w-full flex items-center gap-3 px-3 py-2 text-orange-950/65 hover:text-orange-950 hover:bg-white/70 rounded-lg transition-all text-xs">
+            <Bell className="w-4 h-4" />
+            <span>Notifications</span>
+          </button>
 
         <div className="relative group">
           <button className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-all hover:bg-white/70 focus-visible:bg-white/70 focus-visible:outline-none">
@@ -228,8 +201,8 @@ export default function Sidebar() {
                     </span>
                   </button>
                 ))}
-              </div>
             </div>
+          </div>
           </div>
         </div>
 

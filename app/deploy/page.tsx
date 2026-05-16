@@ -6,7 +6,7 @@ import BlueprintGrid from "@/components/BlueprintGrid";
 import {
   Globe, Terminal, Copy, Check, RefreshCw, ExternalLink,
   ShieldCheck, Zap, Cpu, Smartphone, ChevronRight, X, Loader2,
-  Play, Square, Plus,
+  Play, Square, Plus, Search,
 } from "lucide-react";
 import {
   deployments,
@@ -213,6 +213,14 @@ export default function DeployPage() {
             <h1 className="text-4xl font-bold text-stone-900 tracking-tight">Cloud & Edge Deploy</h1>
           </div>
           <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3.5 h-3.5" />
+              <input
+                type="text"
+                placeholder="Search endpoints…"
+                className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/20 transition-all w-52"
+              />
+            </div>
             <button
               onClick={() => setShowModal(true)}
               className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"

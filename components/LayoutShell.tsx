@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Sidebar from "@/components/platform/Sidebar";
-import TopBar from "@/components/platform/TopBar";
 import { useAuth } from "@/lib/auth";
 import { getAccessToken } from "@/lib/api";
 
@@ -58,8 +57,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       <div className="flex min-h-screen bg-[#fcfaf7]">
         <Sidebar />
         <div className="flex-1 md:ml-56 flex flex-col min-h-screen">
-          {!isHomeWorkspace && <TopBar />}
-          <main className={`flex-grow flex flex-col relative ${isHomeWorkspace ? "" : "pt-16"}`}>{children}</main>
+          <main className="flex-grow flex flex-col relative">{children}</main>
         </div>
       </div>
     );

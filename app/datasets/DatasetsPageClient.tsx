@@ -290,6 +290,14 @@ export default function DatasetsPageClient() {
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3.5 h-3.5" />
+              <input
+                type="text"
+                placeholder="Search datasets…"
+                className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/20 transition-all w-52"
+              />
+            </div>
             <button
               type="button"
               className="flex items-center gap-2 px-4 py-2.5 bg-white border border-stone-200 rounded-xl font-bold text-sm text-stone-600 hover:bg-stone-50 transition-all"

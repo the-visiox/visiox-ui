@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, MoreHorizontal } from "lucide-react";
+import { Plus, MoreHorizontal, Search } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { projects, type Project } from "@/lib/api";
 
@@ -52,13 +52,23 @@ export default function ProjectsPage() {
             <h1 className="text-3xl font-bold text-stone-900 tracking-tight mb-1">Projects</h1>
             <p className="text-stone-500 text-sm font-medium">All projects you have access to.</p>
           </div>
-          <Link
-            href="/projects/new"
-            className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            New project
-          </Link>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3.5 h-3.5" />
+              <input
+                type="text"
+                placeholder="Search projects…"
+                className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/20 transition-all w-52"
+              />
+            </div>
+            <Link
+              href="/projects/new"
+              className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              New project
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
