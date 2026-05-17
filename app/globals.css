@@ -60,4 +60,40 @@ body {
   .animate-float {
     animation: float 6s ease-in-out infinite;
   }
+
+  .no-number-spinner {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  .no-number-spinner::-webkit-outer-spin-button,
+  .no-number-spinner::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+  }
+
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #a8a29e #e7e5e4;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #e7e5e4;
+    border-radius: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #a8a29e;
+    border-radius: 8px;
+    border: 2px solid #e7e5e4;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #78716c;
+  }
 }

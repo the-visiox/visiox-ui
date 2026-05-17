@@ -250,17 +250,16 @@ export default function TrainPage() {
       </AnimatePresence>
 
       <main className="flex-grow p-8 z-10">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
+        <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">
-              <span>Workspace</span><span>/</span>
-              <span className="text-stone-900">Training Jobs</span>
-            </div>
-            <h1 className="text-4xl font-bold text-stone-900 tracking-tight">Active Training</h1>
+            <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">Active Training</h1>
+            <p className="max-w-xl text-base leading-6 text-stone-500">
+              Monitor experiments, review training health, and export successful models.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="px-4 py-2 bg-white border border-stone-200 rounded-xl flex items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+            <div className="flex h-11 items-center gap-3 rounded-xl border border-stone-200 bg-white px-4">
               <div className={`w-2 h-2 rounded-full ${jobs.some(j => j.status === 'running') ? 'bg-orange-500 animate-ping' : 'bg-stone-300'}`} />
               <span className="text-sm font-bold text-stone-900">
                 {jobs.filter(j => j.status === 'running').length} Running
@@ -268,7 +267,7 @@ export default function TrainPage() {
             </div>
             <button
               onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-6 py-2.5 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 transition-all"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200"
             >
               <FlaskConical className="w-4 h-4 text-orange-500" />
               <span>New Experiment</span>

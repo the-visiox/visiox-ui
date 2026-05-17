@@ -30,9 +30,11 @@ export default function HomePage() {
           transition={{ duration: 0.45 }}
           className="flex flex-1 flex-col items-center justify-center text-center"
         >
-          <div className="mb-10 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest text-orange-600 shadow-sm shadow-orange-100">
-            <Bot className="h-3.5 w-3.5" />
-            VisioX Agent
+          <div className="mb-10 inline-flex h-8 items-center justify-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 text-[11px] font-bold uppercase tracking-widest text-orange-600 shadow-sm shadow-orange-100">
+            <Bot className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex items-center pt-[1px]">
+              VisioX Agent
+            </span>
           </div>
 
           <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-[#202033] md:text-5xl">

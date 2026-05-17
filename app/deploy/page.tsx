@@ -204,26 +204,25 @@ export default function DeployPage() {
       </AnimatePresence>
 
       <main className="flex-grow p-8 z-10">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
+        <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">
-              <span>Workspace</span><span>/</span>
-              <span className="text-stone-900">Deployment</span>
-            </div>
-            <h1 className="text-4xl font-bold text-stone-900 tracking-tight">Cloud & Edge Deploy</h1>
+            <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">Cloud & Edge Deploy</h1>
+            <p className="max-w-xl text-base leading-6 text-stone-500">
+              Manage live endpoints, copy request snippets, and monitor deployment readiness.
+            </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="relative">
+          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+            <div className="relative w-full md:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3.5 h-3.5" />
               <input
                 type="text"
                 placeholder="Search endpoints…"
-                className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/20 transition-all w-52"
+                className="h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
               />
             </div>
             <button
               onClick={() => setShowModal(true)}
-              className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
             >
               <Plus className="w-4 h-4" />
               <span>New Endpoint</span>

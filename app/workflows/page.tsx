@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentPropsWithoutRef, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { 
   Camera, 
@@ -54,24 +54,23 @@ export default function WorkflowsPage() {
       <BlueprintGrid />
       
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 p-8 z-30 flex justify-between items-center bg-gradient-to-b from-[#fcfaf7] via-[#fcfaf7]/80 to-transparent">
-        <div>
-          <div className="flex items-center gap-2 text-stone-400 text-[10px] font-bold uppercase tracking-widest mb-1">
-            <span>Workspace</span>
-            <ChevronRight className="w-3 h-3" />
-            <span className="text-stone-900">Workflows</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Active Pipeline Builder</h1>
+      <div className="absolute left-0 right-0 top-0 z-30 p-8">
+        <div className="flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+          <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">Active Pipeline Builder</h1>
             <div className={`flex items-center gap-2 px-2 py-1 rounded-full text-[10px] font-bold transition-all ${isSaving ? 'bg-orange-100 text-orange-600' : 'bg-stone-100 text-stone-400'}`}>
                <Save className={`w-3 h-3 ${isSaving ? 'animate-bounce' : ''}`} />
                <span>{isSaving ? 'Saving Changes...' : 'All Changes Saved'}</span>
             </div>
           </div>
+          <p className="mt-1 max-w-xl text-sm leading-6 text-stone-500">
+            Build, monitor, and deploy visual automation pipelines from one canvas.
+          </p>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-4 px-4 py-2 bg-white/80 backdrop-blur-md border border-stone-200 rounded-xl text-sm font-bold shadow-sm">
+        <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+          <div className="hidden h-11 items-center gap-4 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold shadow-sm md:flex">
              <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                 <span className="text-stone-600">Pipeline Online</span>
@@ -81,16 +80,17 @@ export default function WorkflowsPage() {
           </div>
           <button 
             onClick={handleSave}
-            className="px-6 py-2 bg-orange-100 text-orange-700 border border-orange-200 rounded-xl font-bold text-sm flex items-center gap-2 shadow-xl shadow-orange-100/60 hover:bg-orange-200 hover:scale-105 active:scale-95 transition-all"
+            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
           >
             <Play className="w-4 h-4 text-orange-500 fill-orange-500" />
             <span>Deploy Workflow</span>
           </button>
         </div>
+        </div>
       </div>
 
       {/* Builder Canvas */}
-      <div className="flex-grow relative mt-24" ref={containerRef}>
+      <div className="flex-grow relative mt-40 md:mt-36" ref={containerRef}>
         {/* SVG Connections Layer */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 transition-opacity duration-300">
           <defs>
@@ -257,23 +257,5 @@ export default function WorkflowsPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function ChevronRight(props: ComponentPropsWithoutRef<"svg">) {
-  return (
-    <svg 
-      {...props}
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" height="24" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-    >
-      <path d="m9 18 6-6-6-6"/>
-    </svg>
   );
 }

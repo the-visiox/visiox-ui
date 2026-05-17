@@ -69,13 +69,13 @@ function draftStorageKey(
 }
 
 const TOOLBAR: { tool: Tool; icon: React.ReactNode; label: string; key: string }[] = [
-  { tool: "select", icon: <MousePointer2 className="h-4 w-4" />, label: "Select", key: "V" },
-  { tool: "rectangle", icon: <Square className="h-4 w-4" />, label: "Box", key: "N" },
-  { tool: "polygon", icon: <Hexagon className="h-4 w-4" />, label: "Polygon", key: "P" },
-  { tool: "polyline", icon: <Spline className="h-4 w-4" />, label: "Polyline", key: "L" },
-  { tool: "points", icon: <CircleDot className="h-4 w-4" />, label: "Points", key: "K" },
-  { tool: "cuboid", icon: <Box className="h-4 w-4" />, label: "Cuboid", key: "C" },
-  { tool: "tag", icon: <Tag className="h-4 w-4" />, label: "Tag", key: "T" },
+  { tool: "select", icon: <MousePointer2 className="h-5 w-5" />, label: "Select", key: "V" },
+  { tool: "rectangle", icon: <Square className="h-5 w-5" />, label: "Box", key: "N" },
+  { tool: "polygon", icon: <Hexagon className="h-5 w-5" />, label: "Polygon", key: "P" },
+  { tool: "polyline", icon: <Spline className="h-5 w-5" />, label: "Polyline", key: "L" },
+  { tool: "points", icon: <CircleDot className="h-5 w-5" />, label: "Points", key: "K" },
+  { tool: "cuboid", icon: <Box className="h-5 w-5" />, label: "Cuboid", key: "C" },
+  { tool: "tag", icon: <Tag className="h-5 w-5" />, label: "Tag", key: "T" },
 ];
 
 const DEMO_LABELS = [
@@ -83,15 +83,21 @@ const DEMO_LABELS = [
   { id: 2, name: "demo_b", color: "#3b82f6" },
 ] as const;
 
-const PRELOAD_AHEAD = 6;
-const PRELOAD_BEHIND = 2;
+const PRELOAD_AHEAD = 30;
+const PRELOAD_BEHIND = 3;
+const ROUTE_PREFETCH_AHEAD = 6;
 const PANE_WIDTH_STORAGE_KEY = "visiox-annotate-pane-widths";
+
+type MediaItem = { id: number; file_url?: string | null; filename?: string };
+
+const mediaListCache = new Map<number, MediaItem[]>();
+const preloadedUrlsCache = new Set<string>();
 const TOOL_PANE_DEFAULT = 84;
 const TOOL_PANE_MIN = 68;
 const TOOL_PANE_MAX = 180;
-const OBJECTS_PANE_DEFAULT = 320;
-const OBJECTS_PANE_MIN = 260;
-const OBJECTS_PANE_MAX = 520;
+const OBJECTS_PANE_DEFAULT = 400;
+const OBJECTS_PANE_MIN = 320;
+const OBJECTS_PANE_MAX = 640;
 
 function clampPaneWidth(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -132,20 +138,30 @@ export default function AnnotatePageClient() {
   const [imageUrl, setImageUrl] = useState("");
   const [labels, setLabels] = useState<LabelDefinition[]>([]);
   const [activeClassId, setActiveClassId] = useState(0);
-  const [mediaIndex, setMediaIndex] = useState<number | null>(null);
-  const [mediaTotal, setMediaTotal] = useState<number | null>(null);
-  const [mediaList, setMediaList] = useState<{ id: number; file_url?: string | null; filename?: string }[]>([]);
+  const cachedMediaList =
+    !isNativeMode && Number.isFinite(datasetId) ? mediaListCache.get(datasetId) ?? null : null;
+  const cachedMediaIndex =
+    cachedMediaList && !isNativeMode && Number.isFinite(mediaId)
+      ? (() => {
+          const idx = cachedMediaList.findIndex((item) => item.id === mediaId);
+          return idx >= 0 ? idx + 1 : null;
+        })()
+      : null;
+  const [mediaIndex, setMediaIndex] = useState<number | null>(cachedMediaIndex);
+  const [mediaTotal, setMediaTotal] = useState<number | null>(cachedMediaList ? cachedMediaList.length : null);
+  const [mediaList, setMediaList] = useState<MediaItem[]>(cachedMediaList ?? []);
   const [currentFilename, setCurrentFilename] = useState("");
   const [frameInput, setFrameInput] = useState("");
-  const [sliderValue, setSliderValue] = useState(1);
-  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubValue, setScrubValue] = useState<number | null>(null);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>("rectangle");
   const [polygonVertexCount, setPolygonVertexCount] = useState(4);
+  const [openClassMenuId, setOpenClassMenuId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [shapes, _setShapes] = useState<EditorShape[]>([]);
   const [toolPaneWidth, setToolPaneWidth] = useState(TOOL_PANE_DEFAULT);
   const [objectsPaneWidth, setObjectsPaneWidth] = useState(OBJECTS_PANE_DEFAULT);
+  const [activeRightTab, setActiveRightTab] = useState<"objects" | "labels">("objects");
 
   const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
@@ -344,8 +360,12 @@ export default function AnnotatePageClient() {
           profileItems = loadedProfile;
           setMediaTotal(stats?.cvat?.size ?? ds.media_count ?? null);
         } else {
-          const mediaListPromise = getDatasetMedia(datasetId);
-          const list = await mediaListPromise;
+          let list = mediaListCache.get(datasetId) ?? null;
+          if (!list) {
+            list = await getDatasetMedia(datasetId);
+            mediaListCache.set(datasetId, list);
+          }
+          if (cancelled) return;
           setMediaTotal(list.length);
           setMediaList(list);
           const media = list.find((item) => item.id === mediaId);
@@ -415,11 +435,15 @@ export default function AnnotatePageClient() {
   }, [authReady, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, mediaId, persistDraft, rawImageId, readDraft]);
 
   useEffect(() => {
-    if (loading || typeof window === "undefined" || !imageUrl) return;
+    if (typeof window === "undefined" || !imageUrl) return;
+
     const urls: string[] = [];
     if (isNativeMode) {
+      const totalFrames = mediaTotal ?? Infinity;
       for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
-        urls.push(visioxDatasets.frameUrl(datasetId, frameIndex + offset));
+        const idx = frameIndex + offset;
+        if (idx >= totalFrames) break;
+        urls.push(visioxDatasets.frameUrl(datasetId, idx));
       }
       for (let offset = 1; offset <= PRELOAD_BEHIND; offset += 1) {
         if (frameIndex - offset >= 0) {
@@ -429,43 +453,48 @@ export default function AnnotatePageClient() {
     } else if (mediaList.length && mediaIndex) {
       for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
         const next = mediaList[mediaIndex - 1 + offset];
-        if (next?.file_url) urls.push(next.file_url);
+        if (!next) break;
+        if (next.file_url) urls.push(next.file_url);
       }
       for (let offset = 1; offset <= PRELOAD_BEHIND; offset += 1) {
         const prev = mediaList[mediaIndex - 1 - offset];
-        if (prev?.file_url) urls.push(prev.file_url);
+        if (!prev) break;
+        if (prev.file_url) urls.push(prev.file_url);
       }
+    }
+
+    for (const url of urls) {
+      if (preloadedUrlsCache.has(url)) continue;
+      preloadedUrlsCache.add(url);
+      const img = new Image();
+      img.decoding = "async";
+      img.src = url;
     }
 
     const routeUrls: string[] = [];
     if (isNativeMode) {
-      for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
-        routeUrls.push(`/datasets/${params.id}/annotate/native?frame=${frameIndex + offset}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
+      const totalFrames = mediaTotal ?? Infinity;
+      for (let offset = 1; offset <= ROUTE_PREFETCH_AHEAD; offset += 1) {
+        const idx = frameIndex + offset;
+        if (idx >= totalFrames) break;
+        routeUrls.push(`/datasets/${params.id}/annotate/native?frame=${idx}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
       }
     } else if (mediaList.length && mediaIndex) {
-      for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
+      for (let offset = 1; offset <= ROUTE_PREFETCH_AHEAD; offset += 1) {
         const next = mediaList[mediaIndex - 1 + offset];
-        if (next) {
-          routeUrls.push(`/datasets/${params.id}/annotate/${next.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
-        }
+        if (!next) break;
+        routeUrls.push(`/datasets/${params.id}/annotate/${next.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
       }
     }
-
     routeUrls.forEach((url) => router.prefetch(url));
+  }, [imageUrl, isNativeMode, datasetId, frameIndex, mediaList, mediaIndex, mediaTotal, params.id, router, jobIdParam]);
 
-    const imgs = urls.map((url) => {
-      const img = new Image();
-      img.decoding = "async";
-      img.src = url;
-      return img;
-    });
-    return () => {
-      for (const img of imgs) img.src = "";
-    };
-  }, [loading, imageUrl, isNativeMode, datasetId, frameIndex, mediaList, mediaIndex, params.id, router, jobIdParam]);
-
-  const total = mediaTotal ?? 0;
   const current = isNativeMode ? frameIndex + 1 : mediaIndex ?? 1;
+  const total = mediaTotal ?? 0;
+  const displayedValue =
+    scrubValue !== null ? scrubValue : pendingIndex !== null ? pendingIndex : current;
+  const sliderMax = Math.max(1, total, current, pendingIndex ?? 0, scrubValue ?? 0, displayedValue);
+  const sliderProgress = sliderMax <= 1 ? 0 : ((displayedValue - 1) / (sliderMax - 1)) * 100;
   const numberedLabels = useMemo(
     () => labels.map((label, index) => ({ ...label, shortcut: index + 1 })),
     [labels]
@@ -476,12 +505,10 @@ export default function AnnotatePageClient() {
     (!Number.isNaN(jobId) || (!isNativeMode && Number.isFinite(mediaId)) || (isNativeMode && Number.isFinite(datasetId)));
 
   useEffect(() => {
-    if (loading) return;
-    if (pendingIndex !== null && pendingIndex !== current) return;
-    setPendingIndex(null);
-    if (isScrubbing) return;
-    setSliderValue(current);
-  }, [current, isScrubbing, loading, pendingIndex]);
+    if (pendingIndex !== null && pendingIndex === current) {
+      setPendingIndex(null);
+    }
+  }, [current, pendingIndex]);
 
   const navigateTo = useCallback(
     (oneBasedIdx: number, options?: { wrap?: boolean }) => {
@@ -490,7 +517,7 @@ export default function AnnotatePageClient() {
         ? wrapIndex(oneBasedIdx, totalItems)
         : Math.max(1, Math.min(totalItems, oneBasedIdx));
       setPendingIndex(nextIndex);
-      setSliderValue(nextIndex);
+      setScrubValue(null);
       setFrameInput(String(nextIndex));
       persistDraft(currentDraftKey, shapesRef.current);
       setLoading(true);
@@ -513,11 +540,12 @@ export default function AnnotatePageClient() {
   };
 
   const commitSlider = useCallback(() => {
-    setIsScrubbing(false);
-    if (sliderValue !== current) {
-      navigateTo(sliderValue);
+    if (scrubValue !== null && scrubValue !== current) {
+      navigateTo(scrubValue);
+    } else {
+      setScrubValue(null);
     }
-  }, [current, navigateTo, sliderValue]);
+  }, [current, navigateTo, scrubValue]);
 
   const handleSave = useCallback(async () => {
     const tokenNow = getAccessToken();
@@ -595,6 +623,27 @@ export default function AnnotatePageClient() {
   }, []);
 
   useEffect(() => {
+    if (!openClassMenuId) return;
+
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-class-menu-root='true']")) return;
+      setOpenClassMenuId(null);
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenClassMenuId(null);
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openClassMenuId]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
@@ -634,32 +683,32 @@ export default function AnnotatePageClient() {
   }, [current, navigateTo, handleSave]);
 
   return (
-    <div className="relative flex min-h-screen flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
-      <nav className="z-30 flex items-center justify-between gap-3 border-b border-stone-200/80 bg-white/90 px-4 py-2.5 shadow-sm shadow-stone-200/40 backdrop-blur-xl">
-        <div className="flex min-w-0 items-center gap-2">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
+      <nav className="z-30 flex items-center justify-between gap-4 border-b border-stone-200/80 bg-white/90 px-6 py-4 shadow-sm shadow-stone-200/40 backdrop-blur-xl">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={() => router.push(`/datasets/${params.id}`)}
-            className="shrink-0 rounded-xl p-2 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
+            className="shrink-0 rounded-xl p-2.5 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-6 w-6" />
           </button>
-          <div className="h-6 w-px shrink-0 bg-stone-200" />
+          <div className="h-8 w-px shrink-0 bg-stone-200" />
           <div className="hidden min-w-0 sm:block">
-            <h1 className="text-sm font-bold leading-none text-stone-900">Annotation workspace</h1>
-            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-widest text-orange-600">
+            <h1 className="text-lg font-bold leading-none text-stone-900">Annotation workspace</h1>
+            <p className="mt-1.5 truncate text-xs font-bold uppercase tracking-widest text-orange-600">
               Dataset {params.id}
               {isNativeMode ? ` · Frame ${frameIndex + 1}` : ` · Media ${params.imageId}`}
               {!Number.isNaN(jobId) ? ` · Job ${jobId}` : canSaveToApi ? " · Direct" : " · Demo"}
             </p>
           </div>
-          <div className="hidden h-6 w-px shrink-0 bg-stone-200 sm:block" />
-          <div className="flex items-center gap-1 rounded-xl border border-stone-200/80 bg-stone-50 p-0.5">
-            <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-white hover:shadow-sm disabled:opacity-35">
-              <Undo2 className="h-3.5 w-3.5" />
+          <div className="hidden h-8 w-px shrink-0 bg-stone-200 sm:block" />
+          <div className="flex items-center gap-1 rounded-xl p-1">
+            <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
+              <Undo2 className="h-6 w-6" />
             </button>
-            <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-white hover:shadow-sm disabled:opacity-35">
-              <Redo2 className="h-3.5 w-3.5" />
+            <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
+              <Redo2 className="h-6 w-6" />
             </button>
           </div>
         </div>
@@ -668,9 +717,9 @@ export default function AnnotatePageClient() {
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="flex shrink-0 items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-bold text-white shadow-xl shadow-orange-500/20 transition-all hover:scale-105 active:scale-95"
+          className="flex shrink-0 items-center gap-2.5 rounded-xl bg-orange-500 px-5 py-2.5 text-lg font-bold text-white shadow-xl shadow-orange-500/20 transition-all hover:scale-105 active:scale-95"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-5 w-5" />}
           <span>Save</span>
         </button>
       </nav>
@@ -684,34 +733,36 @@ export default function AnnotatePageClient() {
 
       <main className="flex min-h-0 flex-grow overflow-hidden">
         <aside
-          className="z-20 flex shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-1.5 py-4 shadow-sm shadow-stone-200/30 sm:px-2"
+          className="z-20 flex shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-2 py-4 shadow-sm shadow-stone-200/30 sm:px-2.5"
           style={{ width: toolPaneWidth }}
         >
-          <div className="flex flex-col gap-1 p-1">
+          <div className="flex flex-col gap-2 p-1.5">
             {TOOLBAR.map(({ tool, icon, label, key }) =>
               tool === "polygon" || tool === "polyline" ? (
-                <div key={tool} className="flex flex-col gap-1">
+                <div key={tool} className="flex w-16 self-center flex-col gap-1.5">
                   <button
                     type="button"
                     title={`${label} (${key})`}
                     onClick={() => setActiveTool(tool)}
-                    className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-2 text-[8px] font-bold uppercase tracking-wide transition-all ${
-                      activeTool === tool ? "bg-white text-orange-600 shadow-md shadow-orange-500/10" : "text-stone-500 hover:text-stone-900"
+                    className={`inline-flex h-16 w-16 self-center flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all ${
+                      activeTool === tool
+                        ? "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400/25"
+                        : "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white hover:text-stone-900 hover:shadow-sm"
                     }`}
                   >
                     {icon}
-                    <span className="max-w-full truncate px-0.5 text-center leading-none">{label}</span>
+                    <span className="w-full truncate px-1 text-center leading-none">{label}</span>
                   </button>
                   {activeTool === tool && (
-                    <label className="flex flex-col gap-1 rounded-xl border border-stone-200/80 bg-white/90 px-1.5 py-2">
-                      <span className="text-center text-[7px] font-bold uppercase leading-none tracking-wider text-stone-500">
+                    <label className="flex w-16 flex-col gap-1.5 rounded-xl border border-orange-200 bg-white px-2 py-2.5 shadow-sm shadow-orange-100/60">
+                      <span className="text-center text-[9px] font-bold uppercase leading-none tracking-wider text-stone-500">
                         Points
                       </span>
                       <select
                         value={polygonVertexCount}
                         onChange={(e) => setPolygonVertexCount(Number(e.target.value))}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-full rounded-lg border border-stone-200 bg-stone-50 px-1 py-1 text-[10px] font-semibold text-stone-800"
+                        className="w-full rounded-lg border border-stone-200 bg-stone-50 px-1.5 py-1.5 text-xs font-semibold text-stone-800"
                       >
                         {[(tool === "polyline" ? 2 : 3), 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
                           <option key={`${tool}-${n}`} value={n}>
@@ -728,12 +779,14 @@ export default function AnnotatePageClient() {
                   type="button"
                   title={`${label} (${key})`}
                   onClick={() => setActiveTool(tool)}
-                  className={`flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[8px] font-bold uppercase tracking-wide transition-all ${
-                    activeTool === tool ? "bg-white text-orange-600 shadow-md shadow-orange-500/10" : "text-stone-500 hover:text-stone-900"
+                  className={`inline-flex h-16 w-16 self-center flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all ${
+                    activeTool === tool
+                      ? "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400/25"
+                      : "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white hover:text-stone-900 hover:shadow-sm"
                   }`}
                 >
                   {icon}
-                  <span className="max-w-full truncate px-0.5 text-center leading-none">{label}</span>
+                  <span className="w-full truncate px-1 text-center leading-none">{label}</span>
                 </button>
               )
             )}
@@ -793,21 +846,47 @@ export default function AnnotatePageClient() {
         </button>
 
         <aside
-          className="z-20 flex shrink-0 flex-col overflow-y-auto border-l border-stone-200/80 bg-white/90 p-6 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
+          className="z-20 grid h-full shrink-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l border-stone-200/80 bg-white/90 p-6 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
           style={{ width: objectsPaneWidth }}
         >
-          <div className="mb-6 flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-stone-900">Objects</h3>
-            <span className="rounded-lg bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">{shapes.length} total</span>
+          <div className="mb-5 flex items-center justify-between gap-2 border-b border-stone-200">
+            <div className="flex">
+              <button
+                type="button"
+                onClick={() => setActiveRightTab("objects")}
+                className={`-mb-px border-b-2 px-3 pb-2.5 text-sm font-bold uppercase tracking-widest transition ${
+                  activeRightTab === "objects"
+                    ? "border-orange-500 text-stone-900"
+                    : "border-transparent text-stone-400 hover:text-stone-700"
+                }`}
+              >
+                Objects
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveRightTab("labels")}
+                className={`-mb-px border-b-2 px-3 pb-2.5 text-sm font-bold uppercase tracking-widest transition ${
+                  activeRightTab === "labels"
+                    ? "border-orange-500 text-stone-900"
+                    : "border-transparent text-stone-400 hover:text-stone-700"
+                }`}
+              >
+                Labels
+              </button>
+            </div>
+            {activeRightTab === "objects" && (
+              <span className="rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-bold text-stone-500">{shapes.length} total</span>
+            )}
           </div>
 
-          {numberedLabels.length > 0 && (
-            <div className="mb-5 rounded-2xl border border-stone-200/80 bg-stone-50/80 p-3">
-              <div className="mb-2 text-[9px] font-bold uppercase tracking-widest text-stone-500">Class Keys</div>
-              <div className="space-y-1.5">
+          <div className="flex min-h-0 flex-col overflow-hidden">
+          {activeRightTab === "labels" && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
+              <div className="mb-3 shrink-0 text-[14px] font-bold uppercase tracking-widest text-stone-500">Class Keys</div>
+              <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-scroll overscroll-contain pr-2">
                 {numberedLabels.map((label) => (
-                  <div key={label.id} className="flex items-center gap-2 text-[11px] font-semibold text-stone-700">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-white text-[10px] font-bold text-stone-700 shadow-sm">
+                  <div key={label.id} className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-xl bg-white/70 px-3 py-2 text-left text-base font-semibold text-stone-700 shadow-sm shadow-stone-200/40">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-[12px] font-bold text-stone-700 shadow-sm">
                       {label.shortcut}
                     </span>
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
@@ -818,77 +897,121 @@ export default function AnnotatePageClient() {
             </div>
           )}
 
-          <div className="space-y-3">
+          {activeRightTab === "objects" && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
+            <div className="custom-scrollbar h-full min-h-0 flex-1 space-y-3 overflow-y-scroll overscroll-contain pr-2">
             {shapes.length === 0 && (
-              <p className="text-sm leading-relaxed text-stone-500">
-                Box: drag on the image (N). Polygon or polyline: choose point count, then click each corner. Points and tags are single-click tools. Save syncs annotations to the API per image.
+              <p className="text-base leading-relaxed text-stone-500">
+                Box: click two corners on the image (N).
               </p>
             )}
             {shapes.map((shape) => {
-              const name = labels.find((item) => item.id === shape.classLabelId)?.name ?? "?";
-              const color = labels.find((item) => item.id === shape.classLabelId)?.color ?? "#999";
+              const currentLabel = labels.find((item) => item.id === shape.classLabelId);
+              const name = currentLabel?.name ?? "?";
+              const color = currentLabel?.color ?? "#999";
               return (
-                <div key={shape.clientId} className="group space-y-2 rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4 transition-all hover:border-orange-200 hover:bg-white">
+                <div
+                  key={shape.clientId}
+                  className="group space-y-2.5 rounded-2xl border p-3.5 transition-all hover:bg-white"
+                  style={{
+                    borderColor: `${color}55`,
+                    backgroundColor: `${color}0F`,
+                  }}
+                >
                   <div className="flex cursor-pointer items-center justify-between" onClick={() => setActiveClassId(shape.classLabelId)}>
                     <div className="flex items-center gap-3">
                       <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                      <span className="text-xs font-bold text-stone-900">{name}</span>
+                      <span className="text-sm font-bold text-stone-900">{name}</span>
                     </div>
-                    <span className="font-mono text-[10px] text-stone-400">{objectSummary(shape)}</span>
+                    <span className="font-mono text-xs text-stone-400">{objectSummary(shape)}</span>
                   </div>
-                  <label className="block text-[9px] font-bold uppercase tracking-wider text-stone-500">
-                    Class
-                    <select
-                      className="mt-1 w-full cursor-pointer rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs font-semibold text-stone-800 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
-                      value={shape.classLabelId}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        const nextClass = Number(e.target.value);
-                        setShapes((prev) =>
-                          prev.map((item) => (item.clientId === shape.clientId ? { ...item, classLabelId: nextClass } : item))
-                        );
-                        setActiveClassId(nextClass);
-                      }}
-                    >
-                      {numberedLabels.map((label) => (
-                        <option key={label.id} value={label.id}>
-                          {label.shortcut}. {label.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                    <div className="relative" data-class-menu-root="true">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenClassMenuId((prev) => (prev === shape.clientId ? null : shape.clientId));
+                        }}
+                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-left text-sm font-semibold normal-case tracking-normal text-stone-800 shadow-sm shadow-stone-200/50 outline-none transition hover:border-orange-200 hover:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-400/15"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                          <span className="truncate">{currentLabel ? `${numberedLabels.find((label) => label.id === currentLabel.id)?.shortcut ?? ""}. ${name}` : name}</span>
+                        </span>
+                        <ChevronRight className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${openClassMenuId === shape.clientId ? "-rotate-90" : "rotate-90"}`} />
+                      </button>
+                      {openClassMenuId === shape.clientId && (
+                        <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 max-h-64 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-xl shadow-stone-300/30">
+                          {numberedLabels.map((label) => {
+                            const selected = label.id === shape.classLabelId;
+                            return (
+                              <button
+                                key={label.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShapes((prev) =>
+                                    prev.map((item) => (item.clientId === shape.clientId ? { ...item, classLabelId: label.id } : item))
+                                  );
+                                  setActiveClassId(label.id);
+                                  setOpenClassMenuId(null);
+                                }}
+                                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold normal-case tracking-normal transition ${
+                                  selected ? "bg-orange-50 text-orange-700" : "text-stone-700 hover:bg-stone-50 hover:text-stone-900"
+                                }`}
+                              >
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-stone-100 text-xs font-bold text-stone-700">
+                                  {label.shortcut}
+                                </span>
+                                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
+                                <span className="min-w-0 flex-1 truncate">{label.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })}
+            </div>
+          </div>
+          )}
           </div>
         </aside>
       </main>
 
-      <div className="z-30 flex shrink-0 select-none items-center gap-3 border-t border-stone-200/80 bg-white/95 px-4 py-2 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl">
-        <div className="flex items-center gap-0.5">
+      <div className="z-30 flex shrink-0 select-none items-center gap-4 border-t border-stone-200/80 bg-white/95 px-6 py-4 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl">
+        <div className="flex items-center gap-1.5">
           {[
-            { icon: <ChevronFirst className="h-3.5 w-3.5" />, label: "First", action: () => navigateTo(1) },
-            { icon: <ChevronsLeft className="h-3.5 w-3.5" />, label: "Back 10", action: () => navigateTo(current - 10, { wrap: true }) },
-            { icon: <ChevronLeft className="h-3.5 w-3.5" />, label: "Prev", action: () => navigateTo(current - 1, { wrap: true }) },
-            { icon: <Play className="h-3 w-3" />, label: "Play", action: () => {} },
-            { icon: <ChevronRight className="h-3.5 w-3.5" />, label: "Next", action: () => navigateTo(current + 1, { wrap: true }) },
-            { icon: <ChevronsRight className="h-3.5 w-3.5" />, label: "Forward 10", action: () => navigateTo(current + 10, { wrap: true }) },
-            { icon: <ChevronLast className="h-3.5 w-3.5" />, label: "Last", action: () => navigateTo(total || 1) },
+            { icon: <ChevronFirst className="h-5 w-5" />, label: "First", action: () => navigateTo(1) },
+            { icon: <ChevronsLeft className="h-5 w-5" />, label: "Back 10", action: () => navigateTo(current - 10, { wrap: true }) },
+            { icon: <ChevronLeft className="h-5 w-5" />, label: "Prev", action: () => navigateTo(current - 1, { wrap: true }) },
+            { icon: <Play className="h-5 w-5" />, label: "Play", action: () => {} },
+            { icon: <ChevronRight className="h-5 w-5" />, label: "Next", action: () => navigateTo(current + 1, { wrap: true }) },
+            { icon: <ChevronsRight className="h-5 w-5" />, label: "Forward 10", action: () => navigateTo(current + 10, { wrap: true }) },
+            { icon: <ChevronLast className="h-5 w-5" />, label: "Last", action: () => navigateTo(total || 1) },
           ].map(({ icon, label, action }) => (
-            <button key={label} type="button" title={label} onClick={action} className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200">
+            <button key={label} type="button" title={label} onClick={action} className="flex h-10 w-10 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200">
               {icon}
             </button>
           ))}
         </div>
 
         <div className="relative flex min-w-0 flex-1 items-center">
-          <input
-            type="range"
-            min={1}
-            max={Math.max(1, total)}
-            value={sliderValue}
-            onPointerDown={() => setIsScrubbing(true)}
-            onChange={(e) => setSliderValue(Number(e.target.value))}
+            <input
+              type="range"
+              min={1}
+            max={sliderMax}
+            value={displayedValue}
+            onPointerDown={() => setScrubValue(displayedValue)}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setScrubValue(next);
+              setFrameInput(String(next));
+            }}
             onPointerUp={commitSlider}
             onBlur={commitSlider}
             onKeyUp={(e) => {
@@ -902,23 +1025,26 @@ export default function AnnotatePageClient() {
                 commitSlider();
               }
             }}
-            className="h-1.5 w-full cursor-pointer touch-none appearance-none rounded-full bg-stone-200 accent-orange-500"
+            className="h-2 w-full cursor-pointer touch-none appearance-none rounded-full bg-stone-200 accent-orange-500 transition-[background] duration-200"
+            style={{
+              background: `linear-gradient(to right, #f97316 0%, #f97316 ${sliderProgress}%, #e7e5e4 ${sliderProgress}%, #e7e5e4 100%)`,
+            }}
           />
         </div>
 
-        <div className="flex min-w-0 max-w-[14rem] items-center gap-2">
-          <span className="truncate text-[11px] font-semibold text-stone-600" title={currentFilename}>
+        <div className="flex w-[18rem] shrink-0 items-center gap-3">
+          <span className="min-w-0 flex-1 truncate text-sm font-bold text-stone-600" title={currentFilename}>
             {currentFilename || (isNativeMode ? `Frame ${frameIndex + 1}` : `Media ${params.imageId}`)}
           </span>
-          <button type="button" title="Copy link" onClick={() => navigator.clipboard?.writeText(window.location.href)} className="shrink-0 text-stone-400 transition hover:text-stone-700">
-            <Link2 className="h-3.5 w-3.5" />
+          <button type="button" title="Copy link" onClick={() => navigator.clipboard?.writeText(window.location.href)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700">
+            <Link2 className="h-5 w-5" />
           </button>
-          <button type="button" title="Delete annotation" onClick={() => setShapes([])} className="shrink-0 text-stone-400 transition hover:text-red-500">
-            <Trash2 className="h-3.5 w-3.5" />
+          <button type="button" title="Delete annotation" onClick={() => setShapes([])} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-500">
+            <Trash2 className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1.5">
           <input
             type="number"
             min={1}
@@ -929,9 +1055,9 @@ export default function AnnotatePageClient() {
             onKeyDown={(e) => {
               if (e.key === "Enter") handleFrameInputCommit();
             }}
-            className="w-14 rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-center text-[11px] font-bold tabular-nums text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
+            className="no-number-spinner w-12 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-center text-sm font-bold tabular-nums text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
           />
-          {total > 0 && <span className="text-[10px] font-semibold text-stone-400">/ {total}</span>}
+          {total > 0 && <span className="text-sm font-bold text-stone-400">/ {total}</span>}
         </div>
       </div>
     </div>

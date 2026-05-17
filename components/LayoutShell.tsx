@@ -45,7 +45,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   // ── Annotation terminal (datasets … / annotate / …) ──────────
   if (isAnnotateWorkspace(pathname)) {
     return (
-      <div className="min-h-screen bg-[#fcfaf7] text-stone-900">{children}</div>
+      <div className="flex h-dvh flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">{children}</div>
     );
   }
 
@@ -56,7 +56,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     return (
       <div className="flex min-h-screen bg-[#fcfaf7]">
         <Sidebar />
-        <div className="flex-1 md:ml-56 flex flex-col min-h-screen">
+        <div className="flex-1 md:ml-72 flex flex-col min-h-screen">
           <main className="flex-grow flex flex-col relative">{children}</main>
         </div>
       </div>

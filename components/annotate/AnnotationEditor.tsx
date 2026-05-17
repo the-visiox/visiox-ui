@@ -64,7 +64,7 @@ function menuPositionFromPointer(evt: MouseEvent | PointerEvent, container: HTML
   };
 }
 
-const ANCHOR_PX = 16;
+const ANCHOR_PX = 24;
 const RECT_MIN_SIZE = 5;
 const ZOOM_MIN = 0.12;
 const ZOOM_MAX = 10;
@@ -108,17 +108,19 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const imageW = image?.width ?? 0;
   const imageH = image?.height ?? 0;
+  const containerW = dimensions.width;
+  const containerH = dimensions.height;
   const baseFit = useMemo(() => {
-    if (!image || dimensions.width <= 0 || dimensions.height <= 0) {
+    if (!imageW || !imageH || containerW <= 0 || containerH <= 0) {
       return { scale: 1, x: 0, y: 0 };
     }
-    const scale = Math.min(dimensions.width / image.width, dimensions.height / image.height);
+    const scale = Math.min(containerW / imageW, containerH / imageH);
     return {
       scale,
-      x: (dimensions.width - image.width * scale) / 2,
-      y: (dimensions.height - image.height * scale) / 2,
+      x: (containerW - imageW * scale) / 2,
+      y: (containerH - imageH * scale) / 2,
     };
-  }, [image, dimensions]);
+  }, [imageW, imageH, containerW, containerH]);
   const layerScale = baseFit.scale * zoomMul;
   const layerX = baseFit.x + panOffset.x;
   const layerY = baseFit.y + panOffset.y;
@@ -136,16 +138,28 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }, [pathDraft]);
 
   useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setNewBox(null);
+      setPathDraft([]);
+      setPathHover(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTool]);
+
+  useEffect(() => {
     panOffsetRef.current = panOffset;
   }, [panOffset]);
 
   useEffect(() => {
     const updateSize = () => {
       if (!containerRef.current) return;
-      setDimensions({
-        width: containerRef.current.offsetWidth,
-        height: containerRef.current.offsetHeight,
-      });
+      const width = containerRef.current.offsetWidth;
+      const height = containerRef.current.offsetHeight;
+      setDimensions((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
     };
 
     updateSize();
@@ -193,7 +207,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const getShapeColor = useCallback((classLabelId: number) => colorFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
   const getShapeLabel = useCallback((classLabelId: number) => labelNameFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
 
-  const transformTargetId = useMemo(() => selectedId ?? hoveredId ?? null, [selectedId, hoveredId]);
+  const transformTargetId = useMemo(
+    () => selectedId ?? (activeTool === "select" ? hoveredId : null),
+    [selectedId, hoveredId, activeTool]
+  );
   const transformTargetShape = useMemo(
     () => shapes.find((shape) => shape.clientId === transformTargetId) ?? null,
     [shapes, transformTargetId]
@@ -232,11 +249,14 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     trRef.current.getLayer()?.batchDraw();
   }, [transformTargetId, transformTargetShape]);
 
-  const deleteSelectedShape = useCallback(() => {
-    if (!selectedId) return;
-    onShapesChange((prev) => prev.filter((shape) => shape.clientId !== selectedId));
-    setSelectedId(null);
-  }, [onShapesChange, selectedId]);
+  const deleteShape = useCallback(
+    (id: string) => {
+      onShapesChange((prev) => prev.filter((shape) => shape.clientId !== id));
+      setSelectedId((current) => (current === id ? null : current));
+      setHoveredId((current) => (current === id ? null : current));
+    },
+    [onShapesChange]
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -270,6 +290,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         setPathHover(null);
         return;
       }
+      if (e.key === "Escape" && newBox) {
+        e.preventDefault();
+        setNewBox(null);
+        return;
+      }
       const k = e.key.toLowerCase();
       if (k === "v") onToolChange("select");
       if (k === "n") onToolChange("rectangle");
@@ -278,14 +303,17 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       if (k === "k") onToolChange("points");
       if (k === "c") onToolChange("cuboid");
       if (k === "t") onToolChange("tag");
-      if ((e.key === "Delete" || e.key === "Backspace" || k === "d") && selectedId) {
-        e.preventDefault();
-        deleteSelectedShape();
+      if (e.key === "Delete" || e.key === "Backspace" || k === "d") {
+        const target = selectedId ?? hoveredId;
+        if (target) {
+          e.preventDefault();
+          deleteShape(target);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [applyShapeClass, contextMenu, deleteSelectedShape, labelShortcutMap, onToolChange, pathDraft.length, selectedId]);
+  }, [applyShapeClass, contextMenu, deleteShape, hoveredId, labelShortcutMap, newBox, onToolChange, pathDraft.length, selectedId]);
 
   const checkDeselect = useCallback((e: KonvaEventObject<MouseEvent>) => {
     if (isCanvasBackground(e)) {
@@ -295,11 +323,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }, []);
 
   const selectShape = useCallback((clientId: string, e: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (activeTool !== "select") return;
     e.cancelBubble = true;
     setSelectedId(clientId);
-  }, []);
+  }, [activeTool]);
 
   const openShapeClassMenu = useCallback((clientId: string, e: KonvaEventObject<MouseEvent | PointerEvent>) => {
+    if (activeTool !== "select") return;
     e.evt.preventDefault();
     e.cancelBubble = true;
     const pos = menuPositionFromPointer(e.evt, containerRef.current);
@@ -309,7 +339,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       x: pos.x,
       y: pos.y,
     });
-  }, []);
+  }, [activeTool]);
 
   const clampRectToImage = useCallback(
     (x: number, y: number, width: number, height: number) => {
@@ -351,9 +381,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const appendPathVertex = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {
-      if (!image || imageW < 1 || imageH < 1 || !isCanvasBackground(e)) return;
+      if (!image || imageW < 1 || imageH < 1) return;
       const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
       if (!pos) return;
+
+      if (pathDraftRef.current.length === 0) {
+        setSelectedId(null);
+      }
 
       const nextPoints = [...pathDraftRef.current, pos.x, pos.y];
       const required = vertexCount * 2;
@@ -377,16 +411,17 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       setPathDraft([]);
       setPathHover(null);
       onShapesChange((prev) => [...prev, shape]);
-      setSelectedId(shape.clientId);
+      onToolChange("select");
     },
-    [image, imageW, imageH, layerX, layerY, layerScale, vertexCount, labels, activeClassId, activeTool, onShapesChange]
+    [image, imageW, imageH, layerX, layerY, layerScale, vertexCount, labels, activeClassId, activeTool, onShapesChange, onToolChange]
   );
 
   const placeSingleShape = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {
-      if (!image || imageW < 1 || imageH < 1 || !isCanvasBackground(e)) return;
+      if (!image || imageW < 1 || imageH < 1) return;
       const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
       if (!pos) return;
+      setSelectedId(null);
       const classId = labels.some((label) => label.id === activeClassId) ? activeClassId : (labels[0]?.id ?? 1);
       const shape: EditorShape = canPlaceTag
         ? {
@@ -409,27 +444,46 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             points: [pos.x, pos.y],
           };
       onShapesChange((prev) => [...prev, shape]);
-      setSelectedId(shape.clientId);
+      onToolChange("select");
     },
-    [image, imageW, imageH, layerX, layerY, layerScale, labels, activeClassId, canPlaceTag, onShapesChange]
+    [image, imageW, imageH, layerX, layerY, layerScale, labels, activeClassId, canPlaceTag, onShapesChange, onToolChange]
   );
 
-  const handleStageMouseDown = (e: KonvaEventObject<MouseEvent>) => {
-    if (isMiddlePan || e.evt.button !== 0) return;
-    if (canDrawPath) {
-      appendPathVertex(e);
-      return;
-    }
-    if (canPlacePoint || canPlaceTag) {
-      placeSingleShape(e);
-      return;
-    }
-    if (!canDrawRect || !isCanvasBackground(e)) return;
+  const handleStageMouseDown = (_e: KonvaEventObject<MouseEvent>) => {
+    /* tool actions live in handleStageClick so that drag on a shape (which suppresses click) doesn't accidentally fire them */
+  };
 
-    if (selectedId) setSelectedId(null);
+  const performRectClick = (e: KonvaEventObject<MouseEvent>) => {
     const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
     if (!pos) return;
-    setNewBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+
+    if (!newBox) {
+      if (selectedId) setSelectedId(null);
+      setNewBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+      return;
+    }
+
+    const x = newBox.width < 0 ? newBox.x + newBox.width : newBox.x;
+    const y = newBox.height < 0 ? newBox.y + newBox.height : newBox.y;
+    const width = Math.abs(newBox.width);
+    const height = Math.abs(newBox.height);
+    if (width <= RECT_MIN_SIZE || height <= RECT_MIN_SIZE) {
+      setNewBox(null);
+      return;
+    }
+    const classId = labels.some((label) => label.id === activeClassId) ? activeClassId : (labels[0]?.id ?? 1);
+    const box: EditorShape = {
+      clientId: `box-${Date.now()}`,
+      shapeType: "rectangle",
+      classLabelId: classId,
+      x,
+      y,
+      width,
+      height,
+    };
+    onShapesChange((prev) => [...prev, box]);
+    setNewBox(null);
+    onToolChange("select");
   };
 
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
@@ -445,26 +499,12 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   };
 
   const handleMouseUp = () => {
-    if (isMiddlePan || !newBox) return;
-    if (Math.abs(newBox.width) > RECT_MIN_SIZE && Math.abs(newBox.height) > RECT_MIN_SIZE) {
-      const classId = labels.some((label) => label.id === activeClassId) ? activeClassId : (labels[0]?.id ?? 1);
-      const box: EditorShape = {
-        clientId: `box-${Date.now()}`,
-        shapeType: "rectangle",
-        classLabelId: classId,
-        x: newBox.width < 0 ? newBox.x + newBox.width : newBox.x,
-        y: newBox.height < 0 ? newBox.y + newBox.height : newBox.y,
-        width: Math.abs(newBox.width),
-        height: Math.abs(newBox.height),
-      };
-      onShapesChange((prev) => [...prev, box]);
-      setSelectedId(box.clientId);
-    }
-    setNewBox(null);
+    /* box drawing is two-click — finalize happens in handleStageClick */
   };
 
   const handleWheel = (e: KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
+    if (newBox) return;
     const stage = e.target.getStage();
     if (!stage) return;
     const pointer = stage.getPointerPosition();
@@ -483,19 +523,36 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   };
 
   const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
-    if (canDrawPath) return;
+    if (isMiddlePan || e.evt.button !== 0) return;
+    if (canDrawPath) {
+      appendPathVertex(e);
+      return;
+    }
+    if (canPlacePoint || canPlaceTag) {
+      placeSingleShape(e);
+      return;
+    }
+    if (canDrawRect) {
+      performRectClick(e);
+      return;
+    }
     checkDeselect(e);
   };
 
   const visibleDraft = activeTool === "polygon" || activeTool === "polyline" ? pathDraft : [];
   const previewPoints = visibleDraft.length > 0 && pathHover ? [...visibleDraft, pathHover.x, pathHover.y] : visibleDraft;
-  const hoveredShape = hoveredId ? shapes.find((shape) => shape.clientId === hoveredId) ?? null : null;
+  const hoverEnabled = activeTool === "select";
+  const hoveredShape = hoverEnabled && hoveredId ? shapes.find((shape) => shape.clientId === hoveredId) ?? null : null;
   const hoveredLabelName = hoveredShape ? getShapeLabel(hoveredShape.classLabelId) : "";
   const safeLayerScale = Math.max(layerScale, 0.001);
   const safeBaseFitScale = Math.max(baseFit.scale, 0.001);
   const transformerAnchorPx = ANCHOR_PX / safeBaseFitScale;
-  const shapeDragEnabled = visibleDraft.length === 0 && !newBox;
-  const cursorClass = isMiddlePan ? "cursor-grabbing" : canDrawRect || canDrawPath || canPlacePoint || canPlaceTag ? "cursor-crosshair" : "cursor-default";
+  const shapeDragEnabled = activeTool === "select" && visibleDraft.length === 0 && !newBox;
+  const cursorClass = isMiddlePan
+    ? "cursor-grabbing"
+    : canDrawRect || canDrawPath || canPlacePoint || canPlaceTag
+      ? "cursor-crosshair"
+      : "cursor-default";
   const zoomPct = Math.round(zoomMul * 100);
 
   return (
@@ -520,17 +577,17 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         e.preventDefault();
       }}
     >
-      <div className="absolute right-3 top-3 z-[120] flex flex-col gap-1 rounded-2xl border border-stone-200/90 bg-white/95 p-1 shadow-lg shadow-stone-300/40 backdrop-blur-sm">
-        <button type="button" title="Fit to window" onClick={fitToWindow} className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
-          <Maximize2 className="h-4 w-4" />
+      <div className="absolute right-3 top-3 z-[120] flex flex-col gap-1.5 rounded-2xl border border-stone-200/90 bg-white/95 p-1.5 shadow-lg shadow-stone-300/40 backdrop-blur-sm">
+        <button type="button" title="Fit to window" onClick={fitToWindow} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+          <Maximize2 className="h-[22px] w-[22px]" />
         </button>
-        <button type="button" title="Zoom in" onClick={() => setZoomMul((z) => Math.min(ZOOM_MAX, z * 1.2))} className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
-          <ZoomIn className="h-4 w-4" />
+        <button type="button" title="Zoom in" onClick={() => setZoomMul((z) => Math.min(ZOOM_MAX, z * 1.2))} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+          <ZoomIn className="h-[22px] w-[22px]" />
         </button>
-        <button type="button" title="Zoom out" onClick={() => setZoomMul((z) => Math.max(ZOOM_MIN, z / 1.2))} className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
-          <ZoomOut className="h-4 w-4" />
+        <button type="button" title="Zoom out" onClick={() => setZoomMul((z) => Math.max(ZOOM_MIN, z / 1.2))} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+          <ZoomOut className="h-[22px] w-[22px]" />
         </button>
-        <span className="px-0.5 pb-1 text-center text-[9px] font-bold tabular-nums text-stone-500">{zoomPct}%</span>
+        <span className="px-1 pb-1 text-center text-[11px] font-bold tabular-nums text-stone-500">{zoomPct}%</span>
       </div>
 
       <Stage
@@ -549,15 +606,12 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           {shapes.map((shape) => {
             const stroke = getShapeColor(shape.classLabelId);
             const shapeLabel = getShapeLabel(shape.classLabelId);
-            const isHovered = hoveredId === shape.clientId;
+            const isHovered = hoverEnabled && hoveredId === shape.clientId;
             const isSelected = selectedId === shape.clientId;
             const livePos = dragPreview[shape.clientId];
             const shapeX = livePos?.x ?? shape.x;
             const shapeY = livePos?.y ?? shape.y;
-            const bannerX = shapeX;
-            const bannerY = Math.max(0, shapeY - 22 / safeLayerScale);
-            const bannerWidth = Math.max(34, shapeLabel.length * 7 + 12) / safeLayerScale;
-            const bannerHeight = 18 / safeLayerScale;
+            const shapePointerEnabled = true;
 
             if (shape.shapeType === "tag") {
               const width = Math.max(TAG_MIN_WIDTH, shapeLabel.length * 9 + 28) / safeLayerScale;
@@ -576,8 +630,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     stroke={isSelected ? "#ffffff" : stroke}
                     strokeWidth={(isSelected ? 2 : 1) / safeLayerScale}
                     draggable={shapeDragEnabled}
+                    listening={shapePointerEnabled}
                     onMouseDown={(e) => selectShape(shape.clientId, e)}
-                    onClick={(e) => openShapeClassMenu(shape.clientId, e)}
                     onTap={(e) => selectShape(shape.clientId, e)}
                     onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                     onMouseEnter={(e) => {
@@ -627,23 +681,21 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               const isPointsShape = shape.shapeType === "points";
               return (
                 <React.Fragment key={shape.clientId}>
-                  <Rect x={bannerX} y={bannerY} width={bannerWidth} height={bannerHeight} cornerRadius={6 / safeLayerScale} fill={stroke} opacity={0.92} listening={false} />
-                  <Text x={bannerX + 6 / safeLayerScale} y={bannerY + 4 / safeLayerScale} text={shapeLabel} fontSize={10 / safeLayerScale} fontStyle="bold" fill="#ffffff" listening={false} />
                   {!isPointsShape && (
                     <Line
                       id={shape.clientId}
                       name="path-shape"
                       points={shape.points}
                       closed={isClosed}
-                      fill={isClosed ? `${stroke}22` : undefined}
+                      fill={isClosed ? `${stroke}${isHovered ? "55" : "22"}` : undefined}
                       stroke={stroke}
-                      strokeWidth={(isHovered ? 3 : 2) / layerScale}
+                      strokeWidth={(isHovered ? 4 : 2) / layerScale}
                       lineJoin="round"
                       perfectDrawEnabled={false}
                       draggable={shapeDragEnabled}
+                      listening={shapePointerEnabled}
                       onMouseDown={(e) => selectShape(shape.clientId, e)}
-                      onClick={(e) => openShapeClassMenu(shape.clientId, e)}
-                      onTap={(e) => selectShape(shape.clientId, e)}
+                        onTap={(e) => selectShape(shape.clientId, e)}
                       onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                       onMouseEnter={(e) => {
                         const p = e.target.getStage()?.getPointerPosition();
@@ -655,6 +707,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                         if (p) setHoverPos({ x: p.x, y: p.y });
                       }}
                       onMouseLeave={() => setHoveredId((id) => (id === shape.clientId ? null : id))}
+                      onDragMove={(ev) => {
+                        const node = ev.target;
+                        setDragPreview((prev) => ({
+                          ...prev,
+                          [shape.clientId]: { x: shape.x + node.x(), y: shape.y + node.y() },
+                        }));
+                      }}
                       onDragEnd={(ev) => {
                         const node = ev.target;
                         const dx = node.x();
@@ -663,6 +722,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                         const nextPoints = shape.points!.map((value, index) =>
                           index % 2 === 0 ? clamp(value + dx, 0, imageW) : clamp(value + dy, 0, imageH)
                         );
+                        setDragPreview((prev) => {
+                          const next = { ...prev };
+                          delete next[shape.clientId];
+                          return next;
+                        });
                         onShapesChange((prev) => {
                           const idx = prev.findIndex((item) => item.clientId === shape.clientId);
                           if (idx < 0) return prev;
@@ -673,10 +737,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       }}
                     />
                   )}
-                  {Array.from({ length: shape.points.length / 2 }, (_, vertexIndex) => {
-                    const vx = shape.points![vertexIndex * 2];
-                    const vy = shape.points![vertexIndex * 2 + 1];
-                    const isCornerHovered = hoveredCorner?.shapeId === shape.clientId && hoveredCorner.vertexIndex === vertexIndex;
+                  {(isPointsShape || isSelected || (hoverEnabled && hoveredId === shape.clientId)) && Array.from({ length: shape.points.length / 2 }, (_, vertexIndex) => {
+                    const vx = shape.points![vertexIndex * 2] + (shapeX - shape.x);
+                    const vy = shape.points![vertexIndex * 2 + 1] + (shapeY - shape.y);
+                    const isCornerHovered = hoverEnabled && hoveredCorner?.shapeId === shape.clientId && hoveredCorner.vertexIndex === vertexIndex;
                     return (
                       <Circle
                         key={`${shape.clientId}-v-${vertexIndex}`}
@@ -687,6 +751,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                         stroke={stroke}
                         strokeWidth={(isCornerHovered ? 2 : 1.5) / layerScale}
                         draggable={shapeDragEnabled}
+                        listening={shapePointerEnabled}
                         onMouseEnter={() => setHoveredCorner({ shapeId: shape.clientId, vertexIndex })}
                         onMouseLeave={() => {
                           setHoveredCorner((prev) =>
@@ -694,11 +759,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                           );
                         }}
                         onMouseDown={(e) => {
+                          if (activeTool !== "select") return;
                           e.cancelBubble = true;
                           setSelectedId(shape.clientId);
                         }}
                         onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                         onTap={(e) => {
+                          if (activeTool !== "select") return;
                           e.cancelBubble = true;
                           setSelectedId(shape.clientId);
                         }}
@@ -707,30 +774,25 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       />
                     );
                   })}
-                  {isSelected && !isPointsShape && (
-                    <Line points={shape.points} closed={isClosed} stroke={stroke} strokeWidth={2.5 / layerScale} dash={[6 / layerScale, 6 / layerScale]} listening={false} perfectDrawEnabled={false} />
-                  )}
                 </React.Fragment>
               );
             }
 
             return (
               <React.Fragment key={shape.clientId}>
-                <Rect x={bannerX} y={bannerY} width={bannerWidth} height={bannerHeight} cornerRadius={6 / safeLayerScale} fill={stroke} opacity={0.92} listening={false} />
-                <Text x={bannerX + 6 / safeLayerScale} y={bannerY + 4 / safeLayerScale} text={shapeLabel} fontSize={10 / safeLayerScale} fontStyle="bold" fill="#ffffff" listening={false} />
                 <Rect
                   id={shape.clientId}
                   x={shapeX}
                   y={shapeY}
                   width={shape.width}
                   height={shape.height}
-                  fill={`${stroke}22`}
+                  fill={`${stroke}${isHovered ? "55" : "22"}`}
                   stroke={stroke}
-                  strokeWidth={(isHovered ? 2 : 1.25) / layerScale}
+                  strokeWidth={(isHovered ? 3 : 1.25) / layerScale}
                   perfectDrawEnabled={false}
                   draggable={shapeDragEnabled}
+                  listening={shapePointerEnabled}
                   onMouseDown={(e) => selectShape(shape.clientId, e)}
-                  onClick={(e) => openShapeClassMenu(shape.clientId, e)}
                   onTap={(e) => selectShape(shape.clientId, e)}
                   onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                   onMouseEnter={(e) => {
@@ -790,6 +852,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     const right = Math.min(x + width, imageW);
                     const bottom = Math.min(y + height, imageH);
                     node.setAttrs({ x, y, width: right - x, height: bottom - y, scaleX: 1, scaleY: 1 });
+                    setDragPreview((prev) => ({ ...prev, [shape.clientId]: { x, y } }));
                   }}
                   onTransformEnd={(ev) => {
                     const node = ev.target;
@@ -798,6 +861,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     const x = clamp(node.x(), 0, Math.max(0, imageW - width));
                     const y = clamp(node.y(), 0, Math.max(0, imageH - height));
                     node.setAttrs({ x, y, width, height, scaleX: 1, scaleY: 1 });
+                    setDragPreview((prev) => {
+                      const next = { ...prev };
+                      delete next[shape.clientId];
+                      return next;
+                    });
                     const start = transformStartRef.current;
                     const noChange =
                       start &&
@@ -824,7 +892,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           {previewPoints.length >= 2 && (
             <Line
               points={previewPoints}
-              stroke="#ea580c"
+              stroke={getShapeColor(activeClassId)}
               strokeWidth={2 / layerScale}
               dash={[6, 6]}
               lineJoin="round"
@@ -846,6 +914,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             anchorStrokeWidth={1.5 / safeBaseFitScale}
             borderStroke={transformerColor}
             borderStrokeWidth={1 / safeBaseFitScale}
+            listening={activeTool === "select"}
             enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]}
             boundBoxFunc={(_oldBox, box) => {
               if (imageW <= 0 || imageH <= 0) return box;
@@ -925,39 +994,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-6 left-1/2 max-w-[90%] -translate-x-1/2 rounded-full border border-stone-200/80 bg-white/90 px-5 py-2.5 text-center text-[10px] font-bold uppercase tracking-widest text-stone-600 shadow-lg shadow-stone-200/40 backdrop-blur-md">
-        {(() => {
-          let primary: React.ReactNode = null;
-          if (activeTool === "rectangle" && canDrawRect) {
-            primary = <span>Drag to draw box - class: {labels.find((label) => label.id === activeClassId)?.name}</span>;
-          } else if (activeTool === "rectangle" && !canDrawRect) {
-            primary = <span>Add a label in the project first</span>;
-          } else if ((activeTool === "polygon" || activeTool === "polyline") && canDrawPath) {
-            primary = <span>Click {vertexCount} times on the image ({visibleDraft.length / 2} / {vertexCount}) - Esc cancels</span>;
-          } else if ((activeTool === "polygon" || activeTool === "polyline") && !canDrawPath) {
-            primary = <span>Add a label first</span>;
-          } else if (activeTool === "points") {
-            primary = <span>Click to place points</span>;
-          } else if (activeTool === "tag") {
-            primary = <span>Click to place a tag marker</span>;
-          } else if (activeTool !== "select") {
-            primary = <span>Tool &quot;{activeTool}&quot; - coming next</span>;
-          }
-
-          const shortcuts = (
-            <span className="mt-1 block border-t border-stone-200/80 pt-2 text-[9px] font-semibold normal-case text-stone-500">
-              Wheel: zoom - Middle-drag: pan - D: delete selected - Click shape, then press class number to relabel
-            </span>
-          );
-          if (!primary) return shortcuts;
-          return (
-            <>
-              {primary}
-              {shortcuts}
-            </>
-          );
-        })()}
-      </div>
     </div>
   );
 };

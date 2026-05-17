@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   FolderKanban,
-  Database,
   Globe2,
   Workflow,
   Cpu,
@@ -31,7 +30,6 @@ import { useAuth } from "@/lib/auth";
 const navItems = [
   { name: "Home",      icon: LayoutDashboard, href: "/home" },
   { name: "Projects",  icon: FolderKanban,    href: "/projects" },
-  { name: "Datasets",  icon: Database,        href: "/datasets" },
   { name: "Dataverse", icon: Globe2,          href: "/dataverse" },
   { name: "Train",     icon: Cpu,             href: "/train" },
   { name: "Workflows", icon: Workflow,        href: "/workflows" },
@@ -53,14 +51,14 @@ export default function Sidebar() {
     .toUpperCase();
 
   return (
-    <aside className="hidden md:flex w-56 h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-orange-100 flex flex-col border-r border-orange-200 fixed left-0 top-0 z-50">
+    <aside className="hidden md:flex w-72 h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-orange-100 flex flex-col border-r border-orange-200 fixed left-0 top-0 z-50">
       {/* Brand */}
       <div className="p-6 flex items-center gap-3 border-b border-orange-200">
-        <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-orange-200/60">
-          <Fingerprint className="text-orange-400 w-5 h-5" />
+        <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-orange-200/60">
+          <Fingerprint className="text-orange-400 w-6 h-6" />
         </div>
-        <span className="text-orange-950 font-bold text-lg tracking-tight">VisioX</span>
-        <span className="ml-auto px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[9px] font-bold rounded-full border border-orange-200 uppercase tracking-widest">
+        <span className="text-orange-950 font-bold text-2xl tracking-tight">VisioX</span>
+        <span className="ml-auto px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded-full border border-orange-200 uppercase tracking-widest">
           Beta
         </span>
       </div>
@@ -69,8 +67,8 @@ export default function Sidebar() {
         <button className="w-full text-left group">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-orange-950">VisioX Workspace</p>
-              <p className="mt-1 truncate text-[10px] font-semibold text-orange-700/70">
+              <p className="truncate text-lg font-bold text-orange-950">VisioX Workspace</p>
+              <p className="mt-1 truncate text-sm font-semibold text-orange-700/70">
                 Professional Plan - 1 Member
               </p>
             </div>
@@ -81,7 +79,7 @@ export default function Sidebar() {
 
       {/* Primary nav */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
-        <p className="text-[9px] font-bold text-orange-700/60 uppercase tracking-widest px-3 mb-3">
+        <p className="text-xs font-bold text-orange-700/60 uppercase tracking-widest px-3 mb-3">
           Development Hub
         </p>
         {navItems.map((item) => {
@@ -90,7 +88,7 @@ export default function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
-              className={`group flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-150 ${
+              className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-150 ${
                 active
                   ? "bg-white text-orange-700 ring-1 ring-orange-200 shadow-sm shadow-orange-200/50"
                   : "text-orange-950/70 hover:bg-white/70 hover:text-orange-950"
@@ -98,9 +96,9 @@ export default function Sidebar() {
             >
               <div className="flex items-center gap-3">
                 <item.icon
-                  className={`w-4 h-4 ${active ? "text-orange-500" : "text-orange-800/45 group-hover:text-orange-700"}`}
+                  className={`w-5 h-5 ${active ? "text-orange-500" : "text-orange-800/45 group-hover:text-orange-700"}`}
                 />
-                <span className="text-sm font-medium">{item.name}</span>
+                <span className="text-lg font-medium">{item.name}</span>
               </div>
               {active && (
                 <motion.div
@@ -116,18 +114,18 @@ export default function Sidebar() {
 
       {/* Bottom */}
       <div className="p-2 border-t border-orange-200 space-y-2">
-          <button className="w-full flex items-center gap-3 px-3 py-2 text-orange-950/65 hover:text-orange-950 hover:bg-white/70 rounded-lg transition-all text-xs">
-            <Bell className="w-4 h-4" />
+          <button className="w-full flex items-center gap-3 px-3 py-2.5 text-orange-950/65 hover:text-orange-950 hover:bg-white/70 rounded-xl transition-all text-base">
+            <Bell className="w-5 h-5" />
             <span>Notifications</span>
           </button>
 
         <div className="relative group">
           <button className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-all hover:bg-white/70 focus-visible:bg-white/70 focus-visible:outline-none">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-100 via-amber-100 to-orange-200 flex items-center justify-center text-[10px] font-bold text-orange-800 shadow">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-100 via-amber-100 to-orange-200 flex items-center justify-center text-xs font-bold text-orange-800 shadow">
               {initials}
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="text-orange-950 text-[11px] font-bold truncate">{displayName}</p>
+              <p className="text-orange-950 text-base font-bold truncate">{displayName}</p>
             </div>
             <ChevronRight className="w-4 h-4 text-orange-500" />
           </button>
@@ -206,8 +204,8 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <button className="w-full flex items-center justify-center gap-2 rounded-lg border border-orange-300 bg-white/70 px-3 py-2 text-xs font-bold text-orange-600 transition hover:bg-white">
-          <Crown className="w-4 h-4" />
+        <button className="w-full flex items-center justify-center gap-2 rounded-xl border border-orange-300 bg-white/70 px-3 py-2.5 text-base font-bold text-orange-600 transition hover:bg-white">
+          <Crown className="w-5 h-5" />
           Upgrade
         </button>
       </div>

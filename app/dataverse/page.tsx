@@ -7,7 +7,6 @@ import {
   ArrowUpRight,
   Database,
   GitFork,
-  Globe2,
   Loader2,
   Search,
   Tag,
@@ -101,16 +100,12 @@ export default function DataversePage() {
     <div className="relative flex-1 flex flex-col min-h-screen">
       <BlueprintGrid />
       <main className="flex-grow p-8 z-10">
-        <div className="flex flex-col gap-6 mb-8 lg:flex-row lg:items-end lg:justify-between">
+        <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-orange-700 mb-4">
-              <Globe2 className="w-3.5 h-3.5" />
-              Dataverse
-            </div>
-            <h1 className="text-3xl font-bold text-stone-900 tracking-tight mb-2">
+            <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">
               Explore dataset
             </h1>
-            <p className="text-sm text-stone-500 max-w-2xl">
+            <p className="max-w-xl text-base leading-6 text-stone-500">
               Search community-shared projects, inspect their dataset shape, and fork useful work into your own workspace.
             </p>
           </div>
@@ -120,18 +115,18 @@ export default function DataversePage() {
               e.preventDefault();
               void load(query);
             }}
-            className="flex w-full max-w-xl items-center gap-2"
+            className="flex w-full flex-wrap items-center gap-3 md:w-auto md:max-w-xl md:flex-nowrap"
           >
-            <div className="relative flex-1">
+            <div className="relative min-w-0 flex-1 md:w-80 md:flex-none">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search defects, PPE, traffic, agriculture..."
-                className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                className="h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
               />
             </div>
-            <button className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-4 py-2.5 text-sm font-bold text-orange-700 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95">
+            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-4 text-sm font-bold text-orange-700 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95">
               <Search className="w-4 h-4 text-orange-500" />
               Search
             </button>
@@ -144,7 +139,7 @@ export default function DataversePage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(18rem,20rem))] sm:justify-between">
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
           ) : items.length === 0 ? (
@@ -159,7 +154,7 @@ export default function DataversePage() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.04 }}
-                className="group rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all hover:border-orange-300 hover:shadow-xl"
+                className="group w-full rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50"
               >
                 <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-stone-100">
                   {item.thumbnail ? (
