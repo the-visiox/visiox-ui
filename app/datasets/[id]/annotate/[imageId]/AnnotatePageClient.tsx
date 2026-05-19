@@ -129,6 +129,10 @@ function wrapIndex(oneBasedIdx: number, total: number): number {
   return wrapped + 1;
 }
 
+function randomLabelColor() {
+  return `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}`;
+}
+
 export default function AnnotatePageClient() {
   const params = useParams();
   const router = useRouter();
@@ -689,6 +693,7 @@ export default function AnnotatePageClient() {
       setLabels((prev) => [...prev, localLabel]);
       setActiveClassId(localLabel.id);
       setNewLabelName("");
+      setNewLabelColor(randomLabelColor());
       return;
     }
 
@@ -699,6 +704,7 @@ export default function AnnotatePageClient() {
       setLabels((prev) => [...prev.filter((label) => label.id !== created.id), created]);
       setActiveClassId(created.id);
       setNewLabelName("");
+      setNewLabelColor(randomLabelColor());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create label.");
     } finally {
