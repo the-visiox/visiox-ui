@@ -97,6 +97,21 @@ const DEMO_LABELS = [
   { id: 2, name: "demo_b", color: "#3b82f6" },
 ] as const;
 
+const LABEL_COLOR_PALETTE = [
+  "#E66700",
+  "#2563EB",
+  "#16A34A",
+  "#DC2626",
+  "#9333EA",
+  "#0891B2",
+  "#CA8A04",
+  "#DB2777",
+  "#4F46E5",
+  "#059669",
+  "#EA580C",
+  "#7C3AED",
+];
+
 const PRELOAD_AHEAD = 30;
 const PRELOAD_BEHIND = 3;
 const ROUTE_PREFETCH_AHEAD = 6;
@@ -121,6 +136,43 @@ function objectSummary(shape: EditorShape): string {
   if (shape.shapeType === "tag") return "tag";
   if (shape.points && shape.points.length >= 2) return `${shape.shapeType} ${shape.points.length / 2} pts`;
   return `${Math.round(shape.width)}x${Math.round(shape.height)}`;
+}
+
+function normalizeHexColor(color: string): string {
+  return color.trim().toLowerCase();
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const m = l - c / 2;
+  const [r, g, b] =
+    hue < 60 ? [c, x, 0] :
+    hue < 120 ? [x, c, 0] :
+    hue < 180 ? [0, c, x] :
+    hue < 240 ? [0, x, c] :
+    hue < 300 ? [x, 0, c] :
+    [c, 0, x];
+
+  return [r, g, b]
+    .map((channel) => Math.round((channel + m) * 255).toString(16).padStart(2, "0"))
+    .join("")
+    .replace(/^/, "#");
+}
+
+function nextLabelColor(labels: LabelDefinition[]): string {
+  const usedColors = new Set(labels.map((label) => normalizeHexColor(label.color)));
+  const unusedPaletteColor = LABEL_COLOR_PALETTE.find((color) => !usedColors.has(normalizeHexColor(color)));
+  if (unusedPaletteColor) return unusedPaletteColor;
+
+  for (let offset = 0; offset < 360; offset += 1) {
+    const generated = hslToHex(((labels.length + offset) * 47) % 360, 76, 46);
+    if (!usedColors.has(normalizeHexColor(generated))) return generated;
+  }
+
+  return "#E66700";
 }
 
 function wrapIndex(oneBasedIdx: number, total: number): number {
@@ -689,6 +741,7 @@ export default function AnnotatePageClient() {
       setLabels((prev) => [...prev, localLabel]);
       setActiveClassId(localLabel.id);
       setNewLabelName("");
+      setNewLabelColor(nextLabelColor([...labels, localLabel]));
       return;
     }
 
@@ -699,6 +752,7 @@ export default function AnnotatePageClient() {
       setLabels((prev) => [...prev.filter((label) => label.id !== created.id), created]);
       setActiveClassId(created.id);
       setNewLabelName("");
+      setNewLabelColor(nextLabelColor([...labels.filter((label) => label.id !== created.id), created]));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create label.");
     } finally {
@@ -1051,13 +1105,17 @@ export default function AnnotatePageClient() {
               const color = currentLabel?.color ?? "#999";
               const isHidden = hiddenShapeIds.includes(shape.clientId);
               const isPinned = pinnedShapeIds.includes(shape.clientId);
+              const isActiveLabel = activeClassId === shape.classLabelId;
               return (
                 <div
                   key={shape.clientId}
-                  className="group space-y-1 rounded-2xl border p-2.5 transition-all hover:bg-white"
+                  className={`group space-y-1 rounded-2xl border p-2.5 transition-all hover:bg-white ${
+                    isActiveLabel ? "shadow-md shadow-stone-300/40 ring-2 ring-offset-2 ring-offset-stone-50" : ""
+                  }`}
                   style={{
-                    borderColor: `${color}55`,
-                    backgroundColor: `${color}0F`,
+                    borderColor: isActiveLabel ? color : `${color}55`,
+                    backgroundColor: isActiveLabel ? `${color}1F` : `${color}0F`,
+                    ...(isActiveLabel ? ({ "--tw-ring-color": `${color}66` } as React.CSSProperties) : {}),
                   }}
                 >
                   <div className="flex cursor-pointer items-center justify-between" onClick={() => setActiveClassId(shape.classLabelId)}>
