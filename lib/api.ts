@@ -24,6 +24,18 @@ function resolveBaseUrl(): string {
   }
 }
 
+export function resolveMediaUrl(url: string | null | undefined): string {
+  if (!url) return '';
+
+  const normalized = url.trim().replace(/\\/g, '/');
+  if (!normalized) return '';
+  if (/^(https?:|data:|blob:)/i.test(normalized)) return normalized;
+
+  const baseUrl = resolveBaseUrl();
+  const cleanPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+  return `${baseUrl}${cleanPath}`;
+}
+
 // ── Storage helpers ────────────────────────────────────────────────────────
 
 export const TOKEN_KEYS = {

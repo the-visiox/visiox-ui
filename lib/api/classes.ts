@@ -20,3 +20,23 @@ export async function getClassesForProject(projectId: number): Promise<ClassDto[
   );
   return Array.isArray(data) ? data : data.results;
 }
+
+export async function createClassForProject(
+  projectId: number,
+  data: { name: string; color: string }
+): Promise<ClassDto> {
+  return apiFetch<ClassDto>("/api/classes/", {
+    method: "POST",
+    json: {
+      project: projectId,
+      name: data.name,
+      color: data.color,
+    },
+  });
+}
+
+export async function deleteClass(classId: number): Promise<void> {
+  await apiFetch<void>(`/api/classes/${classId}/`, {
+    method: "DELETE",
+  });
+}

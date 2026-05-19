@@ -51,7 +51,7 @@ export default function Sidebar() {
     .toUpperCase();
 
   return (
-    <aside className="hidden md:flex w-72 h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-orange-100 flex flex-col border-r border-orange-200 fixed left-0 top-0 z-50">
+    <aside className="hidden md:flex w-68 h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-orange-100 flex flex-col border-r border-orange-200 fixed left-0 top-0 z-50">
       {/* Brand */}
       <div className="p-6 flex items-center gap-3 border-b border-orange-200">
         <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-orange-200/60">

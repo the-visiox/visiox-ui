@@ -25,6 +25,7 @@ import {
   dataverse,
   datasets,
   projects,
+  resolveMediaUrl,
   type AnnotationClass,
   type Dataset,
   type Project,
@@ -523,7 +524,7 @@ export default function ProjectDetailPage() {
                 >
                   <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-stone-50 mb-4">
                     {dataset.thumbnail ? (
-                      <img src={dataset.thumbnail} alt={dataset.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <img src={resolveMediaUrl(dataset.thumbnail)} alt={dataset.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center opacity-30"><ImageIcon className="w-12 h-12 text-stone-300" /></div>
                     )}

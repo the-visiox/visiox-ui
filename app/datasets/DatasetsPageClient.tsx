@@ -21,7 +21,7 @@ import {
   Loader2,
   FolderOpen,
 } from "lucide-react";
-import { datasets, projects, type Dataset, type Project } from "@/lib/api";
+import { datasets, projects, resolveMediaUrl, type Dataset, type Project } from "@/lib/api";
 
 const STATUS_DOT: Record<string, string> = {
   Ready: "bg-green-500",
@@ -389,7 +389,7 @@ export default function DatasetsPageClient() {
                     <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-stone-100 mb-4">
                       {dataset.thumbnail ? (
                         <img
-                          src={dataset.thumbnail}
+                          src={resolveMediaUrl(dataset.thumbnail)}
                           alt={dataset.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />

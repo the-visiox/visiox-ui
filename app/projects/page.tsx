@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import BlueprintGrid from "@/components/BlueprintGrid";
-import { projects, datasets as datasetsApi, type Project, type Dataset } from "@/lib/api";
+import { projects, datasets as datasetsApi, resolveMediaUrl, type Project, type Dataset } from "@/lib/api";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 function timeAgo(dateStr: string): string {
@@ -163,7 +163,7 @@ export default function ProjectsPage() {
               </div>
 
               {/* Grid */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),24rem))] sm:justify-between">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),22rem))] sm:justify-between">
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
                 ) : filtered.length === 0 ? (
@@ -187,7 +187,7 @@ export default function ProjectsPage() {
                       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-stone-100">
                         {p.thumbnail ? (
                           <img
-                            src={p.thumbnail}
+                            src={resolveMediaUrl(p.thumbnail)}
                             alt={p.name}
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
@@ -308,7 +308,7 @@ export default function ProjectsPage() {
                         <div className="relative h-40 overflow-hidden rounded-2xl bg-stone-100">
                           {ds.thumbnail ? (
                             <img
-                              src={ds.thumbnail}
+                              src={resolveMediaUrl(ds.thumbnail)}
                               alt={ds.name}
                               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                             />

@@ -14,6 +14,7 @@ import {
 import BlueprintGrid from "@/components/BlueprintGrid";
 import {
   dataverse,
+  resolveMediaUrl,
   teams,
   type DataverseProject,
   type Team,
@@ -159,7 +160,7 @@ export default function DataversePage() {
                 <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-stone-100">
                   {item.thumbnail ? (
                     <img
-                      src={item.thumbnail}
+                      src={resolveMediaUrl(item.thumbnail)}
                       alt={item.title}
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />

@@ -27,6 +27,8 @@ interface AnnotationEditorProps {
   activeTool: Tool;
   onToolChange: (tool: Tool) => void;
   polygonVertexCount: number;
+  hiddenShapeIds?: string[];
+  pinnedShapeIds?: string[];
 }
 
 function layerPos(
@@ -64,13 +66,16 @@ function menuPositionFromPointer(evt: MouseEvent | PointerEvent, container: HTML
   };
 }
 
-const ANCHOR_PX = 24;
 const RECT_MIN_SIZE = 5;
 const ZOOM_MIN = 0.12;
 const ZOOM_MAX = 10;
-const POINT_RADIUS = 5;
+const CORNER_HANDLE_RADIUS_PX = 4.5;
+const CORNER_HANDLE_HOVER_RADIUS_PX = 5.5;
+const CORNER_HANDLE_DIAMETER_PX = CORNER_HANDLE_RADIUS_PX * 2;
 const TAG_HEIGHT = 26;
 const TAG_MIN_WIDTH = 88;
+const PINNED_LABEL_HEIGHT = 22;
+const PINNED_LABEL_MIN_WIDTH = 54;
 
 const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   imageUrl,
@@ -82,6 +87,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   activeTool,
   onToolChange,
   polygonVertexCount,
+  hiddenShapeIds = [],
+  pinnedShapeIds = [],
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -200,10 +207,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }, [isMiddlePan]);
 
   const labelMetaMap = useMemo(() => buildLabelMetaMap(labels), [labels]);
-  const labelShortcutMap = useMemo(
-    () => labels.map((label, index) => ({ ...label, shortcut: index + 1 })),
-    [labels]
-  );
   const getShapeColor = useCallback((classLabelId: number) => colorFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
   const getShapeLabel = useCallback((classLabelId: number) => labelNameFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
 
@@ -212,8 +215,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     [selectedId, hoveredId, activeTool]
   );
   const transformTargetShape = useMemo(
-    () => shapes.find((shape) => shape.clientId === transformTargetId) ?? null,
-    [shapes, transformTargetId]
+    () =>
+      shapes.find(
+        (shape) => shape.clientId === transformTargetId && !hiddenShapeIds.includes(shape.clientId)
+      ) ?? null,
+    [hiddenShapeIds, shapes, transformTargetId]
   );
   const transformerColor = transformTargetShape ? getShapeColor(transformTargetShape.classLabelId) : "#ea580c";
 
@@ -267,16 +273,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       ) {
         return;
       }
-      const targetShapeId = contextMenu?.shapeId ?? selectedId;
-      const shortcut = parseInt(e.key, 10);
-      if (targetShapeId && Number.isFinite(shortcut)) {
-        const nextLabel = labelShortcutMap.find((label) => label.shortcut === shortcut);
-        if (nextLabel) {
-          e.preventDefault();
-          applyShapeClass(targetShapeId, nextLabel.id);
-          return;
-        }
-      }
       if (contextMenu) {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -313,7 +309,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [applyShapeClass, contextMenu, deleteShape, hoveredId, labelShortcutMap, newBox, onToolChange, pathDraft.length, selectedId]);
+  }, [contextMenu, deleteShape, hoveredId, newBox, onToolChange, pathDraft.length, selectedId]);
 
   const checkDeselect = useCallback((e: KonvaEventObject<MouseEvent>) => {
     if (isCanvasBackground(e)) {
@@ -542,11 +538,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const visibleDraft = activeTool === "polygon" || activeTool === "polyline" ? pathDraft : [];
   const previewPoints = visibleDraft.length > 0 && pathHover ? [...visibleDraft, pathHover.x, pathHover.y] : visibleDraft;
   const hoverEnabled = activeTool === "select";
-  const hoveredShape = hoverEnabled && hoveredId ? shapes.find((shape) => shape.clientId === hoveredId) ?? null : null;
+  const hoveredShape =
+    hoverEnabled && hoveredId && !hiddenShapeIds.includes(hoveredId)
+      ? shapes.find((shape) => shape.clientId === hoveredId) ?? null
+      : null;
   const hoveredLabelName = hoveredShape ? getShapeLabel(hoveredShape.classLabelId) : "";
   const safeLayerScale = Math.max(layerScale, 0.001);
-  const safeBaseFitScale = Math.max(baseFit.scale, 0.001);
-  const transformerAnchorPx = ANCHOR_PX / safeBaseFitScale;
+  const transformerAnchorPx = CORNER_HANDLE_DIAMETER_PX;
   const shapeDragEnabled = activeTool === "select" && visibleDraft.length === 0 && !newBox;
   const cursorClass = isMiddlePan
     ? "cursor-grabbing"
@@ -604,6 +602,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           {image && <Rect name="stage-background" x={0} y={0} width={image.width} height={image.height} fill="transparent" listening />}
 
           {shapes.map((shape) => {
+            if (hiddenShapeIds.includes(shape.clientId)) return null;
             const stroke = getShapeColor(shape.classLabelId);
             const shapeLabel = getShapeLabel(shape.classLabelId);
             const isHovered = hoverEnabled && hoveredId === shape.clientId;
@@ -612,6 +611,39 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             const shapeX = livePos?.x ?? shape.x;
             const shapeY = livePos?.y ?? shape.y;
             const shapePointerEnabled = true;
+            const isPinned = pinnedShapeIds.includes(shape.clientId);
+            const pinnedLabelWidth = Math.max(PINNED_LABEL_MIN_WIDTH, shapeLabel.length * 7 + 18) / safeLayerScale;
+            const pinnedLabelHeight = PINNED_LABEL_HEIGHT / safeLayerScale;
+            const pinnedLabelX = clamp(shapeX, 0, Math.max(0, imageW - pinnedLabelWidth));
+            const pinnedLabelY = clamp(shapeY - pinnedLabelHeight - 4 / safeLayerScale, 0, Math.max(0, imageH - pinnedLabelHeight));
+            const pinnedLabel = isPinned ? (
+              <React.Fragment key={`${shape.clientId}-pinned-label`}>
+                <Rect
+                  x={pinnedLabelX}
+                  y={pinnedLabelY}
+                  width={pinnedLabelWidth}
+                  height={pinnedLabelHeight}
+                  cornerRadius={6 / safeLayerScale}
+                  fill="#ffffff"
+                  stroke={stroke}
+                  strokeWidth={1 / safeLayerScale}
+                  shadowColor="#000000"
+                  shadowOpacity={0.12}
+                  shadowBlur={8 / safeLayerScale}
+                  shadowOffsetY={2 / safeLayerScale}
+                  listening={false}
+                />
+                <Text
+                  x={pinnedLabelX + 8 / safeLayerScale}
+                  y={pinnedLabelY + 5 / safeLayerScale}
+                  text={shapeLabel}
+                  fontSize={10 / safeLayerScale}
+                  fontStyle="bold"
+                  fill={stroke}
+                  listening={false}
+                />
+              </React.Fragment>
+            ) : null;
 
             if (shape.shapeType === "tag") {
               const width = Math.max(TAG_MIN_WIDTH, shapeLabel.length * 9 + 28) / safeLayerScale;
@@ -672,6 +704,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     }}
                   />
                   <Text x={shapeX + 12 / safeLayerScale} y={shapeY + 7 / safeLayerScale} text={shapeLabel} fontSize={11 / safeLayerScale} fontStyle="bold" fill="#ffffff" listening={false} />
+                  {pinnedLabel}
                 </React.Fragment>
               );
             }
@@ -746,7 +779,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                         key={`${shape.clientId}-v-${vertexIndex}`}
                         x={vx}
                         y={vy}
-                        radius={(isCornerHovered || isPointsShape ? POINT_RADIUS + 1.5 : POINT_RADIUS) / layerScale}
+                        radius={(isCornerHovered || isPointsShape ? CORNER_HANDLE_HOVER_RADIUS_PX : CORNER_HANDLE_RADIUS_PX) / layerScale}
                         fill={isPointsShape ? stroke : isCornerHovered ? "#ffedd5" : "#ffffff"}
                         stroke={stroke}
                         strokeWidth={(isCornerHovered ? 2 : 1.5) / layerScale}
@@ -774,6 +807,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       />
                     );
                   })}
+                  {pinnedLabel}
                 </React.Fragment>
               );
             }
@@ -885,6 +919,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     });
                   }}
                 />
+                {pinnedLabel}
               </React.Fragment>
             );
           })}
@@ -911,9 +946,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             anchorCornerRadius={transformerAnchorPx / 2}
             anchorFill="#ffffff"
             anchorStroke={transformerColor}
-            anchorStrokeWidth={1.5 / safeBaseFitScale}
+            anchorStrokeWidth={1.5}
             borderStroke={transformerColor}
-            borderStrokeWidth={1 / safeBaseFitScale}
+            borderStrokeWidth={1}
             listening={activeTool === "select"}
             enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]}
             boundBoxFunc={(_oldBox, box) => {
@@ -970,26 +1005,20 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           }}
         >
           <div className="px-2 pb-2 text-[10px] font-bold uppercase tracking-widest text-stone-500">
-            Class Number
+            Class
           </div>
           <div className="space-y-1">
-            {labelShortcutMap.map((label) => (
+            {labels.map((label) => (
               <button
                 key={label.id}
                 type="button"
                 onClick={() => applyShapeClass(contextMenu.shapeId, label.id)}
                 className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs font-semibold text-stone-700 transition hover:bg-stone-100"
               >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-stone-100 text-[10px] font-bold text-stone-700">
-                  {label.shortcut}
-                </span>
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
                 <span className="truncate">{label.name}</span>
               </button>
             ))}
-          </div>
-          <div className="px-2 pt-2 text-[10px] font-semibold text-stone-400">
-            Press number key or click a class
           </div>
         </div>
       )}

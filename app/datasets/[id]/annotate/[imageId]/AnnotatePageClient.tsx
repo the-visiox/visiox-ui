@@ -26,13 +26,17 @@ import {
   Tag,
   Trash2,
   Undo2,
+  Eye,
+  EyeOff,
+  Pin,
+  Plus,
 } from "lucide-react";
 import AnnotationEditor from "@/components/annotate/AnnotationEditor";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
 import { useAuth } from "@/lib/auth";
-import { datasets as visioxDatasets } from "@/lib/api";
+import { datasets as visioxDatasets, resolveMediaUrl } from "@/lib/api";
 import type { ClassDto } from "@/lib/api/classes";
-import { getClassesForProject } from "@/lib/api/classes";
+import { createClassForProject, deleteClass, getClassesForProject } from "@/lib/api/classes";
 import { getDataset, getDatasetMedia } from "@/lib/api/datasets";
 import {
   getFrameAnnotations,
@@ -56,6 +60,16 @@ import {
   mergeProjectClassesWithProfile,
 } from "@/lib/annotation";
 import type { EditorShape, LabelDefinition } from "@/lib/annotation";
+
+declare global {
+  interface Window {
+    EyeDropper?: {
+      new (): {
+        open: () => Promise<{ sRGBHex: string }>;
+      };
+    };
+  }
+}
 
 function draftStorageKey(
   datasetId: number,
@@ -138,6 +152,10 @@ export default function AnnotatePageClient() {
   const [imageUrl, setImageUrl] = useState("");
   const [labels, setLabels] = useState<LabelDefinition[]>([]);
   const [activeClassId, setActiveClassId] = useState(0);
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [newLabelName, setNewLabelName] = useState("");
+  const [newLabelColor, setNewLabelColor] = useState("#E66700");
+  const [labelBusyId, setLabelBusyId] = useState<number | "new" | null>(null);
   const cachedMediaList =
     !isNativeMode && Number.isFinite(datasetId) ? mediaListCache.get(datasetId) ?? null : null;
   const cachedMediaIndex =
@@ -162,6 +180,8 @@ export default function AnnotatePageClient() {
   const [toolPaneWidth, setToolPaneWidth] = useState(TOOL_PANE_DEFAULT);
   const [objectsPaneWidth, setObjectsPaneWidth] = useState(OBJECTS_PANE_DEFAULT);
   const [activeRightTab, setActiveRightTab] = useState<"objects" | "labels">("objects");
+  const [hiddenShapeIds, setHiddenShapeIds] = useState<string[]>([]);
+  const [pinnedShapeIds, setPinnedShapeIds] = useState<string[]>([]);
 
   const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
@@ -317,6 +337,7 @@ export default function AnnotatePageClient() {
         if (!Number.isFinite(datasetId)) throw new Error("Invalid dataset id.");
 
         const ds = await getDataset(datasetId);
+        setProjectId(ds.project);
         const statsPromise = visioxDatasets.stats(datasetId).catch(() => null);
         const classesPromise = getClassesForProject(ds.project).catch((): ClassDto[] => []);
         const annotationsPromise: Promise<Awaited<ReturnType<typeof getJobAnnotations>>> = !Number.isNaN(jobId)
@@ -375,7 +396,7 @@ export default function AnnotatePageClient() {
           setCurrentFilename(
             (media as { filename?: string })?.filename ?? media?.file_url?.split("/").pop() ?? `media-${mediaId}`
           );
-          if (media?.file_url) resolvedImageUrl = media.file_url;
+          if (media?.file_url) resolvedImageUrl = resolveMediaUrl(media.file_url);
           setImageUrl(resolvedImageUrl);
           if (!cancelled) {
             setLoading(false);
@@ -454,12 +475,12 @@ export default function AnnotatePageClient() {
       for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
         const next = mediaList[mediaIndex - 1 + offset];
         if (!next) break;
-        if (next.file_url) urls.push(next.file_url);
+        if (next.file_url) urls.push(resolveMediaUrl(next.file_url));
       }
       for (let offset = 1; offset <= PRELOAD_BEHIND; offset += 1) {
         const prev = mediaList[mediaIndex - 1 - offset];
         if (!prev) break;
-        if (prev.file_url) urls.push(prev.file_url);
+        if (prev.file_url) urls.push(resolveMediaUrl(prev.file_url));
       }
     }
 
@@ -495,10 +516,6 @@ export default function AnnotatePageClient() {
     scrubValue !== null ? scrubValue : pendingIndex !== null ? pendingIndex : current;
   const sliderMax = Math.max(1, total, current, pendingIndex ?? 0, scrubValue ?? 0, displayedValue);
   const sliderProgress = sliderMax <= 1 ? 0 : ((displayedValue - 1) / (sliderMax - 1)) * 100;
-  const numberedLabels = useMemo(
-    () => labels.map((label, index) => ({ ...label, shortcut: index + 1 })),
-    [labels]
-  );
   const isLoggedIn = !!accessToken;
   const canSaveToApi =
     isLoggedIn &&
@@ -642,6 +659,89 @@ export default function AnnotatePageClient() {
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [openClassMenuId]);
+
+  useEffect(() => {
+    const shapeIds = new Set(shapes.map((shape) => shape.clientId));
+    setHiddenShapeIds((prev) => prev.filter((id) => shapeIds.has(id)));
+    setPinnedShapeIds((prev) => prev.filter((id) => shapeIds.has(id)));
+  }, [shapes]);
+
+  const toggleShapeHidden = useCallback((shapeId: string) => {
+    setHiddenShapeIds((prev) =>
+      prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]
+    );
+  }, []);
+
+  const toggleShapePinned = useCallback((shapeId: string) => {
+    setPinnedShapeIds((prev) =>
+      prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]
+    );
+  }, []);
+
+  const handleCreateLabel = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newLabelName.trim();
+    if (!name) return;
+
+    if (!projectId || !isLoggedIn) {
+      const localId = Math.min(0, ...labels.map((label) => label.id)) - 1;
+      const localLabel = { id: localId, name, color: newLabelColor };
+      setLabels((prev) => [...prev, localLabel]);
+      setActiveClassId(localLabel.id);
+      setNewLabelName("");
+      return;
+    }
+
+    setLabelBusyId("new");
+    setError(null);
+    try {
+      const created = await createClassForProject(projectId, { name, color: newLabelColor });
+      setLabels((prev) => [...prev.filter((label) => label.id !== created.id), created]);
+      setActiveClassId(created.id);
+      setNewLabelName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create label.");
+    } finally {
+      setLabelBusyId(null);
+    }
+  }, [isLoggedIn, labels, newLabelColor, newLabelName, projectId]);
+
+  const handleDeleteLabel = useCallback(async (label: LabelDefinition) => {
+    if (shapes.some((shape) => shape.classLabelId === label.id)) {
+      setError("Remove or reassign objects using this label before deleting it.");
+      return;
+    }
+
+    if (!projectId || !isLoggedIn || label.id <= 0) {
+      setLabels((prev) => prev.filter((item) => item.id !== label.id));
+      if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+      return;
+    }
+
+    setLabelBusyId(label.id);
+    setError(null);
+    try {
+      await deleteClass(label.id);
+      setLabels((prev) => prev.filter((item) => item.id !== label.id));
+      if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete label.");
+    } finally {
+      setLabelBusyId(null);
+    }
+  }, [activeClassId, isLoggedIn, labels, projectId, shapes]);
+
+  const handlePickLabelColor = useCallback(async (e: React.MouseEvent<HTMLInputElement>) => {
+    if (typeof window === "undefined" || !window.EyeDropper) return;
+
+    e.preventDefault();
+    try {
+      const result = await new window.EyeDropper().open();
+      if (result.sRGBHex) setNewLabelColor(result.sRGBHex);
+    } catch {
+      // User cancelled the picker.
+    }
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -827,6 +927,8 @@ export default function AnnotatePageClient() {
                 activeTool={activeTool}
                 onToolChange={setActiveTool}
                 polygonVertexCount={polygonVertexCount}
+                hiddenShapeIds={hiddenShapeIds}
+                pinnedShapeIds={pinnedShapeIds}
               />
             </motion.div>
           )}
@@ -879,51 +981,122 @@ export default function AnnotatePageClient() {
             )}
           </div>
 
-          <div className="flex min-h-0 flex-col overflow-hidden">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden">
           {activeRightTab === "labels" && (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
-              <div className="mb-3 shrink-0 text-[14px] font-bold uppercase tracking-widest text-stone-500">Class Keys</div>
-              <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-scroll overscroll-contain pr-2">
-                {numberedLabels.map((label) => (
-                  <div key={label.id} className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-xl bg-white/70 px-3 py-2 text-left text-base font-semibold text-stone-700 shadow-sm shadow-stone-200/40">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-[12px] font-bold text-stone-700 shadow-sm">
-                      {label.shortcut}
-                    </span>
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
-                    <span className="truncate">{label.name}</span>
-                  </div>
-                ))}
+            <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
+              <div className="mb-3 shrink-0 text-[14px] font-bold uppercase tracking-widest text-stone-500">Classes</div>
+              <form onSubmit={handleCreateLabel} className="mb-3 flex shrink-0 items-center gap-2">
+                <input
+                  type="color"
+                  value={newLabelColor}
+                  onChange={(e) => setNewLabelColor(e.target.value)}
+                  onClick={(e) => void handlePickLabelColor(e)}
+                  className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
+                  title="Pick label color"
+                  aria-label="Pick label color"
+                />
+                <input
+                  type="text"
+                  value={newLabelName}
+                  onChange={(e) => setNewLabelName(e.target.value)}
+                  placeholder="New label"
+                  className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-stone-800 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+                />
+                <button
+                  type="submit"
+                  disabled={!newLabelName.trim() || labelBusyId === "new"}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Add label"
+                  aria-label="Add label"
+                >
+                  {labelBusyId === "new" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                </button>
+              </form>
+              <div className="custom-scrollbar min-h-0 flex-1 max-h-[60vh] space-y-2 overflow-y-auto overscroll-contain pr-2">
+                {labels.map((label) => {
+                  const isUsed = shapes.some((shape) => shape.classLabelId === label.id);
+                  const deleting = labelBusyId === label.id;
+                  return (
+                    <div key={label.id} className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-xl bg-white/70 px-3 py-2 text-left text-base font-semibold text-stone-700 shadow-sm shadow-stone-200/40">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
+                      <span className="min-w-0 flex-1 truncate">{label.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteLabel(label)}
+                        disabled={deleting || isUsed}
+                        title={isUsed ? "Label is in use" : "Delete label"}
+                        aria-label={isUsed ? "Label is in use" : "Delete label"}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+                      >
+                        {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {activeRightTab === "objects" && (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
-            <div className="custom-scrollbar h-full min-h-0 flex-1 space-y-3 overflow-y-scroll overscroll-contain pr-2">
+          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
+            <div className="custom-scrollbar min-h-0 flex-1 max-h-[60vh] space-y-3 overflow-y-auto overscroll-contain pr-2">
             {shapes.length === 0 && (
               <p className="text-base leading-relaxed text-stone-500">
                 Box: click two corners on the image (N).
               </p>
             )}
-            {shapes.map((shape) => {
+            {shapes.map((shape, index) => {
               const currentLabel = labels.find((item) => item.id === shape.classLabelId);
               const name = currentLabel?.name ?? "?";
               const color = currentLabel?.color ?? "#999";
+              const isHidden = hiddenShapeIds.includes(shape.clientId);
+              const isPinned = pinnedShapeIds.includes(shape.clientId);
               return (
                 <div
                   key={shape.clientId}
-                  className="group space-y-2.5 rounded-2xl border p-3.5 transition-all hover:bg-white"
+                  className="group space-y-1 rounded-2xl border p-2.5 transition-all hover:bg-white"
                   style={{
                     borderColor: `${color}55`,
                     backgroundColor: `${color}0F`,
                   }}
                 >
                   <div className="flex cursor-pointer items-center justify-between" onClick={() => setActiveClassId(shape.classLabelId)}>
-                    <div className="flex items-center gap-3">
-                      <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                      <span className="text-sm font-bold text-stone-900">{name}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[11px] font-black tabular-nums text-stone-700">
+                        {index + 1}.
+                      </span>
                     </div>
-                    <span className="font-mono text-xs text-stone-400">{objectSummary(shape)}</span>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        title={isHidden ? "Show label" : "Hide label"}
+                        aria-label={isHidden ? "Show label" : "Hide label"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleShapeHidden(shape.clientId);
+                        }}
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
+                          isHidden ? "bg-stone-200 text-stone-600" : "text-stone-400 hover:bg-white hover:text-stone-800"
+                        }`}
+                      >
+                        {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        title={isPinned ? "Unpin label note" : "Pin label note"}
+                        aria-label={isPinned ? "Unpin label note" : "Pin label note"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleShapePinned(shape.clientId);
+                        }}
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
+                          isPinned ? "bg-orange-100 text-orange-700" : "text-stone-400 hover:bg-white hover:text-stone-800"
+                        }`}
+                      >
+                        <Pin className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="font-mono text-xs text-stone-400">{objectSummary(shape)}</span>
+                    </div>
                   </div>
                   <div className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">
                     <div className="relative" data-class-menu-root="true">
@@ -937,13 +1110,13 @@ export default function AnnotatePageClient() {
                       >
                         <span className="flex min-w-0 items-center gap-2">
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                          <span className="truncate">{currentLabel ? `${numberedLabels.find((label) => label.id === currentLabel.id)?.shortcut ?? ""}. ${name}` : name}</span>
+                          <span className="truncate">{name}</span>
                         </span>
                         <ChevronRight className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${openClassMenuId === shape.clientId ? "-rotate-90" : "rotate-90"}`} />
                       </button>
                       {openClassMenuId === shape.clientId && (
                         <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 max-h-64 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-xl shadow-stone-300/30">
-                          {numberedLabels.map((label) => {
+                          {labels.map((label) => {
                             const selected = label.id === shape.classLabelId;
                             return (
                               <button
@@ -961,9 +1134,6 @@ export default function AnnotatePageClient() {
                                   selected ? "bg-orange-50 text-orange-700" : "text-stone-700 hover:bg-stone-50 hover:text-stone-900"
                                 }`}
                               >
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-stone-100 text-xs font-bold text-stone-700">
-                                  {label.shortcut}
-                                </span>
                                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
                                 <span className="min-w-0 flex-1 truncate">{label.name}</span>
                               </button>

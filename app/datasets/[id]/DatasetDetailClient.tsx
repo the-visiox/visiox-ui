@@ -15,6 +15,7 @@ const BATCH_SIZE = 50;
 import BlueprintGrid from '@/components/BlueprintGrid';
 import {
   datasets,
+  resolveMediaUrl,
   type DatasetStats,
   type BrowserData,
   type Media,
@@ -230,7 +231,7 @@ export default function DatasetDetailClient({ id }: Props) {
       router.prefetch(href);
       const img = new Image();
       img.decoding = 'async';
-      img.src = frame.image_url || datasets.frameUrl(numericId, frame.frame);
+      img.src = frame.image_url ? resolveMediaUrl(frame.image_url) : datasets.frameUrl(numericId, frame.frame);
     });
   }, [browserData, id, numericId, router]);
 
@@ -685,7 +686,7 @@ export default function DatasetDetailClient({ id }: Props) {
                   frame.image_url && typeof frame.media_id === 'number'
                     ? `/datasets/${id}/annotate/${frame.media_id}?mode=simple`
                     : `/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`;
-                const imageSrc = frame.image_url || datasets.frameUrl(numericId, frame.frame);
+                const imageSrc = frame.image_url ? resolveMediaUrl(frame.image_url) : datasets.frameUrl(numericId, frame.frame);
                 return (
                   <div
                     key={frame.frame}
