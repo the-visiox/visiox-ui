@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
-import { Stage, Layer, Image as KonvaImage, Circle, Rect, Line, Text, Transformer } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Circle, Group, Rect, Line, Text, Transformer } from "react-konva";
 import useImage from "use-image";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import {
@@ -95,7 +95,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [image] = useImage(imageUrl, "anonymous");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [newBox, setNewBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [pathDraft, setPathDraft] = useState<number[]>([]);
   const pathDraftRef = useRef(pathDraft);
@@ -445,7 +444,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     [image, imageW, imageH, layerX, layerY, layerScale, labels, activeClassId, canPlaceTag, onShapesChange, onToolChange]
   );
 
-  const handleStageMouseDown = (_e: KonvaEventObject<MouseEvent>) => {
+  const handleStageMouseDown = () => {
     /* tool actions live in handleStageClick so that drag on a shape (which suppresses click) doesn't accidentally fire them */
   };
 
@@ -538,11 +537,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const visibleDraft = activeTool === "polygon" || activeTool === "polyline" ? pathDraft : [];
   const previewPoints = visibleDraft.length > 0 && pathHover ? [...visibleDraft, pathHover.x, pathHover.y] : visibleDraft;
   const hoverEnabled = activeTool === "select";
-  const hoveredShape =
-    hoverEnabled && hoveredId && !hiddenShapeIds.includes(hoveredId)
-      ? shapes.find((shape) => shape.clientId === hoveredId) ?? null
-      : null;
-  const hoveredLabelName = hoveredShape ? getShapeLabel(hoveredShape.classLabelId) : "";
   const safeLayerScale = Math.max(layerScale, 0.001);
   const transformerAnchorPx = CORNER_HANDLE_DIAMETER_PX;
   const shapeDragEnabled = activeTool === "select" && visibleDraft.length === 0 && !newBox;
@@ -612,17 +606,38 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             const shapeY = livePos?.y ?? shape.y;
             const shapePointerEnabled = true;
             const isPinned = pinnedShapeIds.includes(shape.clientId);
-            const pinnedLabelWidth = Math.max(PINNED_LABEL_MIN_WIDTH, shapeLabel.length * 7 + 18) / safeLayerScale;
-            const pinnedLabelHeight = PINNED_LABEL_HEIGHT / safeLayerScale;
-            const pinnedLabelX = clamp(shapeX, 0, Math.max(0, imageW - pinnedLabelWidth));
-            const pinnedLabelY = clamp(shapeY - pinnedLabelHeight - 4 / safeLayerScale, 0, Math.max(0, imageH - pinnedLabelHeight));
-            const pinnedLabel = isPinned ? (
-              <React.Fragment key={`${shape.clientId}-pinned-label`}>
+            const showFloatingLabel = (isHovered || isPinned) && shape.shapeType !== "tag";
+            const floatingLabelWidth = Math.max(PINNED_LABEL_MIN_WIDTH, shapeLabel.length * 7 + 18) / safeLayerScale;
+            const floatingLabelHeight = PINNED_LABEL_HEIGHT / safeLayerScale;
+            const floatingLabelGap = 4 / safeLayerScale;
+            const getFloatingLabelPosition = (nextShapeX: number, nextShapeY: number, nextShapeHeight: number) => {
+              const aboveY = nextShapeY - floatingLabelHeight - floatingLabelGap;
+              const belowY = nextShapeY + Math.max(0, nextShapeHeight) + floatingLabelGap;
+              return {
+                x: clamp(nextShapeX, 0, Math.max(0, imageW - floatingLabelWidth)),
+                y: clamp(aboveY >= 0 ? aboveY : belowY, 0, Math.max(0, imageH - floatingLabelHeight)),
+              };
+            };
+            const floatingLabelPosition = getFloatingLabelPosition(shapeX, shapeY, shape.height);
+            const syncFloatingLabelPosition = (nextShapeX: number, nextShapeY: number, nextShapeHeight = shape.height) => {
+              const labelNode = layerRef.current?.findOne(`#${shape.clientId}-floating-label`);
+              if (!labelNode) return;
+              labelNode.position(getFloatingLabelPosition(nextShapeX, nextShapeY, nextShapeHeight));
+              layerRef.current?.batchDraw();
+            };
+            const floatingLabel = showFloatingLabel ? (
+              <Group
+                key={`${shape.clientId}-floating-label`}
+                id={`${shape.clientId}-floating-label`}
+                x={floatingLabelPosition.x}
+                y={floatingLabelPosition.y}
+                listening={false}
+              >
                 <Rect
-                  x={pinnedLabelX}
-                  y={pinnedLabelY}
-                  width={pinnedLabelWidth}
-                  height={pinnedLabelHeight}
+                  x={0}
+                  y={0}
+                  width={floatingLabelWidth}
+                  height={floatingLabelHeight}
                   cornerRadius={6 / safeLayerScale}
                   fill="#ffffff"
                   stroke={stroke}
@@ -634,15 +649,15 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                   listening={false}
                 />
                 <Text
-                  x={pinnedLabelX + 8 / safeLayerScale}
-                  y={pinnedLabelY + 5 / safeLayerScale}
+                  x={8 / safeLayerScale}
+                  y={5 / safeLayerScale}
                   text={shapeLabel}
                   fontSize={10 / safeLayerScale}
                   fontStyle="bold"
                   fill={stroke}
                   listening={false}
                 />
-              </React.Fragment>
+              </Group>
             ) : null;
 
             if (shape.shapeType === "tag") {
@@ -666,14 +681,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     onMouseDown={(e) => selectShape(shape.clientId, e)}
                     onTap={(e) => selectShape(shape.clientId, e)}
                     onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
-                    onMouseEnter={(e) => {
-                      const p = e.target.getStage()?.getPointerPosition();
+                    onMouseEnter={() => {
                       setHoveredId(shape.clientId);
-                      if (p) setHoverPos({ x: p.x, y: p.y });
-                    }}
-                    onMouseMove={(e) => {
-                      const p = e.target.getStage()?.getPointerPosition();
-                      if (p) setHoverPos({ x: p.x, y: p.y });
                     }}
                     onMouseLeave={() => setHoveredId((id) => (id === shape.clientId ? null : id))}
                     onDragMove={(ev) => {
@@ -681,6 +690,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       const nextX = clamp(node.x(), 0, Math.max(0, imageW - width));
                       const nextY = clamp(node.y(), 0, Math.max(0, imageH - height));
                       if (nextX !== node.x() || nextY !== node.y()) node.position({ x: nextX, y: nextY });
+                      syncFloatingLabelPosition(nextX, nextY);
                       setDragPreview((prev) => ({ ...prev, [shape.clientId]: { x: nextX, y: nextY } }));
                     }}
                     onDragEnd={(ev) => {
@@ -704,7 +714,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     }}
                   />
                   <Text x={shapeX + 12 / safeLayerScale} y={shapeY + 7 / safeLayerScale} text={shapeLabel} fontSize={11 / safeLayerScale} fontStyle="bold" fill="#ffffff" listening={false} />
-                  {pinnedLabel}
                 </React.Fragment>
               );
             }
@@ -730,21 +739,18 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       onMouseDown={(e) => selectShape(shape.clientId, e)}
                         onTap={(e) => selectShape(shape.clientId, e)}
                       onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
-                      onMouseEnter={(e) => {
-                        const p = e.target.getStage()?.getPointerPosition();
+                      onMouseEnter={() => {
                         setHoveredId(shape.clientId);
-                        if (p) setHoverPos({ x: p.x, y: p.y });
-                      }}
-                      onMouseMove={(e) => {
-                        const p = e.target.getStage()?.getPointerPosition();
-                        if (p) setHoverPos({ x: p.x, y: p.y });
                       }}
                       onMouseLeave={() => setHoveredId((id) => (id === shape.clientId ? null : id))}
                       onDragMove={(ev) => {
                         const node = ev.target;
+                        const nextX = shape.x + node.x();
+                        const nextY = shape.y + node.y();
+                        syncFloatingLabelPosition(nextX, nextY);
                         setDragPreview((prev) => ({
                           ...prev,
-                          [shape.clientId]: { x: shape.x + node.x(), y: shape.y + node.y() },
+                          [shape.clientId]: { x: nextX, y: nextY },
                         }));
                       }}
                       onDragEnd={(ev) => {
@@ -807,7 +813,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       />
                     );
                   })}
-                  {pinnedLabel}
+                  {floatingLabel}
                 </React.Fragment>
               );
             }
@@ -829,20 +835,15 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                   onMouseDown={(e) => selectShape(shape.clientId, e)}
                   onTap={(e) => selectShape(shape.clientId, e)}
                   onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
-                  onMouseEnter={(e) => {
-                    const p = e.target.getStage()?.getPointerPosition();
+                  onMouseEnter={() => {
                     setHoveredId(shape.clientId);
-                    if (p) setHoverPos({ x: p.x, y: p.y });
-                  }}
-                  onMouseMove={(e) => {
-                    const p = e.target.getStage()?.getPointerPosition();
-                    if (p) setHoverPos({ x: p.x, y: p.y });
                   }}
                   onMouseLeave={() => setHoveredId((id) => (id === shape.clientId ? null : id))}
                   onDragMove={(ev) => {
                     const node = ev.target;
                     const bounded = clampRectToImage(node.x(), node.y(), shape.width, shape.height);
                     if (bounded.x !== node.x() || bounded.y !== node.y()) node.position({ x: bounded.x, y: bounded.y });
+                    syncFloatingLabelPosition(bounded.x, bounded.y);
                     setDragPreview((prev) => ({ ...prev, [shape.clientId]: { x: bounded.x, y: bounded.y } }));
                   }}
                   onDragEnd={(ev) => {
@@ -886,6 +887,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     const right = Math.min(x + width, imageW);
                     const bottom = Math.min(y + height, imageH);
                     node.setAttrs({ x, y, width: right - x, height: bottom - y, scaleX: 1, scaleY: 1 });
+                    syncFloatingLabelPosition(x, y, bottom - y);
                     setDragPreview((prev) => ({ ...prev, [shape.clientId]: { x, y } }));
                   }}
                   onTransformEnd={(ev) => {
@@ -919,7 +921,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     });
                   }}
                 />
-                {pinnedLabel}
+                {floatingLabel}
               </React.Fragment>
             );
           })}
@@ -975,20 +977,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           />
         </Layer>
       </Stage>
-
-      {hoveredShape && hoverPos && (
-        <div
-          className="pointer-events-none absolute z-[130] -translate-y-full rounded-md bg-white/95 px-2 py-1 text-[10px] font-bold shadow-sm"
-          style={{
-            left: hoverPos.x + 10,
-            top: hoverPos.y - 8,
-            border: `1px solid ${getShapeColor(hoveredShape.classLabelId)}`,
-            color: getShapeColor(hoveredShape.classLabelId),
-          }}
-        >
-          {hoveredLabelName}
-        </div>
-      )}
 
       {contextMenu && (
         <div

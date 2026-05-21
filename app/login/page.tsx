@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Gift, Github, Loader2, Mail } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 
@@ -21,7 +22,7 @@ function getRedirectUri() {
   return `${window.location.origin}${basePath}/auth/callback`;
 }
 
-function hasOAuthClientId(value: string | undefined) {
+function hasOAuthClientId(value: string | undefined): value is string {
   return Boolean(value && !value.startsWith("PASTE_"));
 }
 
@@ -129,9 +130,11 @@ export default function LoginPage() {
               <span className="absolute -top-3 right-[-8px] rounded-md bg-orange-500 px-2 py-1 text-[10px] font-bold text-white">
                 Last Used
               </span>
-              <img
+              <Image
                 src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
                 alt=""
+                width={20}
+                height={20}
                 className="h-5 w-5"
               />
               Continue with Google

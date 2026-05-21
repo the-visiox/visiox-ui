@@ -6,17 +6,15 @@
  * Next.js automatically injects __NEXT_DATA__.basePath at build time
  * from the basePath in next.config.mjs.
  */
-interface WindowWithNextData extends Window {
-  __NEXT_DATA__?: {
-    basePath?: string;
-  };
-}
+type NextDataWithBasePath = {
+  basePath?: string;
+};
 
 export function getBasePath(): string {
   if (typeof window !== 'undefined') {
-    const nextWindow = window as WindowWithNextData;
-    if (nextWindow.__NEXT_DATA__?.basePath) {
-      return nextWindow.__NEXT_DATA__.basePath;
+    const nextData = window.__NEXT_DATA__ as NextDataWithBasePath | undefined;
+    if (nextData?.basePath) {
+      return nextData.basePath;
     }
   }
   return process.env.NEXT_PUBLIC_BASE_PATH || '';

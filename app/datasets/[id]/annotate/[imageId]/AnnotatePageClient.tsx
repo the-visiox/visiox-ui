@@ -2,37 +2,16 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
-import {
-  AlertCircle,
-  ArrowLeft,
-  Box,
-  ChevronFirst,
-  ChevronLast,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  CircleDot,
-  Hexagon,
-  Link2,
-  Loader2,
-  MousePointer2,
-  Play,
-  Redo2,
-  Save,
-  Spline,
-  Square,
-  Tag,
-  Trash2,
-  Undo2,
-  Eye,
-  EyeOff,
-  Pin,
-  Plus,
-} from "lucide-react";
-import AnnotationEditor from "@/components/annotate/AnnotationEditor";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
+import {
+  CanvasStage,
+  ErrorBanner,
+  PaneResizeHandle,
+  RightPane,
+  TimelineBar,
+  ToolPane,
+  WorkspaceHeader,
+} from "./AnnotateWorkspaceLayout";
 import { useAuth } from "@/lib/auth";
 import { datasets as visioxDatasets, resolveMediaUrl } from "@/lib/api";
 import type { ClassDto } from "@/lib/api/classes";
@@ -82,16 +61,6 @@ function draftStorageKey(
   return `visiox-annotate-draft:dataset:${datasetId}:media:${mediaId}:image:${imageId}`;
 }
 
-const TOOLBAR: { tool: Tool; icon: React.ReactNode; label: string; key: string }[] = [
-  { tool: "select", icon: <MousePointer2 className="h-5 w-5" />, label: "Select", key: "V" },
-  { tool: "rectangle", icon: <Square className="h-5 w-5" />, label: "Box", key: "N" },
-  { tool: "polygon", icon: <Hexagon className="h-5 w-5" />, label: "Polygon", key: "P" },
-  { tool: "polyline", icon: <Spline className="h-5 w-5" />, label: "Polyline", key: "L" },
-  { tool: "points", icon: <CircleDot className="h-5 w-5" />, label: "Points", key: "K" },
-  { tool: "cuboid", icon: <Box className="h-5 w-5" />, label: "Cuboid", key: "C" },
-  { tool: "tag", icon: <Tag className="h-5 w-5" />, label: "Tag", key: "T" },
-];
-
 const DEMO_LABELS = [
   { id: 1, name: "demo_a", color: "#ef4444" },
   { id: 2, name: "demo_b", color: "#3b82f6" },
@@ -115,12 +84,6 @@ const OBJECTS_PANE_MAX = 640;
 
 function clampPaneWidth(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function objectSummary(shape: EditorShape): string {
-  if (shape.shapeType === "tag") return "tag";
-  if (shape.points && shape.points.length >= 2) return `${shape.shapeType} ${shape.points.length / 2} pts`;
-  return `${Math.round(shape.width)}x${Math.round(shape.height)}`;
 }
 
 function wrapIndex(oneBasedIdx: number, total: number): number {
@@ -176,7 +139,7 @@ export default function AnnotatePageClient() {
   const [frameInput, setFrameInput] = useState("");
   const [scrubValue, setScrubValue] = useState<number | null>(null);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
-  const [activeTool, setActiveTool] = useState<Tool>("rectangle");
+  const [activeTool, setActiveTool] = useState<Tool>("select");
   const [polygonVertexCount, setPolygonVertexCount] = useState(4);
   const [openClassMenuId, setOpenClassMenuId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -788,454 +751,118 @@ export default function AnnotatePageClient() {
     return () => window.removeEventListener("keydown", onKey);
   }, [current, navigateTo, handleSave]);
 
+  const resizeHandlers = useMemo(
+    () => ({
+      start: startPaneResize,
+      update: updatePaneResize,
+      stop: stopPaneResize,
+    }),
+    [startPaneResize, stopPaneResize, updatePaneResize]
+  );
+
+  const changeShapeClass = useCallback((shapeId: string, classId: number) => {
+    setShapes((prev) =>
+      prev.map((item) => (item.clientId === shapeId ? { ...item, classLabelId: classId } : item))
+    );
+  }, []);
+
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
-      <nav className="z-30 flex items-center justify-between gap-4 border-b border-stone-200/80 bg-white/90 px-6 py-4 shadow-sm shadow-stone-200/40 backdrop-blur-xl">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.push(`/datasets/${params.id}`)}
-            className="shrink-0 rounded-xl p-2.5 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
-          >
-            <ArrowLeft className="h-6 w-6" />
-          </button>
-          <div className="h-8 w-px shrink-0 bg-stone-200" />
-          <div className="hidden min-w-0 sm:block">
-            <h1 className="text-lg font-bold leading-none text-stone-900">Annotation workspace</h1>
-            <p className="mt-1.5 truncate text-xs font-bold uppercase tracking-widest text-orange-600">
-              Dataset {params.id}
-              {isNativeMode ? ` · Frame ${frameIndex + 1}` : ` · Media ${params.imageId}`}
-              {!Number.isNaN(jobId) ? ` · Job ${jobId}` : canSaveToApi ? " · Direct" : " · Demo"}
-            </p>
-          </div>
-          <div className="hidden h-8 w-px shrink-0 bg-stone-200 sm:block" />
-          <div className="flex items-center gap-1 rounded-xl p-1">
-            <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
-              <Undo2 className="h-6 w-6" />
-            </button>
-            <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
-              <Redo2 className="h-6 w-6" />
-            </button>
-          </div>
-        </div>
+      <WorkspaceHeader
+        datasetId={params.id}
+        imageId={params.imageId}
+        isNativeMode={isNativeMode}
+        frameIndex={frameIndex}
+        jobId={jobId}
+        canSaveToApi={canSaveToApi}
+        saving={saving}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onBack={() => router.push(`/datasets/${params.id}`)}
+        onUndo={undo}
+        onRedo={redo}
+        onSave={handleSave}
+      />
 
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="flex shrink-0 items-center gap-2.5 rounded-xl bg-orange-500 px-5 py-2.5 text-lg font-bold text-white shadow-xl shadow-orange-500/20 transition-all hover:scale-105 active:scale-95"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-5 w-5" />}
-          <span>Save</span>
-        </button>
-      </nav>
-
-      {error && (
-        <div className="mx-6 mt-3 flex items-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
-        </div>
-      )}
+      <ErrorBanner message={error} />
 
       <main className="flex min-h-0 flex-grow overflow-hidden">
-        <aside
-          className="z-20 flex shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-2 py-4 shadow-sm shadow-stone-200/30 sm:px-2.5"
-          style={{ width: toolPaneWidth }}
-        >
-          <div className="flex flex-col gap-2 p-1.5">
-            {TOOLBAR.map(({ tool, icon, label, key }) =>
-              tool === "polygon" || tool === "polyline" ? (
-                <div key={tool} className="flex w-16 self-center flex-col gap-1.5">
-                  <button
-                    type="button"
-                    title={`${label} (${key})`}
-                    onClick={() => setActiveTool(tool)}
-                    className={`inline-flex h-16 w-16 self-center flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all ${
-                      activeTool === tool
-                        ? "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400/25"
-                        : "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white hover:text-stone-900 hover:shadow-sm"
-                    }`}
-                  >
-                    {icon}
-                    <span className="w-full truncate px-1 text-center leading-none">{label}</span>
-                  </button>
-                  {activeTool === tool && (
-                    <label className="flex w-16 flex-col gap-1.5 rounded-xl border border-orange-200 bg-white px-2 py-2.5 shadow-sm shadow-orange-100/60">
-                      <span className="text-center text-[9px] font-bold uppercase leading-none tracking-wider text-stone-500">
-                        Points
-                      </span>
-                      <select
-                        value={polygonVertexCount}
-                        onChange={(e) => setPolygonVertexCount(Number(e.target.value))}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full rounded-lg border border-stone-200 bg-stone-50 px-1.5 py-1.5 text-xs font-semibold text-stone-800"
-                      >
-                        {[(tool === "polyline" ? 2 : 3), 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
-                          <option key={`${tool}-${n}`} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                </div>
-              ) : (
-                <button
-                  key={tool}
-                  type="button"
-                  title={`${label} (${key})`}
-                  onClick={() => setActiveTool(tool)}
-                  className={`inline-flex h-16 w-16 self-center flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all ${
-                    activeTool === tool
-                      ? "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400/25"
-                      : "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white hover:text-stone-900 hover:shadow-sm"
-                  }`}
-                >
-                  {icon}
-                  <span className="w-full truncate px-1 text-center leading-none">{label}</span>
-                </button>
-              )
-            )}
-          </div>
-        </aside>
+        <ToolPane
+          width={toolPaneWidth}
+          activeTool={activeTool}
+          polygonVertexCount={polygonVertexCount}
+          onToolChange={setActiveTool}
+          onPolygonVertexCountChange={setPolygonVertexCount}
+        />
 
-        <button
-          type="button"
-          aria-label="Resize tool pane"
-          title="Resize tool pane"
-          onPointerDown={(e) => startPaneResize("tools", e)}
-          onPointerMove={updatePaneResize}
-          onPointerUp={stopPaneResize}
-          onPointerCancel={stopPaneResize}
-          className="group relative z-30 w-2 shrink-0 cursor-col-resize touch-none bg-transparent outline-none"
-        >
-          <span className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 rounded-full bg-stone-200 transition group-hover:w-1 group-hover:bg-orange-400 group-focus-visible:w-1 group-focus-visible:bg-orange-500" />
-        </button>
+        <PaneResizeHandle label="Resize tool pane" target="tools" resize={resizeHandlers} />
 
-        <div className="relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch overflow-hidden p-4">
-          {loading ? (
-            <div className="absolute inset-4 z-10 flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3 text-stone-500">
-                <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
-                <span className="text-sm font-medium">Loading media...</span>
-              </div>
-            </div>
-          ) : (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="h-full w-full min-h-0">
-              <AnnotationEditor
-                key={currentDraftKey}
-                imageUrl={imageUrl}
-                labels={labels}
-                activeClassId={activeClassId}
-                onActiveClassIdChange={setActiveClassId}
-                shapes={shapes}
-                onShapesChange={setShapes}
-                activeTool={activeTool}
-                onToolChange={setActiveTool}
-                polygonVertexCount={polygonVertexCount}
-                hiddenShapeIds={hiddenShapeIds}
-                pinnedShapeIds={pinnedShapeIds}
-              />
-            </motion.div>
-          )}
-        </div>
+        <CanvasStage
+          loading={loading}
+          currentDraftKey={currentDraftKey}
+          imageUrl={imageUrl}
+          labels={labels}
+          activeClassId={activeClassId}
+          shapes={shapes}
+          activeTool={activeTool}
+          polygonVertexCount={polygonVertexCount}
+          hiddenShapeIds={hiddenShapeIds}
+          pinnedShapeIds={pinnedShapeIds}
+          onActiveClassIdChange={setActiveClassId}
+          onShapesChange={setShapes}
+          onToolChange={setActiveTool}
+        />
 
-        <button
-          type="button"
-          aria-label="Resize objects pane"
-          title="Resize objects pane"
-          onPointerDown={(e) => startPaneResize("objects", e)}
-          onPointerMove={updatePaneResize}
-          onPointerUp={stopPaneResize}
-          onPointerCancel={stopPaneResize}
-          className="group relative z-30 w-2 shrink-0 cursor-col-resize touch-none bg-transparent outline-none"
-        >
-          <span className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 rounded-full bg-stone-200 transition group-hover:w-1 group-hover:bg-orange-400 group-focus-visible:w-1 group-focus-visible:bg-orange-500" />
-        </button>
+        <PaneResizeHandle label="Resize objects pane" target="objects" resize={resizeHandlers} />
 
-        <aside
-          className="z-20 grid h-full shrink-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l border-stone-200/80 bg-white/90 p-6 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
-          style={{ width: objectsPaneWidth }}
-        >
-          <div className="mb-5 flex items-center justify-between gap-2 border-b border-stone-200">
-            <div className="flex">
-              <button
-                type="button"
-                onClick={() => setActiveRightTab("objects")}
-                className={`-mb-px border-b-2 px-3 pb-2.5 text-sm font-bold uppercase tracking-widest transition ${
-                  activeRightTab === "objects"
-                    ? "border-orange-500 text-stone-900"
-                    : "border-transparent text-stone-400 hover:text-stone-700"
-                }`}
-              >
-                Objects
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveRightTab("labels")}
-                className={`-mb-px border-b-2 px-3 pb-2.5 text-sm font-bold uppercase tracking-widest transition ${
-                  activeRightTab === "labels"
-                    ? "border-orange-500 text-stone-900"
-                    : "border-transparent text-stone-400 hover:text-stone-700"
-                }`}
-              >
-                Labels
-              </button>
-            </div>
-            {activeRightTab === "objects" && (
-              <span className="rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-bold text-stone-500">{shapes.length} total</span>
-            )}
-          </div>
-
-          <div className="flex h-full min-h-0 flex-col overflow-hidden">
-          {activeRightTab === "labels" && (
-            <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
-              <div className="mb-3 shrink-0 text-[14px] font-bold uppercase tracking-widest text-stone-500">Classes</div>
-              <form onSubmit={handleCreateLabel} className="mb-3 flex shrink-0 items-center gap-2">
-                <input
-                  type="color"
-                  value={newLabelColor}
-                  onChange={(e) => setNewLabelColor(e.target.value)}
-                  onClick={(e) => void handlePickLabelColor(e)}
-                  className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
-                  title="Pick label color"
-                  aria-label="Pick label color"
-                />
-                <input
-                  type="text"
-                  value={newLabelName}
-                  onChange={(e) => setNewLabelName(e.target.value)}
-                  placeholder="New label"
-                  className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-stone-800 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
-                />
-                <button
-                  type="submit"
-                  disabled={!newLabelName.trim() || labelBusyId === "new"}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Add label"
-                  aria-label="Add label"
-                >
-                  {labelBusyId === "new" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                </button>
-              </form>
-              <div className="custom-scrollbar min-h-0 flex-1 max-h-[60vh] space-y-2 overflow-y-auto overscroll-contain pr-2">
-                {labels.map((label) => {
-                  const isUsed = shapes.some((shape) => shape.classLabelId === label.id);
-                  const deleting = labelBusyId === label.id;
-                  return (
-                    <div key={label.id} className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-xl bg-white/70 px-3 py-2 text-left text-base font-semibold text-stone-700 shadow-sm shadow-stone-200/40">
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
-                      <span className="min-w-0 flex-1 truncate">{label.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteLabel(label)}
-                        disabled={deleting || isUsed}
-                        title={isUsed ? "Label is in use" : "Delete label"}
-                        aria-label={isUsed ? "Label is in use" : "Delete label"}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-stone-400"
-                      >
-                        {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {activeRightTab === "objects" && (
-          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
-            <div className="custom-scrollbar min-h-0 flex-1 max-h-[60vh] space-y-3 overflow-y-auto overscroll-contain pr-2">
-            {shapes.length === 0 && (
-              <p className="text-base leading-relaxed text-stone-500">
-                Box: click two corners on the image (N).
-              </p>
-            )}
-            {shapes.map((shape, index) => {
-              const currentLabel = labels.find((item) => item.id === shape.classLabelId);
-              const name = currentLabel?.name ?? "?";
-              const color = currentLabel?.color ?? "#999";
-              const isHidden = hiddenShapeIds.includes(shape.clientId);
-              const isPinned = pinnedShapeIds.includes(shape.clientId);
-              return (
-                <div
-                  key={shape.clientId}
-                  className="group space-y-1 rounded-2xl border p-2.5 transition-all hover:bg-white"
-                  style={{
-                    borderColor: `${color}55`,
-                    backgroundColor: `${color}0F`,
-                  }}
-                >
-                  <div className="flex cursor-pointer items-center justify-between" onClick={() => setActiveClassId(shape.classLabelId)}>
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[11px] font-black tabular-nums text-stone-700">
-                        {index + 1}.
-                      </span>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        title={isHidden ? "Show label" : "Hide label"}
-                        aria-label={isHidden ? "Show label" : "Hide label"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleShapeHidden(shape.clientId);
-                        }}
-                        className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
-                          isHidden ? "bg-stone-200 text-stone-600" : "text-stone-400 hover:bg-white hover:text-stone-800"
-                        }`}
-                      >
-                        {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                      </button>
-                      <button
-                        type="button"
-                        title={isPinned ? "Unpin label note" : "Pin label note"}
-                        aria-label={isPinned ? "Unpin label note" : "Pin label note"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleShapePinned(shape.clientId);
-                        }}
-                        className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
-                          isPinned ? "bg-orange-100 text-orange-700" : "text-stone-400 hover:bg-white hover:text-stone-800"
-                        }`}
-                      >
-                        <Pin className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="font-mono text-xs text-stone-400">{objectSummary(shape)}</span>
-                    </div>
-                  </div>
-                  <div className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">
-                    <div className="relative" data-class-menu-root="true">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenClassMenuId((prev) => (prev === shape.clientId ? null : shape.clientId));
-                        }}
-                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-left text-sm font-semibold normal-case tracking-normal text-stone-800 shadow-sm shadow-stone-200/50 outline-none transition hover:border-orange-200 hover:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-400/15"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                          <span className="truncate">{name}</span>
-                        </span>
-                        <ChevronRight className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${openClassMenuId === shape.clientId ? "-rotate-90" : "rotate-90"}`} />
-                      </button>
-                      {openClassMenuId === shape.clientId && (
-                        <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 max-h-64 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-xl shadow-stone-300/30">
-                          {labels.map((label) => {
-                            const selected = label.id === shape.classLabelId;
-                            return (
-                              <button
-                                key={label.id}
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setShapes((prev) =>
-                                    prev.map((item) => (item.clientId === shape.clientId ? { ...item, classLabelId: label.id } : item))
-                                  );
-                                  setActiveClassId(label.id);
-                                  setOpenClassMenuId(null);
-                                }}
-                                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold normal-case tracking-normal transition ${
-                                  selected ? "bg-orange-50 text-orange-700" : "text-stone-700 hover:bg-stone-50 hover:text-stone-900"
-                                }`}
-                              >
-                                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
-                                <span className="min-w-0 flex-1 truncate">{label.name}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            </div>
-          </div>
-          )}
-          </div>
-        </aside>
+        <RightPane
+          width={objectsPaneWidth}
+          activeTab={activeRightTab}
+          shapes={shapes}
+          labels={labels}
+          hiddenShapeIds={hiddenShapeIds}
+          pinnedShapeIds={pinnedShapeIds}
+          openClassMenuId={openClassMenuId}
+          newLabelName={newLabelName}
+          newLabelColor={newLabelColor}
+          labelBusyId={labelBusyId}
+          onTabChange={setActiveRightTab}
+          onNewLabelNameChange={setNewLabelName}
+          onNewLabelColorChange={setNewLabelColor}
+          onPickLabelColor={handlePickLabelColor}
+          onCreateLabel={handleCreateLabel}
+          onDeleteLabel={handleDeleteLabel}
+          onShapeClassChange={changeShapeClass}
+          onActiveClassIdChange={setActiveClassId}
+          onOpenClassMenuIdChange={setOpenClassMenuId}
+          onToggleShapeHidden={toggleShapeHidden}
+          onToggleShapePinned={toggleShapePinned}
+        />
       </main>
 
-      <div className="z-30 flex shrink-0 select-none items-center gap-4 border-t border-stone-200/80 bg-white/95 px-6 py-4 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl">
-        <div className="flex items-center gap-1.5">
-          {[
-            { icon: <ChevronFirst className="h-5 w-5" />, label: "First", action: () => navigateTo(1) },
-            { icon: <ChevronsLeft className="h-5 w-5" />, label: "Back 10", action: () => navigateTo(current - 10, { wrap: true }) },
-            { icon: <ChevronLeft className="h-5 w-5" />, label: "Prev", action: () => navigateTo(current - 1, { wrap: true }) },
-            { icon: <Play className="h-5 w-5" />, label: "Play", action: () => {} },
-            { icon: <ChevronRight className="h-5 w-5" />, label: "Next", action: () => navigateTo(current + 1, { wrap: true }) },
-            { icon: <ChevronsRight className="h-5 w-5" />, label: "Forward 10", action: () => navigateTo(current + 10, { wrap: true }) },
-            { icon: <ChevronLast className="h-5 w-5" />, label: "Last", action: () => navigateTo(total || 1) },
-          ].map(({ icon, label, action }) => (
-            <button key={label} type="button" title={label} onClick={action} className="flex h-10 w-10 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200">
-              {icon}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative flex min-w-0 flex-1 items-center">
-            <input
-              type="range"
-              min={1}
-            max={sliderMax}
-            value={displayedValue}
-            onPointerDown={() => setScrubValue(displayedValue)}
-            onChange={(e) => {
-              const next = Number(e.target.value);
-              setScrubValue(next);
-              setFrameInput(String(next));
-            }}
-            onPointerUp={commitSlider}
-            onBlur={commitSlider}
-            onKeyUp={(e) => {
-              if (
-                e.key.startsWith("Arrow") ||
-                e.key === "Home" ||
-                e.key === "End" ||
-                e.key === "PageUp" ||
-                e.key === "PageDown"
-              ) {
-                commitSlider();
-              }
-            }}
-            className="h-2 w-full cursor-pointer touch-none appearance-none rounded-full bg-stone-200 accent-orange-500 transition-[background] duration-200"
-            style={{
-              background: `linear-gradient(to right, #f97316 0%, #f97316 ${sliderProgress}%, #e7e5e4 ${sliderProgress}%, #e7e5e4 100%)`,
-            }}
-          />
-        </div>
-
-        <div className="flex w-[18rem] shrink-0 items-center gap-3">
-          <span className="min-w-0 flex-1 truncate text-sm font-bold text-stone-600" title={currentFilename}>
-            {currentFilename || (isNativeMode ? `Frame ${frameIndex + 1}` : `Media ${params.imageId}`)}
-          </span>
-          <button type="button" title="Copy link" onClick={() => navigator.clipboard?.writeText(window.location.href)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700">
-            <Link2 className="h-5 w-5" />
-          </button>
-          <button type="button" title="Delete annotation" onClick={() => setShapes([])} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-500">
-            <Trash2 className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1.5">
-          <input
-            type="number"
-            min={1}
-            max={Math.max(1, total)}
-            value={frameInput}
-            onChange={(e) => setFrameInput(e.target.value)}
-            onBlur={handleFrameInputCommit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleFrameInputCommit();
-            }}
-            className="no-number-spinner w-12 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-center text-sm font-bold tabular-nums text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
-          />
-          {total > 0 && <span className="text-sm font-bold text-stone-400">/ {total}</span>}
-        </div>
-      </div>
+      <TimelineBar
+        current={current}
+        total={total}
+        displayedValue={displayedValue}
+        sliderMax={sliderMax}
+        sliderProgress={sliderProgress}
+        frameInput={frameInput}
+        currentFilename={currentFilename}
+        isNativeMode={isNativeMode}
+        frameIndex={frameIndex}
+        imageId={params.imageId}
+        onNavigateTo={navigateTo}
+        onScrubStart={() => setScrubValue(displayedValue)}
+        onScrubChange={(next) => {
+          setScrubValue(next);
+          setFrameInput(String(next));
+        }}
+        onCommitSlider={commitSlider}
+        onFrameInputChange={setFrameInput}
+        onFrameInputCommit={handleFrameInputCommit}
+        onClearShapes={() => setShapes([])}
+      />
     </div>
   );
 }
+
