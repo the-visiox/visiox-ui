@@ -505,7 +505,7 @@ function LabelsPanel({
           {labelBusyId === "new" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
         </button>
       </form>
-      <div className="custom-scrollbar min-h-0 flex-1 max-h-[60vh] space-y-2 overflow-y-auto overscroll-contain pr-2">
+      <div className="custom-scrollbar min-h-0 flex-1 max-h-[70vh] space-y-2 overflow-y-auto overscroll-contain pr-2">
         {labels.map((label) => (
           <LabelRow
             key={label.id}
@@ -574,7 +574,7 @@ function ObjectsPanel({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
-      <div className="custom-scrollbar min-h-0 flex-1 max-h-[60vh] space-y-3 overflow-y-auto overscroll-contain pr-2">
+      <div className="custom-scrollbar min-h-0 flex-1 max-h-[70vh] space-y-3 overflow-y-auto overscroll-contain pr-2">
         {shapes.length === 0 && (
           <p className="text-base leading-relaxed text-stone-500">
             Box: click two corners on the image (N).
