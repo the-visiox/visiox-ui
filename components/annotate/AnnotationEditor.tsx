@@ -540,6 +540,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const safeLayerScale = Math.max(layerScale, 0.001);
   const transformerAnchorPx = CORNER_HANDLE_DIAMETER_PX;
   const shapeDragEnabled = activeTool === "select" && visibleDraft.length === 0 && !newBox;
+  const pathVertexEditingEnabled =
+    (activeTool === "select" || activeTool === "polygon" || activeTool === "polyline") && visibleDraft.length === 0 && !newBox;
   const cursorClass = isMiddlePan
     ? "cursor-grabbing"
     : canDrawRect || canDrawPath || canPlacePoint || canPlaceTag
@@ -721,6 +723,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             if (shape.shapeType !== "rectangle" && shape.points && shape.points.length >= 2) {
               const isClosed = shape.shapeType === "polygon";
               const isPointsShape = shape.shapeType === "points";
+              const pathCenterX = shape.x + shape.width / 2;
+              const pathCenterY = shape.y + shape.height / 2;
               return (
                 <React.Fragment key={shape.clientId}>
                   {!isPointsShape && (
@@ -776,10 +780,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       }}
                     />
                   )}
-                  {(isPointsShape || isSelected || (hoverEnabled && hoveredId === shape.clientId)) && Array.from({ length: shape.points.length / 2 }, (_, vertexIndex) => {
+                  {(isPointsShape || isSelected || (pathVertexEditingEnabled && hoveredId === shape.clientId)) && Array.from({ length: shape.points.length / 2 }, (_, vertexIndex) => {
                     const vx = shape.points![vertexIndex * 2] + (shapeX - shape.x);
                     const vy = shape.points![vertexIndex * 2 + 1] + (shapeY - shape.y);
-                    const isCornerHovered = hoverEnabled && hoveredCorner?.shapeId === shape.clientId && hoveredCorner.vertexIndex === vertexIndex;
+                    const isCornerHovered = pathVertexEditingEnabled && hoveredCorner?.shapeId === shape.clientId && hoveredCorner.vertexIndex === vertexIndex;
+                    const resizeCursor = (vx - pathCenterX) * (vy - pathCenterY) >= 0 ? "nwse-resize" : "nesw-resize";
                     return (
                       <Circle
                         key={`${shape.clientId}-v-${vertexIndex}`}
@@ -789,22 +794,28 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                         fill={isPointsShape ? stroke : isCornerHovered ? "#ffedd5" : "#ffffff"}
                         stroke={stroke}
                         strokeWidth={(isCornerHovered ? 2 : 1.5) / layerScale}
-                        draggable={shapeDragEnabled}
+                        draggable={pathVertexEditingEnabled}
                         listening={shapePointerEnabled}
-                        onMouseEnter={() => setHoveredCorner({ shapeId: shape.clientId, vertexIndex })}
-                        onMouseLeave={() => {
+                        onMouseEnter={(e) => {
+                          setHoveredCorner({ shapeId: shape.clientId, vertexIndex });
+                          const stage = e.target.getStage();
+                          if (stage) stage.container().style.cursor = resizeCursor;
+                        }}
+                        onMouseLeave={(e) => {
+                          const stage = e.target.getStage();
+                          if (stage) stage.container().style.cursor = "";
                           setHoveredCorner((prev) =>
                             prev?.shapeId === shape.clientId && prev.vertexIndex === vertexIndex ? null : prev
                           );
                         }}
                         onMouseDown={(e) => {
-                          if (activeTool !== "select") return;
+                          if (!pathVertexEditingEnabled) return;
                           e.cancelBubble = true;
                           setSelectedId(shape.clientId);
                         }}
                         onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                         onTap={(e) => {
-                          if (activeTool !== "select") return;
+                          if (!pathVertexEditingEnabled) return;
                           e.cancelBubble = true;
                           setSelectedId(shape.clientId);
                         }}

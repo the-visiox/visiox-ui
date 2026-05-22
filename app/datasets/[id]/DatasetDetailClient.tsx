@@ -359,9 +359,12 @@ export default function DatasetDetailClient({ id }: Props) {
       />
 
       {/* Navbar */}
-      <nav className="z-20 px-6 py-3 bg-white/80 backdrop-blur-md border-b border-stone-200 flex items-center justify-between sticky top-0">
-        <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="p-2 hover:bg-stone-100 rounded-xl transition-colors">
+      <nav className="sticky top-4 z-20 mx-8 mt-8 mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            onClick={() => router.push(stats?.project_id ? `/projects/${stats.project_id}` : "/projects")}
+            className="p-2 hover:bg-stone-100 rounded-xl transition-colors"
+          >
             <ArrowLeft className="w-5 h-5 text-stone-600" />
           </button>
           <div className="h-6 w-[1px] bg-stone-200" />
@@ -386,7 +389,7 @@ export default function DatasetDetailClient({ id }: Props) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -459,7 +462,7 @@ export default function DatasetDetailClient({ id }: Props) {
       )}
 
       {/* Main Content */}
-      <div className="z-10 flex-1 overflow-auto p-6 space-y-6 max-w-7xl mx-auto w-full">
+      <div className="z-10 flex-1 overflow-auto p-6 space-y-6 max-w-8xl mx-auto w-full">
 
         {/* Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

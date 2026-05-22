@@ -345,35 +345,34 @@ export default function ProjectDetailPage() {
       </AnimatePresence>
 
       <main className="flex-grow p-8 z-10">
-        <header className="mb-10">
-          <div className="flex items-center gap-4 mb-6">
-            <button onClick={() => router.push('/projects')} className="p-2 hover:bg-white/80 rounded-xl transition-colors border border-transparent hover:border-stone-200">
-              <ArrowLeft className="w-5 h-5 text-stone-600" />
-            </button>
-            <div className="h-6 w-[1px] bg-stone-200" />
-            <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest">
-              <span>Projects</span><span>/</span><span className="text-stone-900">{project.name}</span>
+        <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="mb-4 flex items-center gap-4">
+              <button onClick={() => router.push('/projects')} className="p-2 hover:bg-white/80 rounded-xl transition-colors border border-transparent hover:border-stone-200">
+                <ArrowLeft className="w-5 h-5 text-stone-600" />
+              </button>
+              <div className="h-6 w-[1px] bg-stone-200" />
+              <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest">
+                <span>Projects</span><span>/</span><span className="text-stone-900">{project.name}</span>
+              </div>
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold text-stone-900 tracking-tight truncate">{project.name}</h1>
             </div>
           </div>
-
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-4xl font-bold text-stone-900 tracking-tight mb-2">{project.name}</h1>
-              <p className="text-stone-500 text-sm max-w-2xl">{project.description || "No description provided for this project."}</p>
-            </div>
-            <div className="flex flex-wrap gap-3 justify-end">
+          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
               <Link
-                href={`/datasets?project=${project.id}`}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white border border-stone-200 text-stone-600 rounded-xl font-bold text-sm hover:bg-stone-50 transition-all"
+                href="#project-datasets"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-5 text-sm font-bold text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105 active:scale-95"
               >
                 <ExternalLink className="w-4 h-4" />
-                Dataset library
+                Project datasets
               </Link>
               <button
                 type="button"
                 onClick={() => void handleShareToDataverse()}
                 disabled={sharing}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white border border-stone-200 text-stone-600 rounded-xl font-bold text-sm hover:bg-stone-50 transition-all disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-5 text-sm font-bold text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105 active:scale-95 disabled:opacity-60 disabled:hover:scale-100"
               >
                 {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe2 className="w-4 h-4" />}
                 Share to Dataverse
@@ -383,7 +382,7 @@ export default function ProjectDetailPage() {
                   href={`${CVAT_PUBLIC_URL}/projects/${project.cvat_project_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-5 py-2.5 bg-white border border-stone-200 text-stone-600 rounded-xl font-bold text-sm hover:bg-stone-50 transition-all"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-5 text-sm font-bold text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105 active:scale-95"
                 >
                   <Layout className="w-4 h-4" />
                   CVAT Project
@@ -391,19 +390,18 @@ export default function ProjectDetailPage() {
               )}
               <button
                 type="button"
-                className="p-2.5 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 transition-all"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105 active:scale-95"
               >
                 <Settings className="w-5 h-5 text-stone-600" />
               </button>
               <button
                 type="button"
                 onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 px-6 py-2.5 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-xl shadow-orange-500/20 hover:scale-105 transition-all"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 New Dataset
               </button>
-            </div>
           </div>
         </header>
 
@@ -508,7 +506,7 @@ export default function ProjectDetailPage() {
           </div>
         </motion.section>
 
-        <h2 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Datasets</h2>
+        <h2 id="project-datasets" className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Datasets</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
            {datasetList.map((dataset, i) => {

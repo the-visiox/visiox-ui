@@ -12,6 +12,7 @@ import {
   Database,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { projects, datasets as datasetsApi, resolveMediaUrl, type Project, type Dataset } from "@/lib/api";
 
@@ -56,6 +57,7 @@ function SkeletonCard() {
    PAGE
 ══════════════════════════════════════════════════════════════════ */
 export default function ProjectsPage() {
+  const router = useRouter();
   const [list, setList]               = useState<Project[]>([]);
   const [query, setQuery]             = useState("");
   const [search, setSearch]           = useState("");
@@ -127,7 +129,7 @@ export default function ProjectsPage() {
                     Projects
                   </h1>
                   <p className="max-w-xl text-base leading-6 text-stone-500">
-                    Select a project to browse and manage its datasets.
+                    Open a project to browse and manage its datasets.
                   </p>
                 </div>
 
@@ -180,7 +182,7 @@ export default function ProjectsPage() {
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04 }}
-                      onClick={() => setSelected(p)}
+                      onClick={() => router.push(`/projects/${p.id}`)}
                       className="group flex aspect-[4/3] w-full flex-col text-left rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
                     >
                       {/* Thumbnail */}
@@ -233,12 +235,12 @@ export default function ProjectsPage() {
               <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
                 <div>
                   {/* Breadcrumb */}
-                  <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-stone-400">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-bold tracking-widest text-stone-400">
                     <button
                       onClick={handleBack}
                       className="hover:text-orange-600 transition-colors flex items-center gap-1"
                     >
-                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <ArrowLeft className="w-4 h-4" />
                       Projects
                     </button>
                     <span>/</span>

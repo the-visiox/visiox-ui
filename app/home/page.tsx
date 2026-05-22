@@ -79,7 +79,7 @@ export default function HomePage() {
               Try Existing Models
             </Link>
             <Link
-              href="/datasets"
+              href="/projects"
               className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-bold text-orange-600 transition hover:bg-orange-100"
             >
               <Sparkles className="h-3.5 w-3.5" />
