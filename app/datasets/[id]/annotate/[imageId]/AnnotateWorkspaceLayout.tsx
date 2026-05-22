@@ -29,6 +29,7 @@ import {
   Tag,
   Trash2,
   Undo2,
+  X,
 } from "lucide-react";
 import AnnotationEditor from "@/components/annotate/AnnotationEditor";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
@@ -59,6 +60,98 @@ type PaneResizeHandlers = {
   update: (e: React.PointerEvent<HTMLButtonElement>) => void;
   stop: (e: React.PointerEvent<HTMLButtonElement>) => void;
 };
+
+type RgbColor = { r: number; g: number; b: number };
+type HsvColor = { h: number; s: number; v: number };
+
+const LABEL_COLOR_SWATCHES = [
+  "#22c55e",
+  "#38bdf8",
+  "#3b82f6",
+  "#6366f1",
+  "#8b5cf6",
+  "#a855f7",
+  "#d946ef",
+  "#ec4899",
+  "#f43f5e",
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#eab308",
+  "#84cc16",
+  "#14b8a6",
+  "#64748b",
+] as const;
+
+function clampColorChannel(value: number) {
+  return Math.max(0, Math.min(255, Math.round(Number.isFinite(value) ? value : 0)));
+}
+
+function normalizeHexColor(value: string, fallback = "#E66700") {
+  const raw = value.trim().replace("#", "");
+  if (/^[0-9A-Fa-f]{3}$/.test(raw)) {
+    return `#${raw.split("").map((char) => char + char).join("").toUpperCase()}`;
+  }
+  if (/^[0-9A-Fa-f]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
+  return fallback;
+}
+
+function hexToRgb(hex: string): RgbColor {
+  const normalized = normalizeHexColor(hex).slice(1);
+  return {
+    r: parseInt(normalized.slice(0, 2), 16),
+    g: parseInt(normalized.slice(2, 4), 16),
+    b: parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex({ r, g, b }: RgbColor) {
+  return `#${[r, g, b].map((value) => clampColorChannel(value).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+}
+
+function rgbToHsv({ r, g, b }: RgbColor): HsvColor {
+  const red = r / 255;
+  const green = g / 255;
+  const blue = b / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  let h = 0;
+
+  if (delta !== 0) {
+    if (max === red) h = 60 * (((green - blue) / delta) % 6);
+    if (max === green) h = 60 * ((blue - red) / delta + 2);
+    if (max === blue) h = 60 * ((red - green) / delta + 4);
+  }
+
+  return {
+    h: h < 0 ? h + 360 : h,
+    s: max === 0 ? 0 : delta / max,
+    v: max,
+  };
+}
+
+function hsvToRgb({ h, s, v }: HsvColor): RgbColor {
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (h < 60) [red, green, blue] = [c, x, 0];
+  else if (h < 120) [red, green, blue] = [x, c, 0];
+  else if (h < 180) [red, green, blue] = [0, c, x];
+  else if (h < 240) [red, green, blue] = [0, x, c];
+  else if (h < 300) [red, green, blue] = [x, 0, c];
+  else [red, green, blue] = [c, 0, x];
+
+  return {
+    r: clampColorChannel((red + m) * 255),
+    g: clampColorChannel((green + m) * 255),
+    b: clampColorChannel((blue + m) * 255),
+  };
+}
 
 export function PaneResizeHandle({
   label,
@@ -189,7 +282,7 @@ export function ToolPane({
       className="z-20 flex shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-2 py-4 shadow-sm shadow-stone-200/30 sm:px-2.5"
       style={{ width }}
     >
-      <div className="flex flex-col gap-2 p-1.5">
+      <div className="flex flex-col gap-1.5 p-1">
         {TOOLBAR.map(({ tool, icon, label, key }) => (
           <ToolButton
             key={tool}
@@ -234,7 +327,7 @@ function ToolButton({
       type="button"
       title={`${label} (${shortcut})`}
       onClick={() => onToolChange(tool)}
-      className={`inline-flex h-16 w-16 self-center flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold uppercase tracking-wide transition-all ${
+      className={`inline-flex h-14 w-14 self-center flex-col items-center justify-center gap-1 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all ${
         isActive
           ? "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400/25"
           : "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white hover:text-stone-900 hover:shadow-sm"
@@ -248,10 +341,10 @@ function ToolButton({
   if (!hasPointCount) return button;
 
   return (
-    <div className="flex w-16 self-center flex-col gap-1.5">
+    <div className="flex w-14 self-center flex-col gap-1.5">
       {button}
       {isActive && (
-        <label className="flex w-16 flex-col gap-1.5 rounded-xl border border-orange-200 bg-white px-2 py-2.5 shadow-sm shadow-orange-100/60">
+        <label className="flex w-14 flex-col gap-1.5 rounded-xl border border-orange-200 bg-white px-1.5 py-2 shadow-sm shadow-orange-100/60">
           <span className="text-center text-[9px] font-bold uppercase leading-none tracking-wider text-stone-500">
             Points
           </span>
@@ -347,7 +440,6 @@ export function RightPane({
   onTabChange,
   onNewLabelNameChange,
   onNewLabelColorChange,
-  onPickLabelColor,
   onCreateLabel,
   onDeleteLabel,
   onShapeClassChange,
@@ -369,7 +461,6 @@ export function RightPane({
   onTabChange: (tab: RightTab) => void;
   onNewLabelNameChange: (value: string) => void;
   onNewLabelColorChange: (value: string) => void;
-  onPickLabelColor: (e: React.MouseEvent<HTMLInputElement>) => void;
   onCreateLabel: (e: React.FormEvent) => void;
   onDeleteLabel: (label: LabelDefinition) => void;
   onShapeClassChange: (shapeId: string, classId: number) => void;
@@ -395,7 +486,6 @@ export function RightPane({
             labelBusyId={labelBusyId}
             onNewLabelNameChange={onNewLabelNameChange}
             onNewLabelColorChange={onNewLabelColorChange}
-            onPickLabelColor={onPickLabelColor}
             onCreateLabel={onCreateLabel}
             onDeleteLabel={onDeleteLabel}
           />
@@ -460,7 +550,6 @@ function LabelsPanel({
   labelBusyId,
   onNewLabelNameChange,
   onNewLabelColorChange,
-  onPickLabelColor,
   onCreateLabel,
   onDeleteLabel,
 }: {
@@ -471,7 +560,6 @@ function LabelsPanel({
   labelBusyId: number | "new" | null;
   onNewLabelNameChange: (value: string) => void;
   onNewLabelColorChange: (value: string) => void;
-  onPickLabelColor: (e: React.MouseEvent<HTMLInputElement>) => void;
   onCreateLabel: (e: React.FormEvent) => void;
   onDeleteLabel: (label: LabelDefinition) => void;
 }) {
@@ -479,14 +567,9 @@ function LabelsPanel({
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
       <div className="mb-3 shrink-0 text-[14px] font-bold uppercase tracking-widest text-stone-500">Classes</div>
       <form onSubmit={onCreateLabel} className="mb-3 flex shrink-0 items-center gap-2">
-        <input
-          type="color"
+        <LabelColorPicker
           value={newLabelColor}
-          onChange={(e) => onNewLabelColorChange(e.target.value)}
-          onClick={(e) => void onPickLabelColor(e)}
-          className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
-          title="Pick label color"
-          aria-label="Pick label color"
+          onChange={onNewLabelColorChange}
         />
         <input
           type="text"
@@ -516,6 +599,234 @@ function LabelsPanel({
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function LabelColorPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [draftColor, setDraftColor] = React.useState(normalizeHexColor(value));
+  const initialColorRef = React.useRef(normalizeHexColor(value));
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const colorAreaRef = React.useRef<HTMLDivElement | null>(null);
+  const hsv = rgbToHsv(hexToRgb(draftColor));
+  const rgb = hexToRgb(draftColor);
+
+  React.useEffect(() => {
+    if (!open) setDraftColor(normalizeHexColor(value));
+  }, [open, value]);
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && rootRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onChange(initialColorRef.current);
+        setDraftColor(initialColorRef.current);
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onChange, open]);
+
+  const commitColor = React.useCallback(
+    (color: string) => {
+      const normalized = normalizeHexColor(color, draftColor);
+      setDraftColor(normalized);
+      onChange(normalized);
+    },
+    [draftColor, onChange]
+  );
+
+  const updateFromColorArea = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const rect = colorAreaRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const s = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      const v = Math.max(0, Math.min(1, 1 - (event.clientY - rect.top) / rect.height));
+      commitColor(rgbToHex(hsvToRgb({ h: hsv.h, s, v })));
+    },
+    [commitColor, hsv.h]
+  );
+
+  const updateRgb = (channel: keyof RgbColor, channelValue: string) => {
+    commitColor(rgbToHex({ ...rgb, [channel]: clampColorChannel(Number(channelValue)) }));
+  };
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => {
+          initialColorRef.current = normalizeHexColor(value);
+          setDraftColor(normalizeHexColor(value));
+          setOpen((current) => !current);
+        }}
+        className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-stone-200 bg-white p-1 shadow-sm shadow-stone-200/40 transition hover:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-400/20"
+        title="Pick label color"
+        aria-label="Pick label color"
+      >
+        <span className="block h-full w-full rounded-md" style={{ backgroundColor: normalizeHexColor(value) }} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-11 z-50 w-[244px] rounded-2xl border border-stone-200 bg-white p-3 shadow-2xl shadow-stone-300/50"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.preventDefault();
+          }}
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-bold uppercase text-stone-600">Select color</span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900"
+              aria-label="Close color picker"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div
+            ref={colorAreaRef}
+            role="slider"
+            aria-label="Color saturation and brightness"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(hsv.s * 100)}
+            aria-valuetext={`${Math.round(hsv.s * 100)}% saturation, ${Math.round(hsv.v * 100)}% brightness`}
+            tabIndex={0}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              updateFromColorArea(event);
+            }}
+            onPointerMove={(event) => {
+              if (event.buttons === 1) updateFromColorArea(event);
+            }}
+            className="relative h-32 w-full touch-none cursor-crosshair overflow-hidden border border-stone-200"
+            style={{
+              background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))`,
+            }}
+          >
+            <span
+              className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md shadow-black/40"
+              style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
+            />
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <span className="h-8 w-8 shrink-0 rounded-full border border-stone-200" style={{ backgroundColor: draftColor }} />
+            <input
+              type="range"
+              min={0}
+              max={359}
+              value={Math.round(hsv.h)}
+              onChange={(event) => commitColor(rgbToHex(hsvToRgb({ ...hsv, h: Number(event.target.value) })))}
+              className="h-3 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-[linear-gradient(to_right,#ef4444,#f97316,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ec4899,#ef4444)]"
+              aria-label="Hue"
+            />
+          </div>
+
+            <div className="mt-3 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2">
+              <label className="col-span-1 min-w-0">
+                <span className="sr-only">Hex</span>
+                <input
+                  type="text"
+                  value={draftColor.replace("#", "")}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setDraftColor(`#${next}`);
+                    if (/^[0-9A-Fa-f]{3}$|^[0-9A-Fa-f]{6}$/.test(next)) {
+                      onChange(normalizeHexColor(next, draftColor));
+                    }
+                  }}
+                  onBlur={() => commitColor(draftColor)}
+                  className="h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-2 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+                />
+              </label>
+
+              {(["r", "g", "b"] as const).map((channel) => (
+                <label key={channel} className="min-w-0">
+                  <span className="sr-only">{channel.toUpperCase()}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={255}
+                    value={rgb[channel]}
+                    onChange={(event) => updateRgb(channel, event.target.value)}
+                  className="no-number-spinner h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-1 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+                />
+                </label>
+              ))}
+            </div>
+
+          <div className="mt-1 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2 text-center text-[10px] font-bold text-stone-500">
+            <span>Hex</span>
+            <span>R</span>
+            <span>G</span>
+            <span>B</span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-8 gap-2">
+            {LABEL_COLOR_SWATCHES.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => commitColor(color)}
+                className="h-5 w-5 rounded-md border border-stone-200 transition hover:scale-110 focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                style={{ backgroundColor: color }}
+                aria-label={`Use ${color}`}
+              />
+            ))}
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => commitColor("#E66700")}
+              className="rounded-lg border border-stone-200 px-2 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-50"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                commitColor(initialColorRef.current);
+                setOpen(false);
+              }}
+              className="rounded-lg border border-stone-200 px-2 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-lg bg-orange-500 px-2 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

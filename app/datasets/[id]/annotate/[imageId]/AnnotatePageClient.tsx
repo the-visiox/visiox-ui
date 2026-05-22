@@ -40,16 +40,6 @@ import {
 } from "@/lib/annotation";
 import type { EditorShape, LabelDefinition } from "@/lib/annotation";
 
-declare global {
-  interface Window {
-    EyeDropper?: {
-      new (): {
-        open: () => Promise<{ sRGBHex: string }>;
-      };
-    };
-  }
-}
-
 function draftStorageKey(
   datasetId: number,
   imageId: string,
@@ -700,18 +690,6 @@ export default function AnnotatePageClient() {
     }
   }, [activeClassId, isLoggedIn, labels, projectId, shapes]);
 
-  const handlePickLabelColor = useCallback(async (e: React.MouseEvent<HTMLInputElement>) => {
-    if (typeof window === "undefined" || !window.EyeDropper) return;
-
-    e.preventDefault();
-    try {
-      const result = await new window.EyeDropper().open();
-      if (result.sRGBHex) setNewLabelColor(result.sRGBHex);
-    } catch {
-      // User cancelled the picker.
-    }
-  }, []);
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
@@ -829,7 +807,6 @@ export default function AnnotatePageClient() {
           onTabChange={setActiveRightTab}
           onNewLabelNameChange={setNewLabelName}
           onNewLabelColorChange={setNewLabelColor}
-          onPickLabelColor={handlePickLabelColor}
           onCreateLabel={handleCreateLabel}
           onDeleteLabel={handleDeleteLabel}
           onShapeClassChange={changeShapeClass}
