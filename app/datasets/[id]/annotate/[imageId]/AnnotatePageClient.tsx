@@ -56,6 +56,21 @@ const DEMO_LABELS = [
   { id: 2, name: "demo_b", color: "#3b82f6" },
 ] as const;
 
+const LABEL_COLOR_PALETTE = [
+  "#E66700",
+  "#2563EB",
+  "#16A34A",
+  "#DC2626",
+  "#9333EA",
+  "#0891B2",
+  "#CA8A04",
+  "#DB2777",
+  "#4F46E5",
+  "#059669",
+  "#EA580C",
+  "#7C3AED",
+];
+
 const PRELOAD_AHEAD = 30;
 const PRELOAD_BEHIND = 3;
 const ROUTE_PREFETCH_AHEAD = 6;
@@ -76,6 +91,42 @@ function clampPaneWidth(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function normalizeHexColor(color: string): string {
+  return color.trim().toLowerCase();
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const m = l - c / 2;
+  const [r, g, b] =
+    hue < 60 ? [c, x, 0] :
+    hue < 120 ? [x, c, 0] :
+    hue < 180 ? [0, c, x] :
+    hue < 240 ? [0, x, c] :
+    hue < 300 ? [x, 0, c] :
+    [c, 0, x];
+
+  return [r, g, b]
+    .map((channel) => Math.round((channel + m) * 255).toString(16).padStart(2, "0"))
+    .join("")
+    .replace(/^/, "#");
+}
+
+function nextLabelColor(labels: LabelDefinition[]): string {
+  const usedColors = new Set(labels.map((label) => normalizeHexColor(label.color)));
+  const unusedPaletteColor = LABEL_COLOR_PALETTE.find((color) => !usedColors.has(normalizeHexColor(color)));
+  if (unusedPaletteColor) return unusedPaletteColor;
+
+  for (let offset = 0; offset < 360; offset += 1) {
+    const generated = hslToHex(((labels.length + offset) * 47) % 360, 76, 46);
+    if (!usedColors.has(normalizeHexColor(generated))) return generated;
+  }
+
+  return "#E66700";
+}
 function wrapIndex(oneBasedIdx: number, total: number): number {
   if (total <= 0) return 1;
   const wrapped = ((oneBasedIdx - 1) % total + total) % total;
@@ -646,7 +697,7 @@ export default function AnnotatePageClient() {
       setLabels((prev) => [...prev, localLabel]);
       setActiveClassId(localLabel.id);
       setNewLabelName("");
-      setNewLabelColor(randomLabelColor());
+      setNewLabelColor(nextLabelColor([...labels, localLabel]));
       return;
     }
 
@@ -657,7 +708,7 @@ export default function AnnotatePageClient() {
       setLabels((prev) => [...prev.filter((label) => label.id !== created.id), created]);
       setActiveClassId(created.id);
       setNewLabelName("");
-      setNewLabelColor(randomLabelColor());
+      setNewLabelColor(nextLabelColor([...labels.filter((label) => label.id !== created.id), created]));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create label.");
     } finally {
@@ -790,8 +841,6 @@ export default function AnnotatePageClient() {
           onShapesChange={setShapes}
           onToolChange={setActiveTool}
         />
-
-        <PaneResizeHandle label="Resize objects pane" target="objects" resize={resizeHandlers} />
 
         <RightPane
           width={objectsPaneWidth}
