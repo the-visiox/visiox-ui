@@ -249,8 +249,8 @@ export default function TrainPage() {
         )}
       </AnimatePresence>
 
-      <main className="flex-grow p-8 z-10">
-        <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+      <main className="flex-grow p-6 z-10">
+        <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">Active Training</h1>
             <p className="max-w-xl text-base leading-6 text-stone-500">

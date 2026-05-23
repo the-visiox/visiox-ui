@@ -16,7 +16,6 @@ import {
   Tag,
   Pencil,
   Trash2,
-  ExternalLink,
   Globe2,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
@@ -345,8 +344,8 @@ export default function ProjectDetailPage() {
         )}
       </AnimatePresence>
 
-      <main className="flex-grow p-8 z-10">
-        <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+      <main className="flex-grow p-6 z-10">
+        <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-4">
               <button onClick={() => router.push('/projects')} className="p-2 hover:bg-white/80 rounded-xl transition-colors border border-transparent hover:border-stone-200">
@@ -354,18 +353,15 @@ export default function ProjectDetailPage() {
               </button>
               <div className="h-6 w-[1px] bg-stone-200" />
               <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest">
-                <span>Projects</span><span>/</span><span className="text-stone-900">{project.name}</span>
+                <Link href="/projects" className="hover:text-stone-600 transition-colors">
+                  Projects
+                </Link>
+                <span>/</span>
+                <span className="text-stone-900">{project.name}</span>
               </div>
             </div>
           </div>
           <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
-              <Link
-                href="#project-datasets"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-5 text-sm font-bold text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105 active:scale-95"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Project datasets
-              </Link>
               <button
                 type="button"
                 onClick={() => void handleShareToDataverse()}
@@ -407,7 +403,7 @@ export default function ProjectDetailPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="mb-8 bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden"
+          className="mb-4 bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden"
         >
           <div className="px-4 py-3 border-b border-stone-100">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -416,7 +412,7 @@ export default function ProjectDetailPage() {
               </div>
               <div className="min-w-0">
                 <h2 className="text-sm font-bold text-stone-900 leading-tight">Class management</h2>
-                <p className="text-[10px] text-stone-500 mt-0.5 leading-snug line-clamp-1 sm:line-clamp-2">
+                <p className="text-xs text-stone-500 mt-0.5 leading-snug line-clamp-1 sm:line-clamp-2">
                   Shared across datasets in this project; used in the editor and exports.
                 </p>
               </div>
@@ -430,14 +426,14 @@ export default function ProjectDetailPage() {
                 setEditingClass(null);
                 setClassModalOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 shrink-0 rounded-full border border-dashed border-stone-300 bg-stone-50/80 px-3 py-1.5 text-[11px] font-bold text-stone-700 hover:border-orange-400 hover:bg-orange-50/50 hover:text-orange-800 transition-colors"
+              className="inline-flex items-center gap-1.5 shrink-0 rounded-full border border-dashed border-stone-300 bg-stone-50/80 px-3 py-1.5 text-xs font-bold text-stone-700 hover:border-orange-400 hover:bg-orange-50/50 hover:text-orange-800 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               Add class
             </button>
 
             {classList.length === 0 ? (
-              <span className="text-[10px] text-stone-400">
+              <span className="text-xs text-stone-400">
                 No classes yet — add one for consistent labels when annotating.
               </span>
             ) : (
@@ -451,11 +447,11 @@ export default function ProjectDetailPage() {
                     style={{ backgroundColor: c.color }}
                     title={c.color}
                   />
-                  <span className="max-w-[10rem] truncate text-[11px] font-semibold text-stone-800">
+                  <span className="max-w-[10rem] truncate text-xs font-semibold text-stone-800">
                     {c.name}
                   </span>
                   <span
-                    className={`shrink-0 rounded-md px-1 py-0.5 text-[10px] font-bold tabular-nums ${
+                    className={`shrink-0 rounded-md px-1 py-0.5 text-xs font-bold tabular-nums ${
                       c.annotation_count > 0 ? "bg-stone-100 text-stone-600" : "text-stone-300"
                     }`}
                     title="Annotations using this class"
@@ -506,7 +502,16 @@ export default function ProjectDetailPage() {
 
         <h2 id="project-datasets" className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Datasets</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div
+          className="
+            grid gap-4
+            grid-cols-1
+            sm:grid-cols-2
+            md:grid-cols-3
+            lg:grid-cols-4
+            2xl:grid-cols-5
+          "
+        >
            {datasetList.map((dataset, i) => {
               const status = datasetStatus(dataset);
               return (
@@ -516,9 +521,9 @@ export default function ProjectDetailPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  className="bg-white rounded-3xl border border-stone-200 p-2 group cursor-pointer shadow-sm hover:shadow-xl hover:border-orange-500/20 transition-all duration-300 relative"
+                  className="group flex aspect-[1:1] w-full flex-col rounded-3xl border border-stone-200 bg-white p-2 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
                 >
-                  <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-stone-50 mb-4">
+                  <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden bg-stone-50">
                     {dataset.thumbnail ? (
                       <img src={resolveMediaUrl(dataset.thumbnail)} alt={dataset.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     ) : (
@@ -528,9 +533,9 @@ export default function ProjectDetailPage() {
                       <div className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} /> {status}
                     </div>
                   </div>
-                  <div className="px-4 pb-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <h3 className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors truncate pr-2">{dataset.name}</h3>
+                  <div className="shrink-0 px-3 pt-2 pb-1">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors truncate pr-2 text-base">{dataset.name}</h3>
                       {dataset.cvat_task_id && (
                         <button
                           type="button"
@@ -538,10 +543,10 @@ export default function ProjectDetailPage() {
                             e.preventDefault();
                             window.open(`${CVAT_PUBLIC_URL}/tasks/${dataset.cvat_task_id}`, "_blank", "noopener,noreferrer");
                           }}
-                          className="p-1.5 bg-stone-50 text-stone-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-all"
+                          className="p-1 bg-stone-50 text-stone-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-all shrink-0"
                           title="Annotate in CVAT"
                         >
-                           <Layout className="w-4 h-4" />
+                           <Layout className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
@@ -556,7 +561,7 @@ export default function ProjectDetailPage() {
            
            <motion.div
               onClick={() => setShowModal(true)}
-              className="rounded-3xl border-2 border-dashed border-stone-200 p-8 flex flex-col items-center justify-center text-center gap-4 hover:bg-stone-50 transition-all cursor-pointer group"
+              className="aspect-[1:1] rounded-3xl border-2 border-dashed border-stone-200 p-8 flex flex-col items-center justify-center text-center gap-4 hover:bg-stone-50 transition-all cursor-pointer group"
             >
               <div className="w-14 h-14 bg-stone-100 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-orange-50 transition-all">
                 <Plus className="w-6 h-6 text-stone-300 group-hover:text-orange-500" />

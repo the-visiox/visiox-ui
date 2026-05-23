@@ -101,8 +101,8 @@ function StatCard({ icon: Icon, label, value, sub, color = 'orange', delay = 0 }
         </div>
       </div>
       <p className="text-2xl font-bold text-stone-900">{value}</p>
-      <p className="text-xs font-medium text-stone-500 mt-0.5">{label}</p>
-      {sub && <p className="text-[10px] text-stone-400 mt-1">{sub}</p>}
+      <p className="text-sm font-medium text-stone-500 mt-0.5">{label}</p>
+      {sub && <p className="text-xs text-stone-400 mt-1">{sub}</p>}
     </motion.div>
   );
 }
@@ -112,8 +112,8 @@ function ProgressBar({ value, max, label }: { value: number; max: number; label:
   return (
     <div>
       <div className="flex justify-between items-center mb-1.5">
-        <span className="text-xs font-medium text-stone-600">{label}</span>
-        <span className="text-xs font-bold text-stone-800">{pct}%</span>
+        <span className="text-sm font-medium text-stone-600">{label}</span>
+        <span className="text-sm font-bold text-stone-800">{pct}%</span>
       </div>
       <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
         <motion.div
@@ -358,85 +358,99 @@ export default function DatasetDetailClient({ id }: Props) {
       />
 
       {/* Navbar */}
-      <nav className="sticky top-4 z-20 mx-8 mt-8 mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            onClick={() => router.push(stats?.project_id ? `/projects/${stats.project_id}` : "/projects")}
-            className="p-2 hover:bg-stone-100 rounded-xl transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5 text-stone-600" />
-          </button>
-          <div className="h-6 w-[1px] bg-stone-200" />
-          <div>
-            <h1 className="text-base font-bold text-stone-900 leading-none">{name}</h1>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 md:justify-end">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading || syncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50 hover:-translate-y-0.5 active:translate-y-0"
-          >
-            {uploading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
-            ) : (
-              <Upload className="w-3.5 h-3.5" />
-            )}
-            Upload
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-            Sync
-          </button>
-
-          <div className="relative">
+      <div className="sticky top-4 z-20 w-full max-w-8xl mx-auto px-6 mt-8 mb-4">
+        <nav className="flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
             <button
-              onClick={() => setExportOpen(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all"
+              onClick={() => router.push(stats?.project_id ? `/projects/${stats.project_id}` : "/projects")}
+              className="p-2 hover:bg-stone-100 rounded-xl transition-colors border border-transparent hover:border-stone-200"
             >
-              <Download className="w-3.5 h-3.5" /> Export
-              <ChevronDown className={`w-3 h-3 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
+              <ArrowLeft className="w-5 h-5 text-stone-600" />
             </button>
-            {exportOpen && (
-              <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                className="absolute right-0 mt-2 bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden z-50 min-w-[120px]"
-              >
-                {EXPORT_FORMATS.map(fmt => (
-                  <button key={fmt} onClick={() => handleExport(fmt)}
-                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-50 uppercase"
-                  >
-                    {fmt === 'coco' ? 'COCO JSON' : fmt === 'yolo' ? 'YOLO txt' : 'Pascal VOC'}
-                  </button>
-                ))}
-              </motion.div>
-            )}
+            <div className="h-6 w-[1px] bg-stone-200" />
+            <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest">
+              <Link href="/projects" className="hover:text-stone-600 transition-colors">
+                Projects
+              </Link>
+              <span>/</span>
+              {stats?.project_id && stats?.project_name ? (
+                <>
+                  <Link href={`/projects/${stats.project_id}`} className="hover:text-stone-600 transition-colors">
+                    {stats.project_name}
+                  </Link>
+                  <span>/</span>
+                </>
+              ) : null}
+              <span className="text-stone-900">{name}</span>
+            </div>
           </div>
 
-          {!!taskId && (
-            <a href={`${CVAT_URL}/tasks/${taskId}`} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all"
+          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || syncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50 hover:-translate-y-0.5 active:translate-y-0"
             >
-              <ExternalLink className="w-3.5 h-3.5" /> CVAT
-            </a>
-          )}
+              {uploading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              Upload
+            </button>
 
-          <button
-            type="button"
-            onClick={() => router.push(`/datasets/${id}/annotate/native?mode=simple`)}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
-          >
-            <Layers className="w-3.5 h-3.5" /> Annotate Native
-          </button>
-        </div>
-      </nav>
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              Sync
+            </button>
+
+            <div className="relative">
+              <button
+                onClick={() => setExportOpen(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all"
+              >
+                <Download className="w-3.5 h-3.5" /> Export
+                <ChevronDown className={`w-3 h-3 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {exportOpen && (
+                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                  className="absolute right-0 mt-2 bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden z-50 min-w-[120px]"
+                >
+                  {EXPORT_FORMATS.map(fmt => (
+                    <button key={fmt} onClick={() => handleExport(fmt)}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-50 uppercase"
+                    >
+                      {fmt === 'coco' ? 'COCO JSON' : fmt === 'yolo' ? 'YOLO txt' : 'Pascal VOC'}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </div>
+
+            {!!taskId && (
+              <a href={`${CVAT_URL}/tasks/${taskId}`} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> CVAT
+              </a>
+            )}
+
+            <button
+              type="button"
+              onClick={() => router.push(`/datasets/${id}/annotate/native?mode=simple`)}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
+            >
+              <Layers className="w-3.5 h-3.5" /> Annotate Native
+            </button>
+          </div>
+        </nav>
+      </div>
 
       {error && (
         <div className="mx-6 mt-3 px-4 py-2.5 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl z-10 flex items-center gap-2">
@@ -445,7 +459,7 @@ export default function DatasetDetailClient({ id }: Props) {
       )}
 
       {/* Main Content */}
-      <div className="z-10 flex-1 overflow-auto p-6 space-y-6 max-w-8xl mx-auto w-full">
+      <div className="z-10 flex-1 overflow-auto p-6 space-y-4 max-w-8xl mx-auto w-full">
 
         {/* Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -461,22 +475,22 @@ export default function DatasetDetailClient({ id }: Props) {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
 
           {/* Column 1: Annotation Progress & Label Distribution */}
           <motion.div
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
-            className="flex h-full min-h-0 flex-col space-y-6 bg-white rounded-2xl border border-stone-200 p-6"
+            className="flex h-full min-h-0 flex-col space-y-4 bg-white rounded-2xl border border-stone-200 p-6"
           >
             <div>
-              <h3 className="text-sm font-bold text-stone-900 mb-4">Annotation Progress</h3>
+              <h3 className="text-base font-bold text-stone-900 mb-4">Annotation Progress</h3>
               <ProgressBar value={annotatedCount} max={totalImages} label="Images annotated" />
             </div>
 
             {labels.length > 0 && browserData && (
               <div>
-                <h3 className="text-sm font-bold text-stone-900 mb-4">Label Distribution</h3>
+                <h3 className="text-base font-bold text-stone-900 mb-4">Label Distribution</h3>
                 <div className="space-y-3">
                   {labels.map(label => {
                     const count = browserData.frames.reduce(
@@ -488,9 +502,9 @@ export default function DatasetDetailClient({ id }: Props) {
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: label.color }} />
-                            <span className="text-xs font-medium text-stone-600">{label.name}</span>
+                            <span className="text-sm font-medium text-stone-600">{label.name}</span>
                           </div>
-                          <span className="text-xs font-bold text-stone-800">{count}</span>
+                          <span className="text-sm font-bold text-stone-800">{count}</span>
                         </div>
                         <div className="w-full h-2 bg-stone-100 rounded-full overflow-hidden">
                           <motion.div
@@ -511,8 +525,8 @@ export default function DatasetDetailClient({ id }: Props) {
             {labels.length === 0 && (
               <div className="text-center py-6 text-stone-400">
                 <Tag className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-xs font-bold">No labels yet</p>
-                <p className="text-[10px] mt-1">Add labels via the Annotate interface</p>
+                <p className="text-sm font-bold">No labels yet</p>
+                <p className="text-xs mt-1">Add labels via the Annotate interface</p>
               </div>
             )}
           </motion.div>
@@ -524,8 +538,8 @@ export default function DatasetDetailClient({ id }: Props) {
             className="flex h-full min-h-0 flex-col items-center justify-center bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"
           >
             <BarChart3 className="w-8 h-8 text-stone-300 mx-auto mb-3" />
-            <p className="text-sm font-bold text-stone-400">Model Performance</p>
-            <p className="text-xs text-stone-300 mt-1 max-w-xs">
+            <p className="text-base font-bold text-stone-400">Model Performance</p>
+            <p className="text-sm text-stone-300 mt-1 max-w-xs">
               Train a model to see predictions & metrics here
             </p>
           </motion.div>
@@ -537,11 +551,11 @@ export default function DatasetDetailClient({ id }: Props) {
             transition={{ duration: 0.4, delay: 0.28 }}
             className="bg-white rounded-2xl border border-stone-200 p-6"
           >
-            <h3 className="text-sm font-bold text-stone-900 mb-3">Jobs</h3>
+            <h3 className="text-base font-bold text-stone-900 mb-3">Jobs</h3>
             <div className="border border-stone-100 rounded-xl overflow-hidden">
-              <table className="w-full text-xs">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-stone-50 text-stone-500 font-bold uppercase text-[10px] tracking-wider">
+                  <tr className="bg-stone-50 text-stone-500 font-bold uppercase text-xs tracking-wider">
                     <th className="text-left px-3 py-2">Job</th>
                     <th className="text-left px-3 py-2">Stage</th>
                     <th className="text-left px-3 py-2">State</th>
@@ -591,15 +605,15 @@ export default function DatasetDetailClient({ id }: Props) {
             <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg shadow-orange-500/20 mb-4">
               <Upload className="w-7 h-7 text-white" />
             </div>
-            <h3 className="text-sm font-bold text-stone-900">No images or videos yet</h3>
-            <p className="text-xs text-stone-500 mt-2 max-w-sm mx-auto">
+            <h3 className="text-base font-bold text-stone-900">No images or videos yet</h3>
+            <p className="text-sm text-stone-500 mt-2 max-w-sm mx-auto">
               Upload image or video files. Videos are stored as media; use the native annotate flow for frames.
             </p>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
             >
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
               Upload files
@@ -618,15 +632,15 @@ export default function DatasetDetailClient({ id }: Props) {
           >
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h3 className="text-sm font-bold text-stone-900">Image Browser</h3>
-                <p className="text-xs text-stone-500 mt-1">
+                <h3 className="text-base font-bold text-stone-900">Image Browser</h3>
+                <p className="text-sm text-stone-500 mt-1">
                   Select images to delete, or click an image to open the annotation view. Hold Shift and click another checkbox to select a range.
                 </p>
               </div>
               {(selectableMediaIds.length > 0 || selectedMediaIds.length > 0) && (
                 <div className="relative z-10 flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:w-auto sm:min-w-[17.5rem]">
                   {selectableMediaIds.length > 0 && (
-                  <label className="inline-flex min-w-[7.25rem] cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-2 text-xs font-semibold text-stone-600 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md">
+                  <label className="inline-flex min-w-[7.25rem] cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-2 text-sm font-semibold text-stone-600 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md">
                     <input
                       type="checkbox"
                       checked={allSelectableSelected}
@@ -654,7 +668,7 @@ export default function DatasetDetailClient({ id }: Props) {
                     type="button"
                     onClick={() => void handleDeleteSelectedMedia()}
                     disabled={deleting || selectedMediaIds.length === 0}
-                    className="inline-flex min-w-[9.5rem] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-full bg-red-50/90 px-3.5 py-2 text-xs font-bold tabular-nums text-red-700 shadow-sm backdrop-blur-sm transition hover:bg-red-100/95 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45"
+                    className="inline-flex min-w-[9.5rem] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-full bg-red-50/90 px-3.5 py-2 text-sm font-bold tabular-nums text-red-700 shadow-sm backdrop-blur-sm transition hover:bg-red-100/95 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                     Delete ({selectedMediaIds.length})
@@ -751,8 +765,8 @@ export default function DatasetDetailClient({ id }: Props) {
                         />
                       </div>
                       <div className="bg-white/60 px-2.5 py-2 backdrop-blur-[2px]">
-                        <p className="truncate text-[11px] font-semibold text-stone-800">{frame.name}</p>
-                        <p className="mt-0.5 text-[10px] font-medium text-stone-500">
+                        <p className="truncate text-xs font-semibold text-stone-800">{frame.name}</p>
+                        <p className="mt-0.5 text-[11px] font-medium text-stone-500">
                           Frame {frame.frame} · {frame.annotations.length} labels
                         </p>
                       </div>
@@ -765,7 +779,7 @@ export default function DatasetDetailClient({ id }: Props) {
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
-                <p className="text-xs font-medium text-stone-500">
+                <p className="text-sm font-medium text-stone-500">
                   Showing {pageOffset + 1}–{Math.min(pageOffset + BATCH_SIZE, browserData?.frames.length ?? 0)} of{' '}
                   <span className="font-bold text-stone-700">{browserData?.frames.length ?? 0}</span> images
                 </p>

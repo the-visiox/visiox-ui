@@ -110,7 +110,7 @@ export default function ProjectsPage() {
     <div className="relative flex-1 flex flex-col min-h-screen">
       <BlueprintGrid />
 
-      <main className="flex-grow p-8 z-10">
+      <main className="flex-grow p-6 z-10">
         <AnimatePresence mode="wait">
 
           {/* ════ PHASE 1 — Project list ════ */}
@@ -123,7 +123,7 @@ export default function ProjectsPage() {
               transition={{ duration: 0.18 }}
             >
               {/* Header */}
-              <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+              <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
                 <div>
                   <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">
                     Projects
@@ -165,13 +165,31 @@ export default function ProjectsPage() {
               </div>
 
               {/* Grid */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),22rem))] sm:justify-between">
+              <div
+                className="
+                  grid gap-4
+
+                  grid-cols-1
+                  sm:grid-cols-2
+                  md:grid-cols-3
+                  lg:grid-cols-4
+                  2xl:grid-cols-5
+                "
+              >
                 {loading ? (
-                  Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonCard key={i} />
+                  ))
                 ) : filtered.length === 0 ? (
                   <div className="col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16 text-center">
-                    <p className="font-bold text-stone-900 mb-2">No projects found</p>
-                    <Link href="/projects/new" className="text-sm text-orange-500 hover:underline">
+                    <p className="mb-2 font-bold text-stone-900">
+                      No projects found
+                    </p>
+
+                    <Link
+                      href="/projects/new"
+                      className="text-sm text-orange-500 hover:underline"
+                    >
                       Create your first project
                     </Link>
                   </div>
@@ -183,7 +201,16 @@ export default function ProjectsPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04 }}
                       onClick={() => router.push(`/projects/${p.id}`)}
-                      className="group flex aspect-[4/3] w-full flex-col text-left rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
+                      className="
+                        group flex aspect-[1:1] w-full flex-col
+                        rounded-3xl border border-stone-200
+                        bg-white p-2 text-left shadow-sm
+                        transition-all
+                        hover:border-orange-300
+                        hover:shadow-xl
+                        hover:shadow-orange-50
+                        active:scale-[0.99]
+                      "
                     >
                       {/* Thumbnail */}
                       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-stone-100">
@@ -191,13 +218,18 @@ export default function ProjectsPage() {
                           <img
                             src={resolveMediaUrl(p.thumbnail)}
                             alt={p.name}
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            className="
+                              h-full w-full object-cover
+                              transition-transform duration-500
+                              group-hover:scale-105
+                            "
                           />
                         ) : (
                           <div className="flex h-full items-center justify-center">
                             <Folder className="h-12 w-12 text-stone-300" />
                           </div>
                         )}
+
                         <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-stone-900 shadow-sm backdrop-blur">
                           {TASK_TYPE_LABEL[p.task_type] ?? p.task_type}
                         </div>
@@ -205,12 +237,14 @@ export default function ProjectsPage() {
 
                       {/* Info */}
                       <div className="shrink-0 px-3 pt-2 pb-1">
-                        <h3 className="truncate text-base font-bold text-stone-900 group-hover:text-orange-600 transition-colors">
+                        <h3 className="truncate text-base font-bold text-stone-900 transition-colors group-hover:text-orange-600">
                           {p.name}
                         </h3>
+
                         <p className="truncate text-xs font-medium text-stone-400">
                           {p.team_name}
                         </p>
+
                         <p className="truncate text-xs text-stone-400">
                           Updated {timeAgo(p.updated_at)}
                         </p>
@@ -232,7 +266,7 @@ export default function ProjectsPage() {
               transition={{ duration: 0.18 }}
             >
               {/* Header */}
-              <div className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+              <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
                 <div>
                   {/* Breadcrumb */}
                   <div className="mb-3 flex items-center gap-2 text-sm font-bold tracking-widest text-stone-400">
