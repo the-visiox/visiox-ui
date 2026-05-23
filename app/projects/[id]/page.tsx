@@ -32,6 +32,7 @@ import {
 } from "@/lib/api";
 
 const CVAT_PUBLIC_URL = process.env.NEXT_PUBLIC_CVAT_URL || "http://localhost:8080";
+const MotionLink = motion.create(Link);
 
 const STATUS_DOT: Record<string, string> = {
   Ready: "bg-green-500",
@@ -356,9 +357,6 @@ export default function ProjectDetailPage() {
                 <span>Projects</span><span>/</span><span className="text-stone-900">{project.name}</span>
               </div>
             </div>
-            <div>
-              <h1 className="text-4xl font-bold text-stone-900 tracking-tight truncate">{project.name}</h1>
-            </div>
           </div>
           <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
               <Link
@@ -512,12 +510,12 @@ export default function ProjectDetailPage() {
            {datasetList.map((dataset, i) => {
               const status = datasetStatus(dataset);
               return (
-                <motion.div
+                <MotionLink
                   key={dataset.id}
+                  href={`/datasets/${dataset.id}`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  onClick={() => router.push(`/datasets/${dataset.id}`)}
                   className="bg-white rounded-3xl border border-stone-200 p-2 group cursor-pointer shadow-sm hover:shadow-xl hover:border-orange-500/20 transition-all duration-300 relative"
                 >
                   <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-stone-50 mb-4">
@@ -534,16 +532,17 @@ export default function ProjectDetailPage() {
                     <div className="flex justify-between items-start mb-3">
                       <h3 className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors truncate pr-2">{dataset.name}</h3>
                       {dataset.cvat_task_id && (
-                        <a 
-                          href={`${CVAT_PUBLIC_URL}/tasks/${dataset.cvat_task_id}`}
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            window.open(`${CVAT_PUBLIC_URL}/tasks/${dataset.cvat_task_id}`, "_blank", "noopener,noreferrer");
+                          }}
                           className="p-1.5 bg-stone-50 text-stone-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-all"
                           title="Annotate in CVAT"
                         >
                            <Layout className="w-4 h-4" />
-                        </a>
+                        </button>
                       )}
                     </div>
                     <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-stone-400">
@@ -551,7 +550,7 @@ export default function ProjectDetailPage() {
                       <div className="flex items-center gap-1.5"><Clock className="w-3 h-3" /><span className="text-stone-900">v{dataset.version}</span></div>
                     </div>
                   </div>
-                </motion.div>
+                </MotionLink>
               );
            })}
            

@@ -323,7 +323,6 @@ export default function DatasetDetailClient({ id }: Props) {
   const totalAnnotations = cvat?.annotations?.total ?? browserData?.annotation_count ?? 0;
   const labels = browserData?.labels ?? [];
   const name = stats?.name ?? browserData?.dataset_name ?? `Dataset #${id}`;
-  const version = stats?.version ?? browserData?.version ?? 1;
   const taskId = stats?.cvat_task_id ?? browserData?.task_id;
   const jobs = cvat?.jobs ?? [];
 
@@ -370,22 +369,6 @@ export default function DatasetDetailClient({ id }: Props) {
           <div className="h-6 w-[1px] bg-stone-200" />
           <div>
             <h1 className="text-base font-bold text-stone-900 leading-none">{name}</h1>
-            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-0.5">
-              {totalImages} images · v{version}
-              {stats?.project_id != null && stats.project_name ? (
-                <>
-                  {' · '}
-                  <a
-                    href={`/projects/${stats.project_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-orange-600 hover:text-orange-700 hover:underline underline-offset-2"
-                  >
-                    {stats.project_name}
-                  </a>
-                </>
-              ) : null}
-            </p>
           </div>
         </div>
 
@@ -846,3 +829,4 @@ export default function DatasetDetailClient({ id }: Props) {
     </div>
   );
 }
+
