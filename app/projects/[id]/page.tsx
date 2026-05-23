@@ -348,7 +348,7 @@ export default function ProjectDetailPage() {
       <main className="flex-grow p-8 z-10">
         <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div className="min-w-0 flex-1">
-            <div className="mb-4 flex items-center gap-4">
+            <div className="flex items-center gap-4">
               <button onClick={() => router.push('/projects')} className="p-2 hover:bg-white/80 rounded-xl transition-colors border border-transparent hover:border-stone-200">
                 <ArrowLeft className="w-5 h-5 text-stone-600" />
               </button>
