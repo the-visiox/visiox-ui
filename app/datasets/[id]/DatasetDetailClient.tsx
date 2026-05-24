@@ -358,8 +358,8 @@ export default function DatasetDetailClient({ id }: Props) {
       />
 
       {/* Navbar */}
-      <div className="sticky top-4 z-20 w-full max-w-8xl mx-auto px-6 mt-8 mb-4">
-        <nav className="flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+      <div className="sticky top-4 z-20 w-full max-w-8xl mx-auto px-6 mb-4">
+        <nav className="sticky top-0 z-50 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push(stats?.project_id ? `/projects/${stats.project_id}` : "/projects")}
@@ -640,29 +640,27 @@ export default function DatasetDetailClient({ id }: Props) {
               {(selectableMediaIds.length > 0 || selectedMediaIds.length > 0) && (
                 <div className="relative z-10 flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:w-auto sm:min-w-[17.5rem]">
                   {selectableMediaIds.length > 0 && (
-                  <label className="inline-flex min-w-[7.25rem] cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-2 text-sm font-semibold text-stone-600 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md">
-                    <input
-                      type="checkbox"
-                      checked={allSelectableSelected}
-                      onChange={() => toggleSelectAllMedia()}
-                      className="peer sr-only"
-                    />
-                    <span
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md shadow-inner ring-1 transition-all duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50 ${
-                        allSelectableSelected
-                          ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm ring-orange-400/40'
-                          : 'bg-stone-100/95 text-stone-500 ring-stone-200/80'
-                      }`}
-                    >
-                      <Check
-                        className={`h-3 w-3 stroke-[3] text-white transition-opacity duration-150 ${
-                          allSelectableSelected ? 'opacity-100' : 'opacity-0'
-                        }`}
-                        aria-hidden
+                    <label className="inline-flex min-w-[7.25rem] cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-2 text-sm font-semibold text-stone-600 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md">
+                      <input
+                        type="checkbox"
+                        checked={allSelectableSelected}
+                        onChange={() => toggleSelectAllMedia()}
+                        className="peer sr-only"
                       />
-                    </span>
-                    Select all
-                  </label>
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md shadow-inner ring-1 transition-all duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50 ${allSelectableSelected
+                            ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm ring-orange-400/40'
+                            : 'bg-stone-100/95 text-stone-500 ring-stone-200/80'
+                          }`}
+                      >
+                        <Check
+                          className={`h-3 w-3 stroke-[3] text-white transition-opacity duration-150 ${allSelectableSelected ? 'opacity-100' : 'opacity-0'
+                            }`}
+                          aria-hidden
+                        />
+                      </span>
+                      Select all
+                    </label>
                   )}
                   <button
                     type="button"
@@ -690,19 +688,17 @@ export default function DatasetDetailClient({ id }: Props) {
                 return (
                   <div
                     key={frame.frame}
-                    className={`group/card relative overflow-hidden rounded-2xl border transition-all duration-300 ease-out ${
-                      isSelected
+                    className={`group/card relative overflow-hidden rounded-2xl border transition-all duration-300 ease-out ${isSelected
                         ? 'border-orange-300/70 bg-gradient-to-br from-orange-50/90 to-amber-50/40 shadow-md shadow-orange-500/10 ring-1 ring-orange-400/25'
                         : 'border-stone-200/90 bg-stone-50/80 hover:border-stone-300 hover:shadow-lg hover:shadow-stone-300/25'
-                    }`}
+                      }`}
                   >
                     {typeof frame.media_id === 'number' && (
                       <div
-                        className={`absolute left-2.5 top-2.5 z-20 transition-all duration-300 ease-out ${
-                          isSelected
+                        className={`absolute left-2.5 top-2.5 z-20 transition-all duration-300 ease-out ${isSelected
                             ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
                             : 'pointer-events-none -translate-y-0.5 scale-90 opacity-0 group-hover/card:pointer-events-auto group-hover/card:translate-y-0 group-hover/card:scale-100 group-hover/card:opacity-100 group-focus-within/card:pointer-events-auto group-focus-within/card:translate-y-0 group-focus-within/card:scale-100 group-focus-within/card:opacity-100'
-                        }`}
+                          }`}
                       >
                         <label
                           className="relative flex h-5 w-5 cursor-pointer items-center justify-center rounded-md bg-white/90 shadow-sm backdrop-blur-sm transition hover:bg-white hover:shadow-md has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-orange-400/45"
@@ -734,16 +730,14 @@ export default function DatasetDetailClient({ id }: Props) {
                             className="peer sr-only"
                           />
                           <span
-                            className={`pointer-events-none flex h-4 w-4 items-center justify-center rounded-[5px] shadow-inner ring-1 transition-all duration-200 ${
-                              isSelected
+                            className={`pointer-events-none flex h-4 w-4 items-center justify-center rounded-[5px] shadow-inner ring-1 transition-all duration-200 ${isSelected
                                 ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white ring-orange-400/40 shadow-sm'
                                 : 'bg-stone-100/95 text-stone-500 ring-stone-200/85'
-                            }`}
+                              }`}
                           >
                             <Check
-                              className={`h-2.5 w-2.5 stroke-[3] text-white transition-opacity duration-150 ${
-                                isSelected ? 'opacity-100' : 'opacity-0'
-                              }`}
+                              className={`h-2.5 w-2.5 stroke-[3] text-white transition-opacity duration-150 ${isSelected ? 'opacity-100' : 'opacity-0'
+                                }`}
                               aria-hidden
                             />
                           </span>
@@ -813,11 +807,10 @@ export default function DatasetDetailClient({ id }: Props) {
                           key={p}
                           type="button"
                           onClick={() => { setCurrentPage(p as number); setSelectedMediaIds([]); anchorFrameIndexRef.current = null; }}
-                          className={`flex h-8 min-w-[2rem] items-center justify-center rounded-xl border px-2 text-xs font-bold transition ${
-                            safePage === p
+                          className={`flex h-8 min-w-[2rem] items-center justify-center rounded-xl border px-2 text-xs font-bold transition ${safePage === p
                               ? 'border-orange-400/40 bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
                               : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50'
-                          }`}
+                            }`}
                         >
                           {p}
                         </button>

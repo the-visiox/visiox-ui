@@ -10,10 +10,17 @@ import {
   ImageIcon,
   Layers,
   Database,
+  Download,
+  UserPlus,
+  BarChart2,
+  Trash2,
+  Upload,
+  Wand2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BlueprintGrid from "@/components/BlueprintGrid";
+import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
 import { projects, datasets as datasetsApi, resolveMediaUrl, type Project, type Dataset } from "@/lib/api";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
@@ -105,6 +112,51 @@ export default function ProjectsPage() {
     setDatasetList([]);
   };
 
+  /* ── action handlers ─────────────────────────────────────────── */
+  function handleDeleteProject(id: number) {
+    if (!window.confirm("Delete this project? This cannot be undone.")) return;
+    projects.delete(id)
+      .then(() => setList((prev) => prev.filter((p) => p.id !== id)))
+      .catch((err) => window.alert(err instanceof Error ? err.message : "Delete failed"));
+  }
+
+  function handleDeleteDataset(id: number) {
+    if (!window.confirm("Delete this dataset? This cannot be undone.")) return;
+    datasetsApi.delete(id)
+      .then(() => setDatasetList((prev) => prev.filter((d) => d.id !== id)))
+      .catch((err) => window.alert(err instanceof Error ? err.message : "Delete failed"));
+  }
+
+  function triggerExport(id: number, format: "coco" | "yolo" | "voc") {
+    const url = datasetsApi.exportUrl(id, format);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dataset-${id}-${format}.zip`;
+    a.click();
+  }
+
+  function projectMenuItems(p: Project): CardMenuItem[] {
+    return [
+      { icon: Download,  label: "Export Dataset",  onClick: () => router.push(`/projects/${p.id}`) },
+      { icon: UserPlus,  label: "Assignee",         onClick: () => router.push(`/projects/${p.id}`) },
+      { icon: BarChart2, label: "View Analytics",   onClick: () => router.push(`/projects/${p.id}`) },
+      { icon: Trash2,    label: "Delete",            onClick: () => handleDeleteProject(p.id), danger: true, dividerBefore: true },
+    ];
+  }
+
+  function datasetMenuItems(ds: Dataset): CardMenuItem[] {
+    return [
+      { icon: Upload,    label: "Upload Annotations", onClick: () => router.push(`/datasets/${ds.id}`) },
+      { icon: Wand2,     label: "Auto Annotations",   onClick: () => router.push(`/datasets/${ds.id}`) },
+      { icon: Download,  label: "Export as COCO",     onClick: () => triggerExport(ds.id, "coco"), dividerBefore: true },
+      { icon: Download,  label: "Export as YOLO",     onClick: () => triggerExport(ds.id, "yolo") },
+      { icon: Download,  label: "Export as VOC",      onClick: () => triggerExport(ds.id, "voc") },
+      { icon: UserPlus,  label: "Assignee",            onClick: () => router.push(`/datasets/${ds.id}`), dividerBefore: true },
+      { icon: BarChart2, label: "View Analytics",      onClick: () => router.push(`/datasets/${ds.id}`) },
+      { icon: Trash2,    label: "Delete",              onClick: () => handleDeleteDataset(ds.id), danger: true, dividerBefore: true },
+    ];
+  }
+
   /* ── render ──────────────────────────────────────────────────── */
   return (
     <div className="relative flex-1 flex flex-col min-h-screen">
@@ -165,52 +217,25 @@ export default function ProjectsPage() {
               </div>
 
               {/* Grid */}
-              <div
-                className="
-                  grid gap-4
-
-                  grid-cols-1
-                  sm:grid-cols-2
-                  md:grid-cols-3
-                  lg:grid-cols-4
-                  2xl:grid-cols-5
-                "
-              >
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
                 {loading ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonCard key={i} />
-                  ))
+                  Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
                 ) : filtered.length === 0 ? (
                   <div className="col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16 text-center">
-                    <p className="mb-2 font-bold text-stone-900">
-                      No projects found
-                    </p>
-
-                    <Link
-                      href="/projects/new"
-                      className="text-sm text-orange-500 hover:underline"
-                    >
+                    <p className="mb-2 font-bold text-stone-900">No projects found</p>
+                    <Link href="/projects/new" className="text-sm text-orange-500 hover:underline">
                       Create your first project
                     </Link>
                   </div>
                 ) : (
                   filtered.map((p, index) => (
-                    <motion.button
+                    <motion.div
                       key={p.id}
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04 }}
                       onClick={() => router.push(`/projects/${p.id}`)}
-                      className="
-                        group flex aspect-[1:1] w-full flex-col
-                        rounded-3xl border border-stone-200
-                        bg-white p-2 text-left shadow-sm
-                        transition-all
-                        hover:border-orange-300
-                        hover:shadow-xl
-                        hover:shadow-orange-50
-                        active:scale-[0.99]
-                      "
+                      className="group flex aspect-[1:1] w-full cursor-pointer flex-col rounded-3xl border border-stone-200 bg-white p-2 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
                     >
                       {/* Thumbnail */}
                       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-stone-100">
@@ -218,18 +243,13 @@ export default function ProjectsPage() {
                           <img
                             src={resolveMediaUrl(p.thumbnail)}
                             alt={p.name}
-                            className="
-                              h-full w-full object-cover
-                              transition-transform duration-500
-                              group-hover:scale-105
-                            "
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         ) : (
                           <div className="flex h-full items-center justify-center">
                             <Folder className="h-12 w-12 text-stone-300" />
                           </div>
                         )}
-
                         <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-stone-900 shadow-sm backdrop-blur">
                           {TASK_TYPE_LABEL[p.task_type] ?? p.task_type}
                         </div>
@@ -237,19 +257,16 @@ export default function ProjectsPage() {
 
                       {/* Info */}
                       <div className="shrink-0 px-3 pt-2 pb-1">
-                        <h3 className="truncate text-base font-bold text-stone-900 transition-colors group-hover:text-orange-600">
-                          {p.name}
-                        </h3>
-
-                        <p className="truncate text-xs font-medium text-stone-400">
-                          {p.team_name}
-                        </p>
-
-                        <p className="truncate text-xs text-stone-400">
-                          Updated {timeAgo(p.updated_at)}
-                        </p>
+                        <div className="flex items-center justify-between gap-1">
+                          <h3 className="truncate text-base font-bold text-stone-900 transition-colors group-hover:text-orange-600">
+                            {p.name}
+                          </h3>
+                          <CardMenu items={projectMenuItems(p)} />
+                        </div>
+                        <p className="truncate text-xs font-medium text-stone-400">{p.team_name}</p>
+                        <p className="truncate text-xs text-stone-400">Updated {timeAgo(p.updated_at)}</p>
                       </div>
-                    </motion.button>
+                    </motion.div>
                   ))
                 )}
               </div>
@@ -268,7 +285,6 @@ export default function ProjectsPage() {
               {/* Header */}
               <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
                 <div>
-                  {/* Breadcrumb */}
                   <div className="mb-3 flex items-center gap-2 text-sm font-bold tracking-widest text-stone-400">
                     <button
                       onClick={handleBack}
@@ -280,7 +296,6 @@ export default function ProjectsPage() {
                     <span>/</span>
                     <span className="text-stone-900 truncate max-w-[200px]">{selected.name}</span>
                   </div>
-
                   <h1 className="mb-2 text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">
                     {selected.name}
                   </h1>
@@ -317,9 +332,7 @@ export default function ProjectsPage() {
                   <div className="col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16 text-center">
                     <Layers className="w-10 h-10 text-stone-300 mx-auto mb-3" />
                     <p className="font-bold text-stone-900 mb-2">No datasets yet</p>
-                    <p className="text-sm text-stone-500 mb-4">
-                      Create the first dataset for this project.
-                    </p>
+                    <p className="text-sm text-stone-500 mb-4">Create the first dataset for this project.</p>
                     <Link
                       href={`/projects/${selected.id}`}
                       className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 py-2.5 text-sm font-bold text-orange-700 hover:bg-orange-200 transition-all"
@@ -336,9 +349,9 @@ export default function ProjectsPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04 }}
                     >
-                      <Link
-                        href={`/datasets/${ds.id}`}
-                        className="group block w-full rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50"
+                      <div
+                        onClick={() => router.push(`/datasets/${ds.id}`)}
+                        className="group block w-full cursor-pointer rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50"
                       >
                         {/* Thumbnail */}
                         <div className="relative h-40 overflow-hidden rounded-2xl bg-stone-100">
@@ -360,17 +373,18 @@ export default function ProjectsPage() {
 
                         {/* Info */}
                         <div className="p-4">
-                          <h3 className="truncate text-base font-bold text-stone-900 group-hover:text-orange-600 transition-colors mb-1">
-                            {ds.name}
-                          </h3>
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <h3 className="truncate text-base font-bold text-stone-900 group-hover:text-orange-600 transition-colors">
+                              {ds.name}
+                            </h3>
+                            <CardMenu items={datasetMenuItems(ds)} />
+                          </div>
                           <p className="text-xs font-medium text-stone-400 mb-1">
                             {ds.media_count ?? 0} images
                           </p>
-                          <p className="text-xs text-stone-400">
-                            Updated {timeAgo(ds.updated_at)}
-                          </p>
+                          <p className="text-xs text-stone-400">Updated {timeAgo(ds.updated_at)}</p>
                         </div>
-                      </Link>
+                      </div>
                     </motion.div>
                   ))
                 )}

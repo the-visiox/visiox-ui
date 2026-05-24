@@ -350,6 +350,9 @@ export const projects = {
   create(data: { team: number; name: string; task_type: string; description?: string }) {
     return request<Project>('/api/projects/', { method: 'POST', body: JSON.stringify(data) });
   },
+  delete(id: number) {
+    return request<void>(`/api/projects/${id}/`, { method: 'DELETE' });
+  },
 };
 
 // ── Teams ──────────────────────────────────────────────────────────────────
