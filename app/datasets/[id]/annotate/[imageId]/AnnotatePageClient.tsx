@@ -6,7 +6,6 @@ import type { Tool } from "@/components/annotate/AnnotationEditor";
 import {
   CanvasStage,
   ErrorBanner,
-  PaneResizeHandle,
   RightPane,
   TimelineBar,
   ToolPane,
@@ -196,11 +195,6 @@ export default function AnnotatePageClient() {
   const isLoadingRef = useRef(false);
   const previousDraftKeyRef = useRef<string | null>(null);
   const draftCacheRef = useRef<Record<string, EditorShape[]>>({});
-  const paneResizeRef = useRef<{
-    target: "tools" | "objects";
-    startX: number;
-    startWidth: number;
-  } | null>(null);
   shapesRef.current = shapes;
 
   const currentDraftKey = useMemo(
@@ -615,38 +609,6 @@ export default function AnnotatePageClient() {
     }
   }, [canSaveToApi, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, labels, mediaId, persistDraft, shapes]);
 
-  const startPaneResize = useCallback(
-    (target: "tools" | "objects", e: React.PointerEvent<HTMLButtonElement>) => {
-      e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
-      paneResizeRef.current = {
-        target,
-        startX: e.clientX,
-        startWidth: target === "tools" ? toolPaneWidth : objectsPaneWidth,
-      };
-    },
-    [objectsPaneWidth, toolPaneWidth]
-  );
-
-  const updatePaneResize = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    const resize = paneResizeRef.current;
-    if (!resize) return;
-    const delta = e.clientX - resize.startX;
-    if (resize.target === "tools") {
-      setToolPaneWidth(clampPaneWidth(resize.startWidth + delta, TOOL_PANE_MIN, TOOL_PANE_MAX));
-      return;
-    }
-    setObjectsPaneWidth(clampPaneWidth(resize.startWidth - delta, OBJECTS_PANE_MIN, OBJECTS_PANE_MAX));
-  }, []);
-
-  const stopPaneResize = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!paneResizeRef.current) return;
-    paneResizeRef.current = null;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-  }, []);
-
   useEffect(() => {
     if (!openClassMenuId) return;
 
@@ -780,15 +742,6 @@ export default function AnnotatePageClient() {
     return () => window.removeEventListener("keydown", onKey);
   }, [current, navigateTo, handleSave]);
 
-  const resizeHandlers = useMemo(
-    () => ({
-      start: startPaneResize,
-      update: updatePaneResize,
-      stop: stopPaneResize,
-    }),
-    [startPaneResize, stopPaneResize, updatePaneResize]
-  );
-
   const changeShapeClass = useCallback((shapeId: string, classId: number) => {
     setShapes((prev) =>
       prev.map((item) => (item.clientId === shapeId ? { ...item, classLabelId: classId } : item))
@@ -823,8 +776,6 @@ export default function AnnotatePageClient() {
           onToolChange={setActiveTool}
           onPolygonVertexCountChange={setPolygonVertexCount}
         />
-
-        <PaneResizeHandle label="Resize tool pane" target="tools" resize={resizeHandlers} />
 
         <CanvasStage
           loading={loading}

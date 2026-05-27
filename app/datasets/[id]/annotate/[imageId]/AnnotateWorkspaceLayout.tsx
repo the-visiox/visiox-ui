@@ -211,18 +211,18 @@ export function WorkspaceHeader({
   const saveText = !Number.isNaN(jobId) ? ` · Job ${jobId}` : canSaveToApi ? " · Direct" : " · Demo";
 
   return (
-    <nav className="z-30 flex items-center justify-between gap-4 border-b border-stone-200/80 bg-white/90 px-6 py-4 shadow-sm shadow-stone-200/40 backdrop-blur-xl">
+    <nav className="z-30 flex items-center justify-between gap-4 border-b border-stone-200/80 bg-white/90 px-4 py-2.5 shadow-sm shadow-stone-200/40 backdrop-blur-xl">
       <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
           onClick={onBack}
-          className="shrink-0 rounded-xl p-2.5 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
+          className="shrink-0 rounded-xl p-2 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
         >
-          <ArrowLeft className="h-6 w-6" />
+          <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="h-8 w-px shrink-0 bg-stone-200" />
         <div className="hidden min-w-0 sm:block">
-          <h1 className="text-lg font-bold leading-none text-stone-900">Annotation workspace</h1>
+          <h1 className="text-sm font-bold leading-none text-stone-900">Annotation workspace</h1>
           <p className="mt-1.5 truncate text-xs font-bold uppercase tracking-widest text-orange-600">
             Dataset {datasetId}
             {modeText}
@@ -231,11 +231,11 @@ export function WorkspaceHeader({
         </div>
         <div className="hidden h-8 w-px shrink-0 bg-stone-200 sm:block" />
         <div className="flex items-center gap-1 rounded-xl p-1">
-          <button type="button" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
-            <Undo2 className="h-6 w-6" />
+          <button type="button" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
+            <Undo2 className="h-4 w-4" />
           </button>
-          <button type="button" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)" className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
-            <Redo2 className="h-6 w-6" />
+          <button type="button" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)" className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
+            <Redo2 className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -244,9 +244,9 @@ export function WorkspaceHeader({
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="flex shrink-0 items-center gap-2.5 rounded-xl bg-orange-500 px-5 py-2.5 text-lg font-bold text-white shadow-xl shadow-orange-500/20 transition-all hover:scale-105 active:scale-95"
+        className="flex shrink-0 items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition-all hover:scale-105 active:scale-95"
       >
-        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-5 w-5" />}
+        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-4 w-4" />}
         <span>Save</span>
       </button>
     </nav>
@@ -280,9 +280,9 @@ export function ToolPane({
   return (
     <aside
       className="z-20 flex shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-2 py-4 shadow-sm shadow-stone-200/30 sm:px-2.5"
-      style={{ width }}
+      style={{ width: 64 }}
     >
-      <div className="flex flex-col gap-1.5 p-1">
+      <div className="flex flex-col gap-2 p-1">
         {TOOLBAR.map(({ tool, icon, label, key }) => (
           <ToolButton
             key={tool}
@@ -327,14 +327,13 @@ function ToolButton({
       type="button"
       title={`${label} (${shortcut})`}
       onClick={() => onToolChange(tool)}
-      className={`inline-flex h-14 w-14 self-center flex-col items-center justify-center gap-1 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all ${
+      className={`inline-flex h-10 w-10 self-center flex-col items-center justify-center gap-1 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all ${
         isActive
           ? "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400/25"
           : "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white hover:text-stone-900 hover:shadow-sm"
       }`}
     >
       {icon}
-      <span className="w-full truncate px-1 text-center leading-none">{label}</span>
     </button>
   );
 
@@ -345,7 +344,7 @@ function ToolButton({
       {button}
       {isActive && (
         <label className="flex w-14 flex-col gap-1.5 rounded-xl border border-orange-200 bg-white px-1.5 py-2 shadow-sm shadow-orange-100/60">
-          <span className="text-center text-[9px] font-bold uppercase leading-none tracking-wider text-stone-500">
+          <span className="text-center text-[8px] font-bold uppercase leading-none tracking-wider text-stone-500">
             Points
           </span>
           <select
@@ -396,7 +395,7 @@ export function CanvasStage({
   onToolChange: (tool: Tool) => void;
 }) {
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch overflow-hidden p-4">
+    <div className="relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch overflow-hidden p-2">
       {loading ? (
         <div className="absolute inset-4 z-10 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-stone-500">
@@ -471,7 +470,7 @@ export function RightPane({
 }) {
   return (
     <aside
-      className="z-20 grid h-full shrink-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l border-stone-200/80 bg-white/90 p-6 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
+      className="z-20 grid h-full shrink-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l border-stone-200/80 bg-white/90 p-4 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
       style={{ width }}
     >
       <RightPaneTabs activeTab={activeTab} objectCount={shapes.length} onTabChange={onTabChange} />
@@ -518,7 +517,7 @@ function RightPaneTabs({
   onTabChange: (tab: RightTab) => void;
 }) {
   return (
-    <div className="mb-5 flex items-center justify-between gap-2 border-b border-stone-200">
+    <div className="mb-3 flex items-center justify-between gap-2 border-b border-stone-200">
       <div className="flex">
         {(["objects", "labels"] as const).map((tab) => (
           <button
@@ -588,7 +587,7 @@ function LabelsPanel({
           {labelBusyId === "new" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
         </button>
       </form>
-      <div className="custom-scrollbar min-h-0 flex-1 max-h-[70vh] space-y-2 overflow-y-auto overscroll-contain pr-2">
+      <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-2">
         {labels.map((label) => (
           <LabelRow
             key={label.id}
@@ -885,7 +884,7 @@ function ObjectsPanel({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
-      <div className="custom-scrollbar min-h-0 flex-1 max-h-[70vh] space-y-3 overflow-y-auto overscroll-contain pr-2">
+      <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-2">
         {shapes.length === 0 && (
           <p className="text-base leading-relaxed text-stone-500">
             Box: click two corners on the image (N).
@@ -1143,20 +1142,20 @@ export function TimelineBar({
 }) {
   const fallbackName = isNativeMode ? `Frame ${frameIndex + 1}` : `Media ${imageId}`;
   const controls = [
-    { icon: <ChevronFirst className="h-5 w-5" />, label: "First", action: () => onNavigateTo(1) },
-    { icon: <ChevronsLeft className="h-5 w-5" />, label: "Back 10", action: () => onNavigateTo(current - 10, { wrap: true }) },
-    { icon: <ChevronLeft className="h-5 w-5" />, label: "Prev", action: () => onNavigateTo(current - 1, { wrap: true }) },
-    { icon: <Play className="h-5 w-5" />, label: "Play", action: () => {} },
-    { icon: <ChevronRight className="h-5 w-5" />, label: "Next", action: () => onNavigateTo(current + 1, { wrap: true }) },
-    { icon: <ChevronsRight className="h-5 w-5" />, label: "Forward 10", action: () => onNavigateTo(current + 10, { wrap: true }) },
-    { icon: <ChevronLast className="h-5 w-5" />, label: "Last", action: () => onNavigateTo(total || 1) },
+    { icon: <ChevronFirst className="h-4 w-4" />, label: "First", action: () => onNavigateTo(1) },
+    { icon: <ChevronsLeft className="h-4 w-4" />, label: "Back 10", action: () => onNavigateTo(current - 10, { wrap: true }) },
+    { icon: <ChevronLeft className="h-4 w-4" />, label: "Prev", action: () => onNavigateTo(current - 1, { wrap: true }) },
+    { icon: <Play className="h-4 w-4" />, label: "Play", action: () => {} },
+    { icon: <ChevronRight className="h-4 w-4" />, label: "Next", action: () => onNavigateTo(current + 1, { wrap: true }) },
+    { icon: <ChevronsRight className="h-4 w-4" />, label: "Forward 10", action: () => onNavigateTo(current + 10, { wrap: true }) },
+    { icon: <ChevronLast className="h-4 w-4" />, label: "Last", action: () => onNavigateTo(total || 1) },
   ];
 
   return (
-    <div className="z-30 flex shrink-0 select-none items-center gap-4 border-t border-stone-200/80 bg-white/95 px-6 py-4 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl">
+    <div className="z-30 flex shrink-0 select-none items-center gap-3 border-t border-stone-200/80 bg-white/95 px-4 py-2 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl">
       <div className="flex items-center gap-1.5">
         {controls.map(({ icon, label, action }) => (
-          <button key={label} type="button" title={label} onClick={action} className="flex h-10 w-10 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200">
+          <button key={label} type="button" title={label} onClick={action} className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200">
             {icon}
           </button>
         ))}
@@ -1190,15 +1189,15 @@ export function TimelineBar({
         />
       </div>
 
-      <div className="flex w-[18rem] shrink-0 items-center gap-3">
-        <span className="min-w-0 flex-1 truncate text-sm font-bold text-stone-600" title={currentFilename}>
+      <div className="flex w-48 shrink-0 items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-xs font-bold text-stone-600" title={currentFilename}>
           {currentFilename || fallbackName}
         </span>
-        <button type="button" title="Copy link" onClick={() => navigator.clipboard?.writeText(window.location.href)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700">
-          <Link2 className="h-5 w-5" />
+        <button type="button" title="Copy link" onClick={() => navigator.clipboard?.writeText(window.location.href)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700">
+          <Link2 className="h-4 w-4" />
         </button>
-        <button type="button" title="Delete annotation" onClick={onClearShapes} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-500">
-          <Trash2 className="h-5 w-5" />
+        <button type="button" title="Delete annotation" onClick={onClearShapes} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-500">
+          <Trash2 className="h-4 w-4" />
         </button>
       </div>
 
@@ -1213,9 +1212,9 @@ export function TimelineBar({
           onKeyDown={(e) => {
             if (e.key === "Enter") onFrameInputCommit();
           }}
-          className="no-number-spinner w-12 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-center text-sm font-bold tabular-nums text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
+          className="no-number-spinner w-12 rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-center text-xs font-bold tabular-nums text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
         />
-        {total > 0 && <span className="text-sm font-bold text-stone-400">/ {total}</span>}
+        {total > 0 && <span className="text-xs font-bold text-stone-400">/ {total}</span>}
       </div>
     </div>
   );

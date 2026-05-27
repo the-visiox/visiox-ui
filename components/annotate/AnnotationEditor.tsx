@@ -551,7 +551,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   return (
     <div
-      ref={containerRef}
       onMouseDown={(e) => {
         const isMiddle = e.button === 1;
         const isCtrlLeft = e.button === 0 && e.ctrlKey;
@@ -565,12 +564,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         };
         setIsMiddlePan(true);
       }}
-      className={`relative h-full min-h-0 w-full overflow-hidden rounded-[2rem] bg-stone-100 shadow-xl shadow-stone-200/50 ${cursorClass}`}
+      className={`relative h-full min-h-0 w-full bg-stone-100 p-4 shadow-xl shadow-stone-200/50 ${cursorClass}`}
       onContextMenu={(e) => {
         if (!contextMenu) return;
         e.preventDefault();
       }}
     >
+      <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <div className="absolute right-3 top-3 z-[120] flex flex-col gap-1.5 rounded-2xl border border-stone-200/90 bg-white/95 p-1.5 shadow-lg shadow-stone-300/40 backdrop-blur-sm">
         <button type="button" title="Fit to window" onClick={fitToWindow} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
           <Maximize2 className="h-[22px] w-[22px]" />
@@ -1022,6 +1022,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         </div>
       )}
 
+      </div>
     </div>
   );
 };
