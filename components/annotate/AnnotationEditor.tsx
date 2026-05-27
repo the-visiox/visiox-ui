@@ -136,6 +136,27 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     setPanOffset({ x: 0, y: 0 });
   }, []);
 
+  const zoomToCenter = useCallback(
+    (factor: number) => {
+      const nextZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomMul * factor));
+      if (nextZoom === zoomMul) return;
+      const cx = containerW / 2;
+      const cy = containerH / 2;
+      const currentScale = baseFit.scale * zoomMul;
+      const currentLayerX = baseFit.x + panOffsetRef.current.x;
+      const currentLayerY = baseFit.y + panOffsetRef.current.y;
+      const imgX = (cx - currentLayerX) / currentScale;
+      const imgY = (cy - currentLayerY) / currentScale;
+      const nextScale = baseFit.scale * nextZoom;
+      setZoomMul(nextZoom);
+      setPanOffset({
+        x: cx - baseFit.x - imgX * nextScale,
+        y: cy - baseFit.y - imgY * nextScale,
+      });
+    },
+    [zoomMul, baseFit, containerW, containerH],
+  );
+
   const trRef = useRef<Konva.Transformer | null>(null);
   const layerRef = useRef<Konva.Layer | null>(null);
 
@@ -448,6 +469,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     /* tool actions live in handleStageClick so that drag on a shape (which suppresses click) doesn't accidentally fire them */
   };
 
+  const handleStageDblClick = (e: KonvaEventObject<MouseEvent>) => {
+    if (!isCanvasBackground(e)) return;
+    fitToWindow();
+  };
+
   const performRectClick = (e: KonvaEventObject<MouseEvent>) => {
     const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
     if (!pos) return;
@@ -575,10 +601,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         <button type="button" title="Fit to window" onClick={fitToWindow} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
           <Maximize2 className="h-[22px] w-[22px]" />
         </button>
-        <button type="button" title="Zoom in" onClick={() => setZoomMul((z) => Math.min(ZOOM_MAX, z * 1.2))} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+        <button type="button" title="Zoom in" onClick={() => zoomToCenter(1.2)} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
           <ZoomIn className="h-[22px] w-[22px]" />
         </button>
-        <button type="button" title="Zoom out" onClick={() => setZoomMul((z) => Math.max(ZOOM_MIN, z / 1.2))} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+        <button type="button" title="Zoom out" onClick={() => zoomToCenter(1 / 1.2)} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
           <ZoomOut className="h-[22px] w-[22px]" />
         </button>
         <span className="px-1 pb-1 text-center text-[11px] font-bold tabular-nums text-stone-500">{zoomPct}%</span>
@@ -592,6 +618,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         onMouseUp={handleMouseUp}
         onWheel={handleWheel}
         onClick={handleStageClick}
+        onDblClick={handleStageDblClick}
       >
         <Layer ref={layerRef} scaleX={layerScale} scaleY={layerScale} x={layerX} y={layerY}>
           {image && <KonvaImage image={image} name="background-image" listening />}
