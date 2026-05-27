@@ -78,6 +78,7 @@ export interface Project {
   task_type: string;
   description: string | null;
   thumbnail: string | null;
+  is_public: boolean;
   created_at: string;
   updated_at: string;
   cvat_project_id: number | null;
@@ -90,6 +91,7 @@ export interface Dataset {
   description: string | null;
   version: number;
   media_count: number;
+  annotated_count?: number;
   thumbnail: string | null;
   cvat_task_id: number | null;
   created_at: string;
@@ -347,7 +349,7 @@ export const projects = {
   get(id: number) {
     return request<Project>(`/api/projects/${id}/`);
   },
-  create(data: { team: number; name: string; task_type: string; description?: string }) {
+  create(data: { team: number; name: string; task_type: string; description?: string; is_public?: boolean }) {
     return request<Project>('/api/projects/', { method: 'POST', body: JSON.stringify(data) });
   },
   delete(id: number) {
@@ -366,12 +368,68 @@ export interface Team {
   created_at: string;
 }
 
+export type MemberRole = 'owner' | 'admin' | 'member' | 'viewer';
+export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'cancelled';
+
+export interface TeamMember {
+  id: number;
+  user: number;
+  user_username: string;
+  user_email: string;
+  role: MemberRole;
+  joined_at: string;
+  is_online?: boolean;
+}
+
+export interface Invitation {
+  id: number;
+  email: string;
+  role: MemberRole;
+  status: InvitationStatus;
+  invited_by_username: string;
+  created_at: string;
+  expires_at: string;
+}
+
 export const teams = {
   list() {
     return request<PaginatedResponse<Team>>('/api/teams/');
   },
   create(name: string) {
     return request<Team>('/api/teams/', { method: 'POST', body: JSON.stringify({ name }) });
+  },
+  members(teamId: number) {
+    return request<TeamMember[]>(`/api/teams/${teamId}/members/`);
+  },
+  invite(teamId: number, username: string, role: MemberRole = 'member') {
+    return request<TeamMember>(`/api/teams/${teamId}/invite/`, {
+      method: 'POST',
+      body: JSON.stringify({ username, role }),
+    });
+  },
+  sendInvitation(teamId: number, email: string, role: MemberRole = 'member') {
+    return request<Invitation>(`/api/teams/${teamId}/send_invitation/`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    });
+  },
+  listInvitations(teamId: number) {
+    return request<Invitation[]>(`/api/teams/${teamId}/invitations/`);
+  },
+  cancelInvitation(teamId: number, inviteId: number) {
+    return request<void>(`/api/teams/${teamId}/invitations/${inviteId}/`, { method: 'DELETE' });
+  },
+  acceptInvitation(token: string) {
+    return request<{ detail: string; member: TeamMember }>(`/api/invitations/${token}/accept/`, { method: 'POST' });
+  },
+  removeMember(teamId: number, memberId: number) {
+    return request<void>(`/api/teams/${teamId}/members/${memberId}/`, { method: 'DELETE' });
+  },
+  updateMemberRole(teamId: number, memberId: number, role: MemberRole) {
+    return request<TeamMember>(`/api/teams/${teamId}/members/${memberId}/role/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
   },
 };
 

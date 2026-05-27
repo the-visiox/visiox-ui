@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, MoreVertical } from "lucide-react";
 
 export interface CardMenuItem {
   icon: React.ElementType;
@@ -36,10 +36,10 @@ export function CardMenu({ items }: { items: CardMenuItem[] }) {
         className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all hover:bg-stone-100 hover:text-stone-700 ${
           open
             ? "bg-stone-100 text-stone-700 opacity-100"
-            : "text-stone-400 opacity-0 group-hover:opacity-100"
+            : "text-stone-400 opacity-30 group-hover:opacity-100"
         }`}
       >
-        <MoreHorizontal className="h-4 w-4" />
+        <MoreHorizontal className="h-5 w-5" />
       </button>
 
       {open && (

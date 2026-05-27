@@ -235,7 +235,7 @@ export default function ProjectsPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04 }}
                       onClick={() => router.push(`/projects/${p.id}`)}
-                      className="group flex aspect-[1:1] w-full cursor-pointer flex-col rounded-3xl border border-stone-200 bg-white p-2 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
+                      className="group flex aspect-[1:1] w-full cursor-pointer flex-col rounded-3xl border border-stone-200 bg-white p-3 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
                     >
                       {/* Thumbnail */}
                       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-stone-100">
@@ -256,15 +256,15 @@ export default function ProjectsPage() {
                       </div>
 
                       {/* Info */}
-                      <div className="shrink-0 px-3 pt-2 pb-1">
-                        <div className="flex items-center justify-between gap-1">
+                      <div className="shrink-0 px-2 pt-2 pb-1">
+                        <div className="flex items-center justify-between">
                           <h3 className="truncate text-base font-bold text-stone-900 transition-colors group-hover:text-orange-600">
                             {p.name}
                           </h3>
                           <CardMenu items={projectMenuItems(p)} />
                         </div>
                         <p className="truncate text-xs font-medium text-stone-400">{p.team_name}</p>
-                        <p className="truncate text-xs text-stone-400">Updated {timeAgo(p.updated_at)}</p>
+                        <p className="mt-1 truncate text-xs text-stone-400">Updated {timeAgo(p.updated_at)}</p>
                       </div>
                     </motion.div>
                   ))

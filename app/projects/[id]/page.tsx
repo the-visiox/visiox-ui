@@ -30,10 +30,14 @@ import {
   dataverse,
   datasets,
   projects,
+  teams,
   resolveMediaUrl,
   type AnnotationClass,
   type Dataset,
+  type Invitation,
+  type MemberRole,
   type Project,
+  type TeamMember,
 } from "@/lib/api";
 
 const CVAT_PUBLIC_URL = process.env.NEXT_PUBLIC_CVAT_URL || "http://localhost:8080";
@@ -48,6 +52,203 @@ function datasetStatus(d: Dataset): "Ready" | "Annotating" | "Draft" {
   if (d.media_count === 0) return "Draft";
   return "Ready";
 }
+
+// ─── Color picker utilities ──────────────────────────────────────────────────
+
+type RgbColor = { r: number; g: number; b: number };
+type HsvColor = { h: number; s: number; v: number };
+
+const LABEL_COLOR_SWATCHES = [
+  "#22c55e", "#38bdf8", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7",
+  "#d946ef", "#ec4899", "#f43f5e", "#ef4444", "#f97316", "#f59e0b",
+  "#eab308", "#84cc16", "#14b8a6", "#64748b",
+] as const;
+
+function clampColorChannel(value: number) {
+  return Math.max(0, Math.min(255, Math.round(Number.isFinite(value) ? value : 0)));
+}
+
+function normalizeHexColor(value: string, fallback = "#E66700") {
+  const raw = value.trim().replace("#", "");
+  if (/^[0-9A-Fa-f]{3}$/.test(raw))
+    return `#${raw.split("").map((c) => c + c).join("").toUpperCase()}`;
+  if (/^[0-9A-Fa-f]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
+  return fallback;
+}
+
+function hexToRgb(hex: string): RgbColor {
+  const n = normalizeHexColor(hex).slice(1);
+  return { r: parseInt(n.slice(0, 2), 16), g: parseInt(n.slice(2, 4), 16), b: parseInt(n.slice(4, 6), 16) };
+}
+
+function rgbToHex({ r, g, b }: RgbColor) {
+  return `#${[r, g, b].map((v) => clampColorChannel(v).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+}
+
+function rgbToHsv({ r, g, b }: RgbColor): HsvColor {
+  const [red, green, blue] = [r / 255, g / 255, b / 255];
+  const max = Math.max(red, green, blue), min = Math.min(red, green, blue), delta = max - min;
+  let h = 0;
+  if (delta !== 0) {
+    if (max === red) h = 60 * (((green - blue) / delta) % 6);
+    else if (max === green) h = 60 * ((blue - red) / delta + 2);
+    else h = 60 * ((red - green) / delta + 4);
+  }
+  return { h: h < 0 ? h + 360 : h, s: max === 0 ? 0 : delta / max, v: max };
+}
+
+function hsvToRgb({ h, s, v }: HsvColor): RgbColor {
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let red = 0, green = 0, blue = 0;
+  if (h < 60) [red, green, blue] = [c, x, 0];
+  else if (h < 120) [red, green, blue] = [x, c, 0];
+  else if (h < 180) [red, green, blue] = [0, c, x];
+  else if (h < 240) [red, green, blue] = [0, x, c];
+  else if (h < 300) [red, green, blue] = [x, 0, c];
+  else [red, green, blue] = [c, 0, x];
+  return { r: clampColorChannel((red + m) * 255), g: clampColorChannel((green + m) * 255), b: clampColorChannel((blue + m) * 255) };
+}
+
+function LabelColorPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [draftColor, setDraftColor] = useState(normalizeHexColor(value));
+  const initialColorRef = useRef(normalizeHexColor(value));
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const colorAreaRef = useRef<HTMLDivElement | null>(null);
+  const hsv = rgbToHsv(hexToRgb(draftColor));
+  const rgb = hexToRgb(draftColor);
+
+  useEffect(() => { if (!open) setDraftColor(normalizeHexColor(value)); }, [open, value]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (e: PointerEvent) => {
+      if (e.target instanceof Node && rootRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onChange(initialColorRef.current); setDraftColor(initialColorRef.current); setOpen(false); }
+    };
+    window.addEventListener("pointerdown", closeOnOutside);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => { window.removeEventListener("pointerdown", closeOnOutside); window.removeEventListener("keydown", closeOnEscape); };
+  }, [onChange, open]);
+
+  const commitColor = useCallback((color: string) => {
+    const normalized = normalizeHexColor(color, draftColor);
+    setDraftColor(normalized);
+    onChange(normalized);
+  }, [draftColor, onChange]);
+
+  const updateFromColorArea = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = colorAreaRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const s = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const v = Math.max(0, Math.min(1, 1 - (event.clientY - rect.top) / rect.height));
+    commitColor(rgbToHex(hsvToRgb({ h: hsv.h, s, v })));
+  }, [commitColor, hsv.h]);
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => { initialColorRef.current = normalizeHexColor(value); setDraftColor(normalizeHexColor(value)); setOpen((c) => !c); }}
+        className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-stone-200 bg-white p-1 shadow-sm shadow-stone-200/40 transition hover:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-400/20"
+        title="Pick color"
+        aria-label="Pick color"
+      >
+        <span className="block h-full w-full rounded-md" style={{ backgroundColor: normalizeHexColor(value) }} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-11 z-50 w-[244px] rounded-2xl border border-stone-200 bg-white p-3 shadow-2xl shadow-stone-300/50"
+          onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-bold uppercase text-stone-600">Select color</span>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900" aria-label="Close">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div
+            ref={colorAreaRef}
+            role="slider"
+            aria-label="Color saturation and brightness"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(hsv.s * 100)}
+            tabIndex={0}
+            onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); updateFromColorArea(e); }}
+            onPointerMove={(e) => { if (e.buttons === 1) updateFromColorArea(e); }}
+            className="relative h-32 w-full touch-none cursor-crosshair overflow-hidden border border-stone-200"
+            style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))` }}
+          >
+            <span
+              className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md shadow-black/40"
+              style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
+            />
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <span className="h-8 w-8 shrink-0 rounded-full border border-stone-200" style={{ backgroundColor: draftColor }} />
+            <input
+              type="range" min={0} max={359} value={Math.round(hsv.h)}
+              onChange={(e) => commitColor(rgbToHex(hsvToRgb({ ...hsv, h: Number(e.target.value) })))}
+              className="h-3 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-[linear-gradient(to_right,#ef4444,#f97316,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ec4899,#ef4444)]"
+              aria-label="Hue"
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2">
+            <label className="col-span-1 min-w-0">
+              <span className="sr-only">Hex</span>
+              <input
+                type="text"
+                value={draftColor.replace("#", "")}
+                onChange={(e) => { const next = e.target.value; setDraftColor(`#${next}`); if (/^[0-9A-Fa-f]{3}$|^[0-9A-Fa-f]{6}$/.test(next)) onChange(normalizeHexColor(next, draftColor)); }}
+                onBlur={() => commitColor(draftColor)}
+                className="h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-2 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+              />
+            </label>
+            {(["r", "g", "b"] as const).map((channel) => (
+              <label key={channel} className="min-w-0">
+                <span className="sr-only">{channel.toUpperCase()}</span>
+                <input
+                  type="number" min={0} max={255} value={rgb[channel]}
+                  onChange={(e) => commitColor(rgbToHex({ ...rgb, [channel]: clampColorChannel(Number(e.target.value)) }))}
+                  className="no-number-spinner h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-1 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+                />
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-1 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2 text-center text-[10px] font-bold text-stone-500">
+            <span>Hex</span><span>R</span><span>G</span><span>B</span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-8 gap-2">
+            {LABEL_COLOR_SWATCHES.map((swatch) => (
+              <button key={swatch} type="button" onClick={() => commitColor(swatch)}
+                className="h-5 w-5 rounded-md border border-stone-200 transition hover:scale-110 focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                style={{ backgroundColor: swatch }} aria-label={`Use ${swatch}`}
+              />
+            ))}
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => commitColor("#E66700")} className="rounded-lg border border-stone-200 px-2 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-50">Reset</button>
+            <button type="button" onClick={() => { commitColor(initialColorRef.current); setOpen(false); }} className="rounded-lg border border-stone-200 px-2 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-50">Cancel</button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-lg bg-orange-500 px-2 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600">OK</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function CreateDatasetModal({
   project,
@@ -322,7 +523,7 @@ function CreateDatasetModal({
                     {files.map((f, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center gap-3 rounded-xl border border-stone-100 bg-white px-3 py-2 shadow-sm"
+                        className="flex items-center gap-3 rounded-sm border border-stone-100 bg-white px-3 py-2 shadow-sm"
                       >
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-stone-100">
                           <ImageIcon
@@ -409,14 +610,16 @@ function CreateDatasetModal({
 
 const DEFAULT_CLASS_COLOR = "#E66700";
 
-function ClassEditorModal({
+function ClassEditorInline({
   projectId,
   editing,
+  classList,
   onClose,
   onSaved,
 }: {
   projectId: number;
   editing: AnnotationClass | null;
+  classList: AnnotationClass[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -431,24 +634,33 @@ function ClassEditorModal({
       setColor(editing.color || DEFAULT_CLASS_COLOR);
     } else {
       setName("");
-      setColor(DEFAULT_CLASS_COLOR);
+      const usedColors = new Set(classList.map((c) => c.color?.toUpperCase()));
+      const next = LABEL_COLOR_SWATCHES.find((s) => !usedColors.has(s.toUpperCase()));
+      setColor(next ?? LABEL_COLOR_SWATCHES[classList.length % LABEL_COLOR_SWATCHES.length]);
     }
     setError("");
-  }, [editing]);
+  }, [editing, classList]);
+
+  const peers = classList.filter((c) => c.id !== editing?.id);
+
+  const dupeName = name.trim() !== "" && peers.some((c) => c.name.toLowerCase() === name.trim().toLowerCase());
+  const dupeColor = peers.some((c) => c.color?.toUpperCase() === color.toUpperCase());
+  const dupeError = dupeName
+    ? `A class named "${name.trim()}" already exists.`
+    : dupeColor
+    ? `The color ${color} is already used by another class.`
+    : "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (dupeError) return;
     setSaving(true);
     setError("");
     try {
       if (editing) {
         await annotationClasses.update(editing.id, { name: name.trim(), color });
       } else {
-        await annotationClasses.create({
-          project: projectId,
-          name: name.trim(),
-          color,
-        });
+        await annotationClasses.create({ project: projectId, name: name.trim(), color });
       }
       onSaved();
       onClose();
@@ -459,85 +671,40 @@ function ClassEditorModal({
     }
   };
 
+  const validationError = dupeError || error;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-3xl border border-stone-200 shadow-2xl w-full max-w-md p-8"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-stone-900">
-            {editing ? "Edit class" : "New label class"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 hover:bg-stone-100 rounded-xl transition-colors"
-          >
-            <X className="w-5 h-5 text-stone-500" />
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-600 text-xs rounded-xl border border-red-100">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">
-              Name
-            </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Hard hat, Person, Defect"
-              className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">
-              Color
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="h-12 w-14 cursor-pointer rounded-xl border border-stone-200 bg-white p-1"
-              />
-              <input
-                type="text"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                pattern="^#[0-9A-Fa-f]{6}$"
-                className="flex-1 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
-              />
-            </div>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-3 bg-stone-100 text-stone-700 rounded-xl font-bold text-sm hover:bg-stone-200 transition-all"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !name.trim()}
-              className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 hover:scale-105 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : editing ? "Save" : "Create"}
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
+    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-2">
+      <div className="flex w-full items-center gap-2">
+        <LabelColorPicker value={color} onChange={setColor} />
+        <input
+          type="text"
+          required
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Class name…"
+          className="w-64 rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+        />
+        <button
+          type="submit"
+          disabled={saving || !name.trim()}
+          className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1"
+        >
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : editing ? "Save" : "Add"}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-bold text-stone-600 transition hover:bg-stone-100"
+        >
+          Cancel
+        </button>
+      </div>
+      {validationError && (
+        <p className="text-xs text-red-500">{validationError}</p>
+      )}
+    </form>
   );
 }
 
@@ -552,6 +719,13 @@ export default function ProjectDetailPage() {
   const [classModalOpen, setClassModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<AnnotationClass | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<MemberRole>("member");
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [inviteError, setInviteError] = useState("");
 
   const projectIdNum = id ? parseInt(id as string, 10) : NaN;
 
@@ -564,6 +738,24 @@ export default function ProjectDetailPage() {
       setClassList([]);
     }
   }, [projectIdNum]);
+
+  const loadMembers = useCallback(async (teamId: number) => {
+    try {
+      const res = await teams.members(teamId);
+      setMembers(res);
+    } catch {
+      setMembers([]);
+    }
+  }, []);
+
+  const loadInvitations = useCallback(async (teamId: number) => {
+    try {
+      const res = await teams.listInvitations(teamId);
+      setInvitations(res);
+    } catch {
+      setInvitations([]);
+    }
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -578,6 +770,7 @@ export default function ProjectDetailPage() {
         setDatasetList(dsRes.results);
         const clsRes = await annotationClasses.list(projectId);
         setClassList(clsRes.results ?? []);
+        await Promise.all([loadMembers(found.team), loadInvitations(found.team)]);
       } catch (err) {
         console.error(err);
       } finally {
@@ -585,7 +778,25 @@ export default function ProjectDetailPage() {
       }
     }
     load();
-  }, [id]);
+  }, [id, loadMembers, loadInvitations]);
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!project || !inviteEmail.trim()) return;
+    setInviteSaving(true);
+    setInviteError("");
+    try {
+      await teams.sendInvitation(project.team, inviteEmail.trim(), inviteRole);
+      setInviteEmail("");
+      setInviteRole("member");
+      setInviteOpen(false);
+      await loadInvitations(project.team);
+    } catch (err: unknown) {
+      setInviteError(err instanceof Error ? err.message : "Could not send invitation");
+    } finally {
+      setInviteSaving(false);
+    }
+  };
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-stone-300" /></div>;
   if (!project) return <div className="flex-1 flex flex-col items-center justify-center p-8"><p className="text-stone-500 mb-4">Project not found</p><button onClick={() => router.push('/projects')} className="text-orange-500 font-bold">Back to Projects</button></div>;
@@ -653,17 +864,6 @@ export default function ProjectDetailPage() {
             }}
           />
         )}
-        {classModalOpen && (
-          <ClassEditorModal
-            projectId={project.id}
-            editing={editingClass}
-            onClose={() => {
-              setClassModalOpen(false);
-              setEditingClass(null);
-            }}
-            onSaved={loadClasses}
-          />
-        )}
       </AnimatePresence>
 
       <main className="flex-grow p-6 z-10">
@@ -721,11 +921,12 @@ export default function ProjectDetailPage() {
           </div>
         </header>
 
+        <div className="mb-4 grid grid-cols-2 gap-4">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="mb-4 bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden"
+          className="bg-white rounded-2xl border border-stone-200 shadow-sm"
         >
           <div className="px-4 py-3 border-b border-stone-100">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -734,25 +935,29 @@ export default function ProjectDetailPage() {
               </div>
               <div className="min-w-0">
                 <h2 className="text-sm font-bold text-stone-900 leading-tight">Class management</h2>
-                <p className="text-xs text-stone-500 mt-0.5 leading-snug line-clamp-1 sm:line-clamp-2">
-                  Shared across datasets in this project; used in the editor and exports.
-                </p>
               </div>
             </div>
           </div>
 
-          <div className="px-4 py-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setEditingClass(null);
-                setClassModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 shrink-0 rounded-full border border-dashed border-stone-300 bg-stone-50/80 px-3 py-1.5 text-xs font-bold text-stone-700 hover:border-orange-400 hover:bg-orange-50/50 hover:text-orange-800 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add class
-            </button>
+          <div className="px-4 py-3 flex flex-wrap items-center gap-2 rounded-lg">
+            {classModalOpen ? (
+              <ClassEditorInline
+                projectId={project.id}
+                editing={editingClass}
+                classList={classList}
+                onClose={() => { setClassModalOpen(false); setEditingClass(null); }}
+                onSaved={loadClasses}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setEditingClass(null); setClassModalOpen(true); }}
+                className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-dashed border-stone-300 bg-stone-50/80 px-3 py-1.5 text-xs font-bold text-stone-700 hover:border-orange-400 hover:bg-orange-50/50 hover:text-orange-800 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add class
+              </button>
+            )}
 
             {classList.length === 0 ? (
               <span className="text-xs text-stone-400">
@@ -762,7 +967,7 @@ export default function ProjectDetailPage() {
               classList.map((c) => (
                 <div
                   key={c.id}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-stone-200 bg-white py-1 pl-2 pr-1 shadow-sm"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-stone-200 bg-white py-1 pl-2 pr-1"
                 >
                   <span
                     className="h-3 w-3 shrink-0 rounded-full ring-1 ring-black/5"
@@ -822,6 +1027,167 @@ export default function ProjectDetailPage() {
           </div>
         </motion.section>
 
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05 }}
+          className="bg-white rounded-2xl border border-stone-200 shadow-sm"
+        >
+          <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-400 flex items-center justify-center shadow-md shadow-violet-500/15 shrink-0">
+                <UserPlus className="w-4 h-4 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-stone-900 leading-tight">Team — {project.team_name}</h2>
+                <p className="text-xs text-stone-500 mt-0.5 leading-snug">{members.length} member{members.length !== 1 ? "s" : ""}</p>
+              </div>
+            </div>
+            {!inviteOpen && (
+              <button
+                type="button"
+                onClick={() => { setInviteOpen(true); setInviteError(""); }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-violet-300 bg-violet-50/80 px-3 py-1.5 text-xs font-bold text-violet-700 hover:border-violet-400 hover:bg-violet-100/60 transition-colors shrink-0"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Invite
+              </button>
+            )}
+          </div>
+
+          {inviteOpen && (
+            <form onSubmit={handleInvite} className="px-4 py-3 border-b border-stone-100 flex flex-wrap items-center gap-2">
+              <input
+                type="email"
+                autoFocus
+                required
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="Email address…"
+                className="w-48 rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20"
+              />
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as MemberRole)}
+                className="cursor-pointer appearance-none rounded-lg border border-stone-200 bg-stone-50 py-1.5 pl-3 pr-7 text-xs font-semibold text-stone-800 shadow-sm outline-none transition hover:border-violet-300 hover:bg-white focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20"
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a8a29e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
+              >
+                <option value="viewer">Viewer</option>
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button
+                type="submit"
+                disabled={inviteSaving || !inviteEmail.trim()}
+                className="shrink-0 rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-violet-500/20 transition hover:bg-violet-600 disabled:opacity-50 flex items-center gap-1"
+              >
+                {inviteSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Send invite"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setInviteOpen(false); setInviteEmail(""); setInviteError(""); }}
+                className="shrink-0 rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-bold text-stone-600 transition hover:bg-stone-100"
+              >
+                Cancel
+              </button>
+              {inviteError && <p className="w-full text-xs text-red-500">{inviteError}</p>}
+            </form>
+          )}
+
+          {members.length === 0 && invitations.filter(i => i.status === 'pending').length === 0 ? (
+            <p className="px-4 py-4 text-xs text-stone-400">No members yet — invite someone to get started.</p>
+          ) : (
+            <>
+              {members.length > 0 && (
+                <div className="flex flex-wrap gap-3 px-4 py-3">
+                  {members.map((m) => {
+                    const avatarGradients = [
+                      "from-violet-400 to-purple-500",
+                      "from-blue-400 to-indigo-500",
+                      "from-emerald-400 to-teal-500",
+                      "from-orange-400 to-amber-500",
+                      "from-pink-400 to-rose-500",
+                      "from-cyan-400 to-sky-500",
+                      "from-lime-400 to-green-500",
+                      "from-fuchsia-400 to-pink-500",
+                    ];
+                    const gradientIndex = m.user_username.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % avatarGradients.length;
+                    const gradient = avatarGradients[gradientIndex];
+                    const initials = m.user_username.slice(0, 2).toUpperCase();
+                    const isOnline = m.is_online ?? false;
+                    const roleColors: Record<string, string> = {
+                      owner: "text-amber-600",
+                      admin: "text-orange-600",
+                      member: "text-violet-600",
+                      viewer: "text-stone-400",
+                    };
+                    return (
+                      <div key={m.id} className="group relative">
+                        <div className={`h-10 w-10 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-xs font-bold text-white shadow-sm ring-2 ring-white`}>
+                          {initials}
+                        </div>
+                        <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white shadow-sm ${isOnline ? "bg-green-500" : "bg-stone-300"}`} />
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 group-hover:block">
+                          <div className="w-max rounded-xl border border-stone-100 bg-white px-3 py-2 shadow-xl shadow-stone-200/60">
+                            <p className="text-xs font-bold text-stone-900">{m.user_username}</p>
+                            <p className="mt-0.5 text-[10px] text-stone-400">{m.user_email}</p>
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <span className={`text-[10px] font-bold uppercase tracking-wide ${roleColors[m.role] ?? roleColors.viewer}`}>{m.role}</span>
+                              <span className="text-stone-200">·</span>
+                              <span className={`text-[10px] font-semibold ${isOnline ? "text-green-500" : "text-stone-400"}`}>{isOnline ? "Online" : "Offline"}</span>
+                            </div>
+                          </div>
+                          <div className="mx-auto mt-0.5 h-1.5 w-1.5 rotate-45 border-b border-r border-stone-100 bg-white" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {invitations.filter(i => i.status !== 'cancelled').length > 0 && (
+                <div className="border-t border-stone-100 px-4 py-2.5">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-stone-400">Pending invitations</p>
+                  <div className="flex flex-col gap-1.5">
+                    {invitations.filter(i => i.status !== 'cancelled').map((inv) => {
+                      const statusStyles: Record<string, string> = {
+                        pending: "bg-yellow-50 text-yellow-700 border border-yellow-200",
+                        accepted: "bg-green-50 text-green-700 border border-green-200",
+                        expired: "bg-stone-100 text-stone-400 border border-stone-200",
+                      };
+                      return (
+                        <div key={inv.id} className="flex items-center gap-2">
+                          <div className="h-7 w-7 shrink-0 rounded-full bg-stone-100 border border-dashed border-stone-300 flex items-center justify-center">
+                            <UserPlus className="w-3 h-3 text-stone-400" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold text-stone-700">{inv.email}</p>
+                            <p className="text-[10px] text-stone-400">{inv.role} · {new Date(inv.created_at).toLocaleDateString()}</p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusStyles[inv.status] ?? statusStyles.expired}`}>
+                            {inv.status}
+                          </span>
+                          {inv.status === 'pending' && (
+                            <button
+                              type="button"
+                              title="Cancel invitation"
+                              onClick={() => { void teams.cancelInvitation(project.team, inv.id).then(() => loadInvitations(project.team)); }}
+                              className="shrink-0 rounded-md p-1 text-stone-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </motion.section>
+        </div>
+
         <h2 id="project-datasets" className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Datasets</h2>
 
         <div
@@ -875,10 +1241,25 @@ export default function ProjectDetailPage() {
                         <CardMenu items={datasetMenuItems(dataset)} />
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-stone-400">
-                      <div className="flex items-center gap-1.5"><ImageIcon className="w-3 h-3" /><span className="text-stone-900">{dataset.media_count}</span></div>
-                      <div className="flex items-center gap-1.5"><Clock className="w-3 h-3" /><span className="text-stone-900">v{dataset.version}</span></div>
-                    </div>
+                    {(() => {
+                      const annotated = dataset.annotated_count ?? 0;
+                      const total = dataset.media_count;
+                      const pct = total > 0 ? Math.round((annotated / total) * 100) : 0;
+                      return (
+                        <div className="mb-2">
+                          <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-stone-400">
+                            <span><span className="text-stone-900">{annotated}</span> / {total} annotated</span>
+                            <span>{pct}%</span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
+                            <div
+                              className="h-full rounded-full bg-orange-400 transition-all duration-500"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </motion.div>
               );
