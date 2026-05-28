@@ -752,11 +752,33 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 y: clamp(aboveY >= 0 ? aboveY : belowY, 0, Math.max(0, imageH - floatingLabelHeight)),
               };
             };
-            const floatingLabelPosition = getFloatingLabelPosition(shapeX, shapeY, shape.height);
+            const topmostVertexIdx = shape.shapeType === "polygon" && shape.points && shape.points.length >= 2 ? (() => {
+              let minY = Infinity;
+              let minIdx = 0;
+              for (let i = 0; i < shape.points.length / 2; i++) {
+                if (shape.points[i * 2 + 1] < minY) { minY = shape.points[i * 2 + 1]; minIdx = i; }
+              }
+              return minIdx;
+            })() : -1;
+            const getPolygonFloatingLabelPosition = (dx: number, dy: number) => ({
+              x: clamp(
+                shape.points![topmostVertexIdx * 2] + dx - floatingLabelWidth / 2,
+                0,
+                Math.max(0, imageW - floatingLabelWidth)
+              ),
+              y: Math.max(0, shape.points![topmostVertexIdx * 2 + 1] + dy - floatingLabelHeight - floatingLabelGap),
+            });
+            const floatingLabelPosition = topmostVertexIdx >= 0
+              ? getPolygonFloatingLabelPosition(shapeX - shape.x, shapeY - shape.y)
+              : getFloatingLabelPosition(shapeX, shapeY, shape.height);
             const syncFloatingLabelPosition = (nextShapeX: number, nextShapeY: number, nextShapeHeight = shape.height) => {
               const labelNode = layerRef.current?.findOne(`#${shape.clientId}-floating-label`);
               if (!labelNode) return;
-              labelNode.position(getFloatingLabelPosition(nextShapeX, nextShapeY, nextShapeHeight));
+              labelNode.position(
+                topmostVertexIdx >= 0
+                  ? getPolygonFloatingLabelPosition(nextShapeX - shape.x, nextShapeY - shape.y)
+                  : getFloatingLabelPosition(nextShapeX, nextShapeY, nextShapeHeight)
+              );
               layerRef.current?.batchDraw();
             };
             const floatingLabel = showFloatingLabel ? (
@@ -855,8 +877,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             if (shape.shapeType !== "rectangle" && shape.points && shape.points.length >= 2) {
               const isClosed = shape.shapeType === "polygon";
               const isPointsShape = shape.shapeType === "points";
-              const pathCenterX = shape.x + shape.width / 2;
-              const pathCenterY = shape.y + shape.height / 2;
               return (
                 <React.Fragment key={shape.clientId}>
                   {!isPointsShape && (
@@ -916,7 +936,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     const vx = shape.points![vertexIndex * 2] + (shapeX - shape.x);
                     const vy = shape.points![vertexIndex * 2 + 1] + (shapeY - shape.y);
                     const isCornerHovered = pathVertexEditingEnabled && hoveredCorner?.shapeId === shape.clientId && hoveredCorner.vertexIndex === vertexIndex;
-                    const resizeCursor = (vx - pathCenterX) * (vy - pathCenterY) >= 0 ? "nwse-resize" : "nesw-resize";
                     return (
                       <Circle
                         key={`${shape.clientId}-v-${vertexIndex}`}
@@ -931,7 +950,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                         onMouseEnter={(e) => {
                           setHoveredCorner({ shapeId: shape.clientId, vertexIndex });
                           const stage = e.target.getStage();
-                          if (stage) stage.container().style.cursor = resizeCursor;
+                          if (stage) stage.container().style.cursor = "move";
                         }}
                         onMouseLeave={(e) => {
                           const stage = e.target.getStage();
