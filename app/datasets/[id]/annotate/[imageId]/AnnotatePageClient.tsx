@@ -79,8 +79,8 @@ type MediaItem = { id: number; file_url?: string | null; filename?: string };
 
 const mediaListCache = new Map<number, MediaItem[]>();
 const preloadedUrlsCache = new Set<string>();
-const TOOL_PANE_DEFAULT = 84;
-const TOOL_PANE_MIN = 68;
+const TOOL_PANE_DEFAULT = 64;
+const TOOL_PANE_MIN = 52;
 const TOOL_PANE_MAX = 180;
 const OBJECTS_PANE_DEFAULT = 400;
 const OBJECTS_PANE_MIN = 320;

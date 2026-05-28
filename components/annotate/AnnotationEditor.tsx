@@ -685,21 +685,21 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         };
         setIsMiddlePan(true);
       }}
-      className={`relative h-full min-h-0 w-full bg-[#f3f0eb] p-3 shadow-xl shadow-stone-200/50 ${cursorClass}`}
+      className={`relative h-full min-h-0 w-full bg-[#f3f0eb] shadow-xl shadow-stone-200/50 ${cursorClass}`}
       onContextMenu={(e) => {
         if (!contextMenu) return;
         e.preventDefault();
       }}
     >
-      <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-xl border border-stone-200/80 bg-stone-200/40 shadow-inner">
-        <div className="absolute right-3 top-3 z-[120] flex flex-col gap-1.5 rounded-2xl border border-stone-200/90 bg-white/95 p-1.5 shadow-lg shadow-stone-300/40 backdrop-blur-sm">
-          <button type="button" title="Fit to window" aria-label="Fit to window" onClick={fitToWindow} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+      <div ref={containerRef} className="relative h-full w-full overflow-hidden border border-stone-200/80 bg-stone-200/40 shadow-inner">
+        <div className="absolute right-3 top-3 z-[120] flex flex-col gap-1 rounded-2xl border border-stone-200/90 bg-white/95 p-1.5 shadow-lg shadow-stone-300/40 backdrop-blur-sm">
+          <button type="button" title="Fit to window" aria-label="Fit to window" onClick={fitToWindow} className="flex h-10 w-10 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
             <Maximize2 className="h-[22px] w-[22px]" />
           </button>
-          <button type="button" title="Zoom in" aria-label="Zoom in" onClick={zoomIn} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+          <button type="button" title="Zoom in" aria-label="Zoom in" onClick={zoomIn} className="flex h-10 w-10 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
             <ZoomIn className="h-[22px] w-[22px]" />
           </button>
-          <button type="button" title="Zoom out" aria-label="Zoom out" onClick={zoomOut} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+          <button type="button" title="Zoom out" aria-label="Zoom out" onClick={zoomOut} className="flex h-10 w-10 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
             <ZoomOut className="h-[22px] w-[22px]" />
           </button>
           <span className="px-1 pb-1 text-center text-[11px] font-bold tabular-nums text-stone-500">{zoomPct}%</span>
