@@ -697,7 +697,12 @@ export default function AnnotatePageClient() {
       setLabels((prev) => prev.filter((item) => item.id !== label.id));
       if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete label.");
+      if (err instanceof ApiError && err.status === 404) {
+        setLabels((prev) => prev.filter((item) => item.id !== label.id));
+        if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+      } else {
+        setError(err instanceof Error ? err.message : "Could not delete label.");
+      }
     } finally {
       setLabelBusyId(null);
     }

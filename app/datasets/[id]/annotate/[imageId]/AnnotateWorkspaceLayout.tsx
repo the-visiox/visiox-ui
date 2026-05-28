@@ -230,25 +230,42 @@ export function WorkspaceHeader({
           </p>
         </div>
         <div className="hidden h-8 w-px shrink-0 bg-stone-200 sm:block" />
-        <div className="flex items-center gap-1 rounded-xl p-1">
-          <button type="button" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
-            <Undo2 className="h-4 w-4" />
+        <div className="flex items-center gap-3 rounded-xl p-1">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            title="Save (Ctrl+S)"
+            className="flex h-7 w-7 items-center justify-center pt-0.5 rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+          >
+            {saving ? (
+              <Loader2 className="h-4.5 w-4.5 animate-spin" />
+            ) : (
+              <Save className="h-5 w-5" />
+            )}
           </button>
-          <button type="button" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)" className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400">
-            <Redo2 className="h-4 w-4" />
+
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+          >
+            <Undo2 className="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Y)"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+          >
+            <Redo2 className="h-5 w-5" />
           </button>
         </div>
       </div>
-
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={saving}
-        className="flex shrink-0 items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition-all hover:scale-105 active:scale-95"
-      >
-        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-4 w-4" />}
-        <span>Save</span>
-      </button>
     </nav>
   );
 }
