@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
-import { Stage, Layer, Image as KonvaImage, Circle, Group, Rect, Line, Text, Transformer } from "react-konva";
+import { Stage, Layer, Circle, Group, Rect, Line, Text, Transformer } from "react-konva";
 import useImage from "use-image";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import {
@@ -52,7 +52,7 @@ function layerPos(
 function isCanvasBackground(e: KonvaEventObject<MouseEvent>): boolean {
   const t = e.target;
   const name = typeof t.name === "function" ? t.name() : "";
-  return t === t.getStage() || name === "background-image" || name === "stage-background";
+  return t === t.getStage() || name === "stage-background";
 }
 
 function menuPositionFromPointer(evt: MouseEvent | PointerEvent, container: HTMLDivElement | null) {
@@ -69,6 +69,9 @@ function menuPositionFromPointer(evt: MouseEvent | PointerEvent, container: HTML
 const RECT_MIN_SIZE = 5;
 const ZOOM_MIN = 0.12;
 const ZOOM_MAX = 10;
+const ZOOM_BUTTON_STEP = 1.2;
+const ZOOM_WHEEL_STEP = 0.1;
+const ZOOM_SNAP_EPSILON = 0.005;
 const CORNER_HANDLE_RADIUS_PX = 4.5;
 const CORNER_HANDLE_HOVER_RADIUS_PX = 5.5;
 const CORNER_HANDLE_DIAMETER_PX = CORNER_HANDLE_RADIUS_PX * 2;
@@ -76,6 +79,11 @@ const TAG_HEIGHT = 26;
 const TAG_MIN_WIDTH = 88;
 const PINNED_LABEL_HEIGHT = 22;
 const PINNED_LABEL_MIN_WIDTH = 54;
+
+function normalizeZoom(value: number) {
+  const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+  return Math.abs(clamped - 1) <= ZOOM_SNAP_EPSILON ? 1 : clamped;
+}
 
 const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   imageUrl,
@@ -91,7 +99,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   pinnedShapeIds = [],
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const resizeFrameRef = useRef<number | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const dimensionsRef = useRef(dimensions);
   const [image] = useImage(imageUrl, "anonymous");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -116,25 +126,95 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const imageH = image?.height ?? 0;
   const containerW = dimensions.width;
   const containerH = dimensions.height;
-  const baseFit = useMemo(() => {
+  const baseFitScale = useMemo(() => {
     if (!imageW || !imageH || containerW <= 0 || containerH <= 0) {
-      return { scale: 1, x: 0, y: 0 };
+      return 1;
     }
-    const scale = Math.min(containerW / imageW, containerH / imageH);
-    return {
-      scale,
-      x: (containerW - imageW * scale) / 2,
-      y: (containerH - imageH * scale) / 2,
-    };
+    return Math.min(containerW / imageW, containerH / imageH);
   }, [imageW, imageH, containerW, containerH]);
-  const layerScale = baseFit.scale * zoomMul;
-  const layerX = baseFit.x + panOffset.x;
-  const layerY = baseFit.y + panOffset.y;
+
+  const getLayerOrigin = useCallback(
+    (scale: number) => {
+      if (!imageW || !imageH || containerW <= 0 || containerH <= 0) {
+        return { x: 0, y: 0 };
+      }
+      return {
+        x: (containerW - imageW * scale) / 2,
+        y: (containerH - imageH * scale) / 2,
+      };
+    },
+    [containerH, containerW, imageH, imageW]
+  );
+
+  const clampPanOffset = useCallback(
+    (offset: { x: number; y: number }, scale: number) => {
+      if (!imageW || !imageH || containerW <= 0 || containerH <= 0) {
+        return { x: 0, y: 0 };
+      }
+
+      const scaledW = imageW * scale;
+      const scaledH = imageH * scale;
+      const origin = getLayerOrigin(scale);
+      const minX = scaledW > containerW ? containerW - scaledW - origin.x : 0;
+      const maxX = scaledW > containerW ? -origin.x : 0;
+      const minY = scaledH > containerH ? containerH - scaledH - origin.y : 0;
+      const maxY = scaledH > containerH ? -origin.y : 0;
+
+      return {
+        x: clamp(offset.x, minX, maxX),
+        y: clamp(offset.y, minY, maxY),
+      };
+    },
+    [containerH, containerW, getLayerOrigin, imageH, imageW]
+  );
+
+  const layerScale = baseFitScale * zoomMul;
+  const layerOrigin = useMemo(() => getLayerOrigin(layerScale), [getLayerOrigin, layerScale]);
+  const layerX = layerOrigin.x + panOffset.x;
+  const layerY = layerOrigin.y + panOffset.y;
 
   const fitToWindow = useCallback(() => {
     setZoomMul(1);
     setPanOffset({ x: 0, y: 0 });
   }, []);
+
+  const zoomAtPoint = useCallback(
+    (targetZoom: number, anchor: { x: number; y: number }) => {
+      const nextZoom = normalizeZoom(targetZoom);
+      if (nextZoom === zoomMul || layerScale <= 0) return;
+
+      const imgX = (anchor.x - layerX) / layerScale;
+      const imgY = (anchor.y - layerY) / layerScale;
+      const nextScale = baseFitScale * nextZoom;
+      const nextOrigin = getLayerOrigin(nextScale);
+      const nextPan = clampPanOffset(
+        {
+          x: anchor.x - nextOrigin.x - imgX * nextScale,
+          y: anchor.y - nextOrigin.y - imgY * nextScale,
+        },
+        nextScale
+      );
+
+      setZoomMul(nextZoom);
+      setPanOffset(nextPan);
+    },
+    [baseFitScale, clampPanOffset, getLayerOrigin, layerScale, layerX, layerY, zoomMul]
+  );
+
+  const zoomAtCenter = useCallback(
+    (targetZoom: number) => {
+      zoomAtPoint(targetZoom, { x: containerW / 2, y: containerH / 2 });
+    },
+    [containerH, containerW, zoomAtPoint]
+  );
+
+  const zoomIn = useCallback(() => {
+    zoomAtCenter(zoomMul * ZOOM_BUTTON_STEP);
+  }, [zoomAtCenter, zoomMul]);
+
+  const zoomOut = useCallback(() => {
+    zoomAtCenter(zoomMul / ZOOM_BUTTON_STEP);
+  }, [zoomAtCenter, zoomMul]);
 
   const trRef = useRef<Konva.Transformer | null>(null);
   const layerRef = useRef<Konva.Layer | null>(null);
@@ -161,25 +241,65 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }, [panOffset]);
 
   useEffect(() => {
-    const updateSize = () => {
-      if (!containerRef.current) return;
-      const width = containerRef.current.offsetWidth;
-      const height = containerRef.current.offsetHeight;
-      setDimensions((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+    setPanOffset((current) => {
+      const next = clampPanOffset(current, layerScale);
+      return next.x === current.x && next.y === current.y ? current : next;
+    });
+  }, [clampPanOffset, layerScale]);
+
+  useEffect(() => {
+    const commitSize = (width: number, height: number) => {
+      const next = {
+        width: Math.max(0, Math.round(width)),
+        height: Math.max(0, Math.round(height)),
+      };
+      const current = dimensionsRef.current;
+      if (current.width === next.width && current.height === next.height) return;
+
+      dimensionsRef.current = next;
+      setDimensions(next);
+    };
+
+    const updateSize = (size?: { width: number; height: number }) => {
+      if (resizeFrameRef.current !== null) {
+        cancelAnimationFrame(resizeFrameRef.current);
+      }
+
+      resizeFrameRef.current = requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        if (size) {
+          commitSize(size.width, size.height);
+          return;
+        }
+
+        const node = containerRef.current;
+        if (!node) return;
+        commitSize(node.clientWidth, node.clientHeight);
+      });
     };
 
     updateSize();
     const resizeObserver =
       typeof ResizeObserver !== "undefined" && containerRef.current
-        ? new ResizeObserver(updateSize)
+        ? new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry) return;
+            updateSize(entry.contentRect);
+          })
         : null;
+    const updateFromViewport = () => updateSize();
     if (resizeObserver && containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
-    window.addEventListener("resize", updateSize);
+    window.addEventListener("resize", updateFromViewport);
+    window.visualViewport?.addEventListener("resize", updateFromViewport);
     return () => {
+      if (resizeFrameRef.current !== null) {
+        cancelAnimationFrame(resizeFrameRef.current);
+      }
       resizeObserver?.disconnect();
-      window.removeEventListener("resize", updateSize);
+      window.removeEventListener("resize", updateFromViewport);
+      window.visualViewport?.removeEventListener("resize", updateFromViewport);
     };
   }, []);
 
@@ -188,10 +308,15 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     const onMove = (e: MouseEvent) => {
       const origin = panOriginRef.current;
       if (!origin) return;
-      setPanOffset({
-        x: origin.ox + (e.clientX - origin.cx),
-        y: origin.oy + (e.clientY - origin.cy),
-      });
+      setPanOffset(
+        clampPanOffset(
+          {
+            x: origin.ox + (e.clientX - origin.cx),
+            y: origin.oy + (e.clientY - origin.cy),
+          },
+          layerScale
+        )
+      );
     };
     const onUp = () => {
       panOriginRef.current = null;
@@ -203,7 +328,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [isMiddlePan]);
+  }, [clampPanOffset, isMiddlePan, layerScale]);
 
   const labelMetaMap = useMemo(() => buildLabelMetaMap(labels), [labels]);
   const getShapeColor = useCallback((classLabelId: number) => colorFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
@@ -448,6 +573,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     /* tool actions live in handleStageClick so that drag on a shape (which suppresses click) doesn't accidentally fire them */
   };
 
+  const handleStageDblClick = (e: KonvaEventObject<MouseEvent>) => {
+    if (!isCanvasBackground(e)) return;
+    fitToWindow();
+  };
+
   const performRectClick = (e: KonvaEventObject<MouseEvent>) => {
     const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
     if (!pos) return;
@@ -504,17 +634,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     if (!stage) return;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
-    const dir = e.evt.deltaY > 0 ? -1 : 1;
-    const nextZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomMul * (1 + 0.1 * dir)));
-    if (nextZoom === zoomMul) return;
-    const imgX = (pointer.x - layerX) / layerScale;
-    const imgY = (pointer.y - layerY) / layerScale;
-    const nextScale = baseFit.scale * nextZoom;
-    setZoomMul(nextZoom);
-    setPanOffset({
-      x: pointer.x - baseFit.x - imgX * nextScale,
-      y: pointer.y - baseFit.y - imgY * nextScale,
-    });
+    const wheelFactor = 1 + ZOOM_WHEEL_STEP;
+    zoomAtPoint(zoomMul * (e.evt.deltaY > 0 ? 1 / wheelFactor : wheelFactor), pointer);
   };
 
   const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
@@ -564,64 +685,55 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         };
         setIsMiddlePan(true);
       }}
-      className={`relative h-full min-h-0 w-full bg-stone-100 p-6 shadow-xl shadow-stone-200/50 ${cursorClass}`}
+      className={`relative h-full min-h-0 w-full bg-[#f3f0eb] p-3 shadow-xl shadow-stone-200/50 ${cursorClass}`}
       onContextMenu={(e) => {
         if (!contextMenu) return;
         e.preventDefault();
       }}
     >
-      <div ref={containerRef} className="relative h-full w-full overflow-hidden">
-      <div className="absolute right-3 top-3 z-[120] flex flex-col gap-1.5 rounded-2xl border border-stone-200/90 bg-white/95 p-1.5 shadow-lg shadow-stone-300/40 backdrop-blur-sm">
-        <button type="button" title="Fit to window" onClick={fitToWindow} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
-          <Maximize2 className="h-[22px] w-[22px]" />
-        </button>
-        <button type="button" title="Zoom in" onClick={() => {
-          const nextZoom = Math.min(ZOOM_MAX, zoomMul * 1.2);
-          if (nextZoom === zoomMul) return;
-          const cx = containerW / 2;
-          const cy = containerH / 2;
-          const imgX = (cx - layerX) / layerScale;
-          const imgY = (cy - layerY) / layerScale;
-          const nextScale = baseFit.scale * nextZoom;
-          setZoomMul(nextZoom);
-          setPanOffset({
-            x: cx - baseFit.x - imgX * nextScale,
-            y: cy - baseFit.y - imgY * nextScale,
-          });
-        }} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
-          <ZoomIn className="h-[22px] w-[22px]" />
-        </button>
-        <button type="button" title="Zoom out" onClick={() => {
-          const nextZoom = Math.max(ZOOM_MIN, zoomMul / 1.2);
-          if (nextZoom === zoomMul) return;
-          const cx = containerW / 2;
-          const cy = containerH / 2;
-          const imgX = (cx - layerX) / layerScale;
-          const imgY = (cy - layerY) / layerScale;
-          const nextScale = baseFit.scale * nextZoom;
-          setZoomMul(nextZoom);
-          setPanOffset({
-            x: cx - baseFit.x - imgX * nextScale,
-            y: cy - baseFit.y - imgY * nextScale,
-          });
-        }} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
-          <ZoomOut className="h-[22px] w-[22px]" />
-        </button>
-        <span className="px-1 pb-1 text-center text-[11px] font-bold tabular-nums text-stone-500">{zoomPct}%</span>
-      </div>
+      <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-xl border border-stone-200/80 bg-stone-200/40 shadow-inner">
+        <div className="absolute right-3 top-3 z-[120] flex flex-col gap-1.5 rounded-2xl border border-stone-200/90 bg-white/95 p-1.5 shadow-lg shadow-stone-300/40 backdrop-blur-sm">
+          <button type="button" title="Fit to window" aria-label="Fit to window" onClick={fitToWindow} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+            <Maximize2 className="h-[22px] w-[22px]" />
+          </button>
+          <button type="button" title="Zoom in" aria-label="Zoom in" onClick={zoomIn} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+            <ZoomIn className="h-[22px] w-[22px]" />
+          </button>
+          <button type="button" title="Zoom out" aria-label="Zoom out" onClick={zoomOut} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+            <ZoomOut className="h-[22px] w-[22px]" />
+          </button>
+          <span className="px-1 pb-1 text-center text-[11px] font-bold tabular-nums text-stone-500">{zoomPct}%</span>
+        </div>
 
-      <Stage
-        width={dimensions.width}
-        height={dimensions.height}
-        onMouseDown={handleStageMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onWheel={handleWheel}
-        onClick={handleStageClick}
-      >
-        <Layer ref={layerRef} scaleX={layerScale} scaleY={layerScale} x={layerX} y={layerY}>
-          {image && <KonvaImage image={image} name="background-image" listening />}
-          {image && <Rect name="stage-background" x={0} y={0} width={image.width} height={image.height} fill="transparent" listening />}
+        {image && imageW > 0 && imageH > 0 && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="pointer-events-none absolute left-0 top-0 max-w-none select-none"
+            style={{
+              width: imageW,
+              height: imageH,
+              transform: `translate3d(${layerX}px, ${layerY}px, 0) scale(${layerScale})`,
+              transformOrigin: "top left",
+            }}
+          />
+        )}
+
+        <Stage
+          width={dimensions.width}
+          height={dimensions.height}
+          onMouseDown={handleStageMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onWheel={handleWheel}
+          onClick={handleStageClick}
+          onDblClick={handleStageDblClick}
+        >
+          <Layer ref={layerRef} scaleX={layerScale} scaleY={layerScale} x={layerX} y={layerY}>
+            {image && <Rect name="stage-background" x={0} y={0} width={image.width} height={image.height} fill="transparent" listening />}
 
           {shapes.map((shape) => {
             if (hiddenShapeIds.includes(shape.clientId)) return null;
