@@ -45,7 +45,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   // ── Annotation terminal (datasets … / annotate / …) ──────────
   if (isAnnotateWorkspace(pathname)) {
     return (
-      <div className="flex h-dvh flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">{children}</div>
+      <div className="flex h-screen flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">{children}</div>
     );
   }
 

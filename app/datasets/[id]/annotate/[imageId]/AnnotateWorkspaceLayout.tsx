@@ -287,8 +287,8 @@ export function ToolPane({
 }) {
   return (
     <aside
-      className="z-20 flex shrink-0 flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-2 py-4 shadow-sm shadow-stone-200/30 sm:px-2.5"
-      style={{ width: 64 }}
+      className="z-20 flex flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-2 py-4 shadow-sm shadow-stone-200/30 sm:px-2.5"
+      style={{ width, minWidth: width, maxWidth: width, flexShrink: 0, flexGrow: 0 }}
     >
       <div className="flex flex-col gap-2 p-1">
         {TOOLBAR.map(({ tool, icon, label, key }) => (
@@ -403,7 +403,7 @@ export function CanvasStage({
   onToolChange: (tool: Tool) => void;
 }) {
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch overflow-hidden p-2">
+    <div className="relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch overflow-hidden">
       {loading ? (
         <div className="absolute inset-4 z-10 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-stone-500">
@@ -412,7 +412,7 @@ export function CanvasStage({
           </div>
         </div>
       ) : (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="h-full w-full min-h-0">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45 }} className="absolute inset-0">
           <AnnotationEditor
             key={currentDraftKey}
             imageUrl={imageUrl}
@@ -478,8 +478,8 @@ export function RightPane({
 }) {
   return (
     <aside
-      className="z-20 grid h-full shrink-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l border-stone-200/80 bg-white/90 p-4 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
-      style={{ width }}
+      className="z-20 grid h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l border-stone-200/80 bg-white/90 p-4 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
+      style={{ width, minWidth: width, maxWidth: width, flexShrink: 0, flexGrow: 0 }}
     >
       <RightPaneTabs activeTab={activeTab} objectCount={shapes.length} onTabChange={onTabChange} />
 
@@ -1160,7 +1160,7 @@ export function TimelineBar({
   ];
 
   return (
-    <div className="z-30 flex shrink-0 select-none items-center gap-3 border-t border-stone-200/80 bg-white/95 px-4 py-1 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl">
+    <div className="z-30 flex select-none items-center gap-3 border-t border-stone-200/80 bg-white/95 px-4 py-1 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl" style={{ width: '100%', flexShrink: 0, flexGrow: 0 }}>
       <div className="flex items-center gap-1.5">
         {controls.map(({ icon, label, action }) => (
           <button key={label} type="button" title={label} onClick={action} className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200">

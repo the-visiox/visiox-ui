@@ -564,7 +564,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         };
         setIsMiddlePan(true);
       }}
-      className={`relative h-full min-h-0 w-full bg-stone-100 p-4 shadow-xl shadow-stone-200/50 ${cursorClass}`}
+      className={`relative h-full min-h-0 w-full bg-stone-100 p-6 shadow-xl shadow-stone-200/50 ${cursorClass}`}
       onContextMenu={(e) => {
         if (!contextMenu) return;
         e.preventDefault();
@@ -575,10 +575,36 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         <button type="button" title="Fit to window" onClick={fitToWindow} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
           <Maximize2 className="h-[22px] w-[22px]" />
         </button>
-        <button type="button" title="Zoom in" onClick={() => setZoomMul((z) => Math.min(ZOOM_MAX, z * 1.2))} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+        <button type="button" title="Zoom in" onClick={() => {
+          const nextZoom = Math.min(ZOOM_MAX, zoomMul * 1.2);
+          if (nextZoom === zoomMul) return;
+          const cx = containerW / 2;
+          const cy = containerH / 2;
+          const imgX = (cx - layerX) / layerScale;
+          const imgY = (cy - layerY) / layerScale;
+          const nextScale = baseFit.scale * nextZoom;
+          setZoomMul(nextZoom);
+          setPanOffset({
+            x: cx - baseFit.x - imgX * nextScale,
+            y: cy - baseFit.y - imgY * nextScale,
+          });
+        }} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
           <ZoomIn className="h-[22px] w-[22px]" />
         </button>
-        <button type="button" title="Zoom out" onClick={() => setZoomMul((z) => Math.max(ZOOM_MIN, z / 1.2))} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
+        <button type="button" title="Zoom out" onClick={() => {
+          const nextZoom = Math.max(ZOOM_MIN, zoomMul / 1.2);
+          if (nextZoom === zoomMul) return;
+          const cx = containerW / 2;
+          const cy = containerH / 2;
+          const imgX = (cx - layerX) / layerScale;
+          const imgY = (cy - layerY) / layerScale;
+          const nextScale = baseFit.scale * nextZoom;
+          setZoomMul(nextZoom);
+          setPanOffset({
+            x: cx - baseFit.x - imgX * nextScale,
+            y: cy - baseFit.y - imgY * nextScale,
+          });
+        }} className="flex h-12 w-12 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
           <ZoomOut className="h-[22px] w-[22px]" />
         </button>
         <span className="px-1 pb-1 text-center text-[11px] font-bold tabular-nums text-stone-500">{zoomPct}%</span>
