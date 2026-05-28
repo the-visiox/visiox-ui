@@ -68,7 +68,7 @@ function menuPositionFromPointer(evt: MouseEvent | PointerEvent, container: HTML
 
 const RECT_MIN_SIZE = 5;
 const ZOOM_MIN = 0.12;
-const ZOOM_MAX = 10;
+const ZOOM_MAX = 100;
 const ZOOM_BUTTON_STEP = 1.2;
 const ZOOM_WHEEL_STEP = 0.1;
 const ZOOM_SNAP_EPSILON = 0.005;
@@ -573,11 +573,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     /* tool actions live in handleStageClick so that drag on a shape (which suppresses click) doesn't accidentally fire them */
   };
 
-  const handleStageDblClick = (e: KonvaEventObject<MouseEvent>) => {
-    if (!isCanvasBackground(e)) return;
-    fitToWindow();
-  };
-
   const performRectClick = (e: KonvaEventObject<MouseEvent>) => {
     const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
     if (!pos) return;
@@ -668,14 +663,14 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     : canDrawRect || canDrawPath || canPlacePoint || canPlaceTag
       ? "cursor-crosshair"
       : "cursor-default";
-  const zoomPct = Math.round(zoomMul * 100);
+
 
   return (
     <div
       onMouseDown={(e) => {
         const isMiddle = e.button === 1;
-        const isCtrlLeft = e.button === 0 && e.ctrlKey;
-        if (!isMiddle && !isCtrlLeft) return;
+        const isRight = e.button === 2;
+        if (!isMiddle && !isRight) return;
         e.preventDefault();
         panOriginRef.current = {
           cx: e.clientX,
@@ -687,7 +682,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       }}
       className={`relative h-full min-h-0 w-full bg-[#f3f0eb] shadow-xl shadow-stone-200/50 ${cursorClass}`}
       onContextMenu={(e) => {
-        if (!contextMenu) return;
         e.preventDefault();
       }}
     >
@@ -702,7 +696,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           <button type="button" title="Zoom out" aria-label="Zoom out" onClick={zoomOut} className="flex h-10 w-10 items-center justify-center rounded-xl text-stone-600 transition hover:bg-stone-100 hover:text-stone-900">
             <ZoomOut className="h-[22px] w-[22px]" />
           </button>
-          <span className="px-1 pb-1 text-center text-[11px] font-bold tabular-nums text-stone-500">{zoomPct}%</span>
+
         </div>
 
         {image && imageW > 0 && imageH > 0 && (
@@ -730,7 +724,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           onMouseUp={handleMouseUp}
           onWheel={handleWheel}
           onClick={handleStageClick}
-          onDblClick={handleStageDblClick}
+
         >
           <Layer ref={layerRef} scaleX={layerScale} scaleY={layerScale} x={layerX} y={layerY}>
             {image && <Rect name="stage-background" x={0} y={0} width={image.width} height={image.height} fill="transparent" listening />}
