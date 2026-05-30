@@ -144,7 +144,7 @@ function hsvToRgb({ h, s, v }: HsvColor): RgbColor {
   else if (h < 180) [red, green, blue] = [0, c, x];
   else if (h < 240) [red, green, blue] = [0, x, c];
   else if (h < 300) [red, green, blue] = [x, 0, c];
-  else [red, green, blue] = [c, 0, x];
+  else[red, green, blue] = [c, 0, x];
 
   return {
     r: clampColorChannel((red + m) * 255),
@@ -352,11 +352,10 @@ function ToolButton({
       type="button"
       title={`${label} (${shortcut})`}
       onClick={() => onToolChange(tool)}
-      className={`inline-flex h-10 w-10 self-center flex-col items-center justify-center gap-1 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all ${
-        isActive
+      className={`inline-flex h-10 w-10 self-center flex-col items-center justify-center gap-1 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all ${isActive
           ? "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400/25"
           : "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white hover:text-stone-900 hover:shadow-sm"
-      }`}
+        }`}
     >
       {icon}
     </button>
@@ -561,11 +560,10 @@ function RightPaneTabs({
             key={tab}
             type="button"
             onClick={() => onTabChange(tab)}
-            className={`-mb-px border-b-2 px-3 pb-2 text-sm font-bold uppercase tracking-widest transition ${
-              activeTab === tab
+            className={`-mb-px border-b-2 px-3 pb-2 text-sm font-bold uppercase tracking-widest transition ${activeTab === tab
                 ? "border-orange-500 text-stone-900"
                 : "border-transparent text-stone-400 hover:text-stone-700"
-            }`}
+              }`}
           >
             {tab === "objects" ? "Objects" : "Labels"}
           </button>
@@ -788,38 +786,38 @@ function LabelColorPicker({
             />
           </div>
 
-            <div className="mt-3 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2">
-              <label className="col-span-1 min-w-0">
-                <span className="sr-only">Hex</span>
-                <input
-                  type="text"
-                  value={draftColor.replace("#", "")}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setDraftColor(`#${next}`);
-                    if (/^[0-9A-Fa-f]{3}$|^[0-9A-Fa-f]{6}$/.test(next)) {
-                      onChange(normalizeHexColor(next, draftColor));
-                    }
-                  }}
-                  onBlur={() => commitColor(draftColor)}
-                  className="h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-2 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
-                />
-              </label>
+          <div className="mt-3 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2">
+            <label className="col-span-1 min-w-0">
+              <span className="sr-only">Hex</span>
+              <input
+                type="text"
+                value={draftColor.replace("#", "")}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setDraftColor(`#${next}`);
+                  if (/^[0-9A-Fa-f]{3}$|^[0-9A-Fa-f]{6}$/.test(next)) {
+                    onChange(normalizeHexColor(next, draftColor));
+                  }
+                }}
+                onBlur={() => commitColor(draftColor)}
+                className="h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-2 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+              />
+            </label>
 
-              {(["r", "g", "b"] as const).map((channel) => (
-                <label key={channel} className="min-w-0">
-                  <span className="sr-only">{channel.toUpperCase()}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={255}
-                    value={rgb[channel]}
-                    onChange={(event) => updateRgb(channel, event.target.value)}
+            {(["r", "g", "b"] as const).map((channel) => (
+              <label key={channel} className="min-w-0">
+                <span className="sr-only">{channel.toUpperCase()}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={255}
+                  value={rgb[channel]}
+                  onChange={(event) => updateRgb(channel, event.target.value)}
                   className="no-number-spinner h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-1 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
                 />
-                </label>
-              ))}
-            </div>
+              </label>
+            ))}
+          </div>
 
           <div className="mt-1 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2 text-center text-[10px] font-bold text-stone-500">
             <span>Hex</span>
@@ -1006,7 +1004,7 @@ function ObjectRow({
       className={`group space-y-1 rounded-2xl border p-2.5 transition-colors hover:bg-white ${isSelected ? "ring-2 ring-orange-400/60" : ""}`}
       style={{
         borderColor: isSelected ? `${color}99` : `${color}55`,
-        backgroundColor: isSelected ? `${color}22` : `${color}0F`,
+        backgroundColor: isSelected ? `${color}33` : `${color}0F`,
       }}
     >
       <div className="flex cursor-pointer items-center justify-between" onClick={() => { onSelect(shape.clientId); onActiveClassIdChange(shape.classLabelId); }}>
@@ -1072,9 +1070,8 @@ function ObjectIconButton({
         e.stopPropagation();
         onClick();
       }}
-      className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
-        active ? activeClassName : "text-stone-400 hover:bg-white hover:text-stone-800"
-      }`}
+      className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${active ? activeClassName : "text-stone-400 hover:bg-white hover:text-stone-800"
+        }`}
     >
       {children}
     </button>
@@ -1154,9 +1151,8 @@ function ClassMenuItem({
         e.stopPropagation();
         onSelect(label.id);
       }}
-      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold normal-case tracking-normal transition ${
-        selected ? "bg-white text-stone-800" : "text-stone-300 hover:bg-stone-50 hover:text-stone-900"
-      }`}
+      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold normal-case tracking-normal transition ${selected ? "bg-white text-stone-800" : "text-stone-300 hover:bg-stone-50 hover:text-stone-900"
+        }`}
     >
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
       <span className="min-w-0 flex-1 truncate">{label.name}</span>
@@ -1206,7 +1202,7 @@ export function TimelineBar({
     { icon: <ChevronFirst className="h-4 w-4" />, label: "First", action: () => onNavigateTo(1) },
     { icon: <ChevronsLeft className="h-4 w-4" />, label: "Back 10", action: () => onNavigateTo(current - 10, { wrap: true }) },
     { icon: <ChevronLeft className="h-4 w-4" />, label: "Prev", action: () => onNavigateTo(current - 1, { wrap: true }) },
-    { icon: <Play className="h-4 w-4" />, label: "Play", action: () => {} },
+    { icon: <Play className="h-4 w-4" />, label: "Play", action: () => { } },
     { icon: <ChevronRight className="h-4 w-4" />, label: "Next", action: () => onNavigateTo(current + 1, { wrap: true }) },
     { icon: <ChevronsRight className="h-4 w-4" />, label: "Forward 10", action: () => onNavigateTo(current + 10, { wrap: true }) },
     { icon: <ChevronLast className="h-4 w-4" />, label: "Last", action: () => onNavigateTo(total || 1) },

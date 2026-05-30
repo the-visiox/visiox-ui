@@ -188,12 +188,14 @@ export default function AnnotatePageClient() {
   const [pinnedShapeIds, setPinnedShapeIds] = useState<string[]>([]);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
   const isLoadingRef = useRef(false);
   const previousDraftKeyRef = useRef<string | null>(null);
   const draftCacheRef = useRef<Record<string, EditorShape[]>>({});
+  const savedShapesJsonRef = useRef<string>("[]");
   shapesRef.current = shapes;
 
   const currentDraftKey = useMemo(
@@ -423,6 +425,7 @@ export default function AnnotatePageClient() {
         }
 
         const apiShapes = apiShapesToEditor(annotations);
+        savedShapesJsonRef.current = JSON.stringify(apiShapes);
         const draft = readDraft(currentDraftKey);
         if (draft.exists) {
           _setShapes(sessionRef.current.hydrate(draft.shapes));
@@ -599,6 +602,7 @@ export default function AnnotatePageClient() {
       }
 
       if (typeof window !== "undefined") {
+        savedShapesJsonRef.current = JSON.stringify(shapes);
         persistDraft(currentDraftKey, shapes);
         try {
           const ch = new BroadcastChannel("visiox-annotations");
@@ -799,6 +803,99 @@ export default function AnnotatePageClient() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
+      {showExitConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="relative w-96 rounded-2xl bg-white p-6 shadow-2xl">
+            {/* Close button */}
+            <button
+              type="button"
+              onClick={() => setShowExitConfirm(false)}
+              className="absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+              aria-label="Close"
+            >
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18 6L6 18" />
+                <path d="M6 6L18 18" />
+              </svg>
+            </button>
+
+            <h2 className="text-base font-bold text-stone-900">
+              Unsaved changes
+            </h2>
+
+            <p className="mt-1.5 text-sm text-stone-500">
+              You have unsaved annotations. Save before leaving?
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              {/* Discard */}
+              <button
+                type="button"
+                onClick={() => router.push(`/datasets/${params.id}`)}
+                className="flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-100"
+              >
+                Discard changes
+              </button>
+
+              {/* Save & Exit */}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  await handleSave();
+                  router.push(`/datasets/${params.id}`);
+                }}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+              >
+                {saving ? (
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v8z"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                )}
+                Save & Exit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {saveSuccess && (
           <motion.div
@@ -826,7 +923,13 @@ export default function AnnotatePageClient() {
         saving={saving}
         canUndo={canUndo}
         canRedo={canRedo}
-        onBack={() => router.push(`/datasets/${params.id}`)}
+        onBack={() => {
+          if (JSON.stringify(shapes) !== savedShapesJsonRef.current) {
+            setShowExitConfirm(true);
+          } else {
+            router.push(`/datasets/${params.id}`);
+          }
+        }}
         onUndo={undo}
         onRedo={redo}
         onSave={handleSave}
