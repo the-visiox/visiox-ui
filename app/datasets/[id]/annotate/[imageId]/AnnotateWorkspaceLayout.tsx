@@ -404,6 +404,8 @@ export function CanvasStage({
   onActiveClassIdChange,
   onShapesChange,
   onToolChange,
+  onSelectedIdChange,
+  externalSelectedId,
 }: {
   loading: boolean;
   currentDraftKey: string;
@@ -418,6 +420,8 @@ export function CanvasStage({
   onActiveClassIdChange: (classId: number) => void;
   onShapesChange: ShapeSetter;
   onToolChange: (tool: Tool) => void;
+  onSelectedIdChange?: (id: string | null) => void;
+  externalSelectedId?: string | null;
 }) {
   return (
     <div className="relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch overflow-hidden">
@@ -443,6 +447,8 @@ export function CanvasStage({
             polygonVertexCount={polygonVertexCount}
             hiddenShapeIds={hiddenShapeIds}
             pinnedShapeIds={pinnedShapeIds}
+            onSelectedIdChange={onSelectedIdChange}
+            externalSelectedId={externalSelectedId}
           />
         </motion.div>
       )}
@@ -461,6 +467,8 @@ export function RightPane({
   newLabelName,
   newLabelColor,
   labelBusyId,
+  selectedShapeId,
+  onSelectShape,
   onTabChange,
   onNewLabelNameChange,
   onNewLabelColorChange,
@@ -482,6 +490,7 @@ export function RightPane({
   newLabelName: string;
   newLabelColor: string;
   labelBusyId: number | "new" | null;
+  selectedShapeId: string | null;
   onTabChange: (tab: RightTab) => void;
   onNewLabelNameChange: (value: string) => void;
   onNewLabelColorChange: (value: string) => void;
@@ -492,6 +501,7 @@ export function RightPane({
   onOpenClassMenuIdChange: React.Dispatch<React.SetStateAction<string | null>>;
   onToggleShapeHidden: (shapeId: string) => void;
   onToggleShapePinned: (shapeId: string) => void;
+  onSelectShape: (shapeId: string) => void;
 }) {
   return (
     <aside
@@ -520,11 +530,13 @@ export function RightPane({
             hiddenShapeIds={hiddenShapeIds}
             pinnedShapeIds={pinnedShapeIds}
             openClassMenuId={openClassMenuId}
+            selectedShapeId={selectedShapeId}
             onShapeClassChange={onShapeClassChange}
             onActiveClassIdChange={onActiveClassIdChange}
             onOpenClassMenuIdChange={onOpenClassMenuIdChange}
             onToggleShapeHidden={onToggleShapeHidden}
             onToggleShapePinned={onToggleShapePinned}
+            onSelectShape={onSelectShape}
           />
         )}
       </div>
@@ -549,7 +561,7 @@ function RightPaneTabs({
             key={tab}
             type="button"
             onClick={() => onTabChange(tab)}
-            className={`-mb-px border-b-2 px-3 pb-2.5 text-sm font-bold uppercase tracking-widest transition ${
+            className={`-mb-px border-b-2 px-3 pb-2 text-sm font-bold uppercase tracking-widest transition ${
               activeTab === tab
                 ? "border-orange-500 text-stone-900"
                 : "border-transparent text-stone-400 hover:text-stone-700"
@@ -560,7 +572,7 @@ function RightPaneTabs({
         ))}
       </div>
       {activeTab === "objects" && (
-        <span className="rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-bold text-stone-500">{objectCount} total</span>
+        <span className="rounded-lg bg-stone-100 px-2.5 mb-2 py-1 text-xs font-bold text-stone-500">{objectCount} total</span>
       )}
     </div>
   );
@@ -613,15 +625,21 @@ function LabelsPanel({
         </button>
       </form>
       <div className="custom-scrollbar min-h-0 flex-1 max-h-[68.3vh] space-y-2 overflow-y-auto overscroll-contain pr-2">
-        {labels.map((label) => (
-          <LabelRow
-            key={label.id}
-            label={label}
-            isUsed={shapes.some((shape) => shape.classLabelId === label.id)}
-            deleting={labelBusyId === label.id}
-            onDelete={onDeleteLabel}
-          />
-        ))}
+        {labels.length === 0 ? (
+          <p className="pt-6 text-center text-xs text-stone-400">
+            No classes yet. Add classes in project settings or create one above.
+          </p>
+        ) : (
+          labels.map((label) => (
+            <LabelRow
+              key={label.id}
+              label={label}
+              isUsed={shapes.some((shape) => shape.classLabelId === label.id)}
+              deleting={labelBusyId === label.id}
+              onDelete={onDeleteLabel}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -890,26 +908,30 @@ function ObjectsPanel({
   hiddenShapeIds,
   pinnedShapeIds,
   openClassMenuId,
+  selectedShapeId,
   onShapeClassChange,
   onActiveClassIdChange,
   onOpenClassMenuIdChange,
   onToggleShapeHidden,
   onToggleShapePinned,
+  onSelectShape,
 }: {
   shapes: EditorShape[];
   labels: LabelDefinition[];
   hiddenShapeIds: string[];
   pinnedShapeIds: string[];
   openClassMenuId: string | null;
+  selectedShapeId: string | null;
   onShapeClassChange: (shapeId: string, classId: number) => void;
   onActiveClassIdChange: (classId: number) => void;
   onOpenClassMenuIdChange: React.Dispatch<React.SetStateAction<string | null>>;
   onToggleShapeHidden: (shapeId: string) => void;
   onToggleShapePinned: (shapeId: string) => void;
+  onSelectShape: (shapeId: string) => void;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
-      <div className="custom-scrollbar min-h-0 flex-1 max-h-[77vh] space-y-2 overflow-y-auto overscroll-contain pr-2">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-3">
+      <div className="custom-scrollbar min-h-0 flex-1 max-h-[77vh] space-y-2 overflow-y-auto overscroll-contain pr-2 p-1">
         {shapes.length === 0 && (
           <p className="text-base leading-relaxed text-stone-500">
             Box: click two corners on the image (N).
@@ -924,11 +946,13 @@ function ObjectsPanel({
             isHidden={hiddenShapeIds.includes(shape.clientId)}
             isPinned={pinnedShapeIds.includes(shape.clientId)}
             isMenuOpen={openClassMenuId === shape.clientId}
+            isSelected={selectedShapeId === shape.clientId}
             onShapeClassChange={onShapeClassChange}
             onActiveClassIdChange={onActiveClassIdChange}
             onOpenClassMenuIdChange={onOpenClassMenuIdChange}
             onToggleShapeHidden={onToggleShapeHidden}
             onToggleShapePinned={onToggleShapePinned}
+            onSelect={onSelectShape}
           />
         ))}
       </div>
@@ -943,11 +967,13 @@ function ObjectRow({
   isHidden,
   isPinned,
   isMenuOpen,
+  isSelected,
   onShapeClassChange,
   onActiveClassIdChange,
   onOpenClassMenuIdChange,
   onToggleShapeHidden,
   onToggleShapePinned,
+  onSelect,
 }: {
   shape: EditorShape;
   index: number;
@@ -955,25 +981,35 @@ function ObjectRow({
   isHidden: boolean;
   isPinned: boolean;
   isMenuOpen: boolean;
+  isSelected: boolean;
   onShapeClassChange: (shapeId: string, classId: number) => void;
   onActiveClassIdChange: (classId: number) => void;
   onOpenClassMenuIdChange: React.Dispatch<React.SetStateAction<string | null>>;
   onToggleShapeHidden: (shapeId: string) => void;
   onToggleShapePinned: (shapeId: string) => void;
+  onSelect: (shapeId: string) => void;
 }) {
   const currentLabel = labels.find((item) => item.id === shape.classLabelId);
   const name = currentLabel?.name ?? "?";
   const color = currentLabel?.color ?? "#999";
+  const rowRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (isSelected) rowRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [isSelected]);
 
   return (
-    <div
-      className="group space-y-1 rounded-2xl border p-2.5 transition-all hover:bg-white"
+    <motion.div
+      ref={rowRef}
+      animate={isSelected ? { boxShadow: [`0 0 0px ${color}00`, `0 0 12px ${color}88`, `0 0 6px ${color}44`] } : { boxShadow: `0 0 0px ${color}00` }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className={`group space-y-1 rounded-2xl border p-2.5 transition-colors hover:bg-white ${isSelected ? "ring-2 ring-orange-400/60" : ""}`}
       style={{
-        borderColor: `${color}55`,
-        backgroundColor: `${color}0F`,
+        borderColor: isSelected ? `${color}99` : `${color}55`,
+        backgroundColor: isSelected ? `${color}22` : `${color}0F`,
       }}
     >
-      <div className="flex cursor-pointer items-center justify-between" onClick={() => onActiveClassIdChange(shape.classLabelId)}>
+      <div className="flex cursor-pointer items-center justify-between" onClick={() => { onSelect(shape.clientId); onActiveClassIdChange(shape.classLabelId); }}>
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[11px] font-black tabular-nums text-stone-700">
             {index + 1}.
@@ -1010,7 +1046,7 @@ function ObjectRow({
         onActiveClassIdChange={onActiveClassIdChange}
         onOpenClassMenuIdChange={onOpenClassMenuIdChange}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -1073,7 +1109,7 @@ function ClassMenu({
             e.stopPropagation();
             onOpenClassMenuIdChange((prev) => (prev === shape.clientId ? null : shape.clientId));
           }}
-          className="flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-left text-sm font-semibold normal-case tracking-normal text-stone-800 shadow-sm shadow-stone-200/50 outline-none transition hover:border-orange-200 hover:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-400/15"
+          className="flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-left text-sm font-semibold normal-case tracking-normal text-stone-800 shadow-sm shadow-stone-200/50 outline-none transition hover:border-stone-400 hover:bg-white focus:border-stone-400 "
         >
           <span className="flex min-w-0 items-center gap-2">
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
@@ -1119,7 +1155,7 @@ function ClassMenuItem({
         onSelect(label.id);
       }}
       className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold normal-case tracking-normal transition ${
-        selected ? "bg-orange-50 text-orange-700" : "text-stone-700 hover:bg-stone-50 hover:text-stone-900"
+        selected ? "bg-white text-stone-800" : "text-stone-300 hover:bg-stone-50 hover:text-stone-900"
       }`}
     >
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />

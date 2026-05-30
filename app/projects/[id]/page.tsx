@@ -610,6 +610,16 @@ function CreateDatasetModal({
 
 const DEFAULT_CLASS_COLOR = "#E66700";
 
+function broadcastClassChange(projectId: number) {
+  try {
+    const ch = new BroadcastChannel("visiox-project-classes");
+    ch.postMessage({ type: "classes-updated", projectId });
+    ch.close();
+  } catch {
+    // BroadcastChannel not supported in this environment
+  }
+}
+
 function ClassEditorInline({
   projectId,
   editing,
@@ -662,6 +672,7 @@ function ClassEditorInline({
       } else {
         await annotationClasses.create({ project: projectId, name: name.trim(), color });
       }
+      broadcastClassChange(projectId);
       onSaved();
       onClose();
     } catch (err: unknown) {
@@ -756,6 +767,33 @@ export default function ProjectDetailPage() {
       setInvitations([]);
     }
   }, []);
+
+  const refreshDatasetCounts = useCallback(async (projectId: number) => {
+    try {
+      const res = await datasets.list(projectId);
+      setDatasetList(res.results);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    const projectId = parseInt(id as string, 10);
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("visiox-annotations");
+      channel.onmessage = (e: MessageEvent<{ type: string }>) => {
+        if (e.data?.type === "annotations-saved") void refreshDatasetCounts(projectId);
+      };
+    } catch { /* ignore */ }
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshDatasetCounts(projectId);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      try { channel?.close(); } catch { /* ignore */ }
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [id, refreshDatasetCounts]);
 
   useEffect(() => {
     if (!id) return;
@@ -1007,6 +1045,7 @@ export default function ProjectDetailPage() {
                         void (async () => {
                           try {
                             await annotationClasses.delete(c.id);
+                            broadcastClassChange(project!.id);
                             await loadClasses();
                           } catch (err) {
                             window.alert(

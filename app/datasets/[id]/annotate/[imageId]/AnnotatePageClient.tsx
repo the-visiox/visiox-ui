@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
 import {
@@ -132,10 +133,6 @@ function wrapIndex(oneBasedIdx: number, total: number): number {
   return wrapped + 1;
 }
 
-function randomLabelColor() {
-  return `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}`;
-}
-
 export default function AnnotatePageClient() {
   const params = useParams();
   const router = useRouter();
@@ -189,6 +186,8 @@ export default function AnnotatePageClient() {
   const [activeRightTab, setActiveRightTab] = useState<"objects" | "labels">("objects");
   const [hiddenShapeIds, setHiddenShapeIds] = useState<string[]>([]);
   const [pinnedShapeIds, setPinnedShapeIds] = useState<string[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
@@ -419,8 +418,8 @@ export default function AnnotatePageClient() {
           setLabels(merged);
           setActiveClassId(merged[0]?.id ?? classes[0].id);
         } else {
-          setLabels([...DEMO_LABELS]);
-          setActiveClassId(1);
+          setLabels([]);
+          setActiveClassId(0);
         }
 
         const apiShapes = apiShapesToEditor(annotations);
@@ -601,6 +600,13 @@ export default function AnnotatePageClient() {
 
       if (typeof window !== "undefined") {
         persistDraft(currentDraftKey, shapes);
+        try {
+          const ch = new BroadcastChannel("visiox-annotations");
+          ch.postMessage({ type: "annotations-saved", datasetId });
+          ch.close();
+        } catch { /* ignore */ }
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2500);
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.body || e.message : "Save failed.");
@@ -708,6 +714,44 @@ export default function AnnotatePageClient() {
     }
   }, [activeClassId, isLoggedIn, labels, projectId, shapes]);
 
+  const handleSyncLabels = useCallback(async () => {
+    if (!projectId) return;
+    setError(null);
+    try {
+      const refreshed = await getClassesForProject(projectId);
+      const synced = refreshed.map((item) => ({
+        id: item.id,
+        name: item.name,
+        color: item.color || "#f97316",
+      }));
+      setLabels(synced);
+      setNewLabelColor(nextLabelColor(synced));
+      if (synced.length > 0) {
+        setActiveClassId((prev) => synced.some((l) => l.id === prev) ? prev : synced[0].id);
+      }
+    } catch {
+      // silent — don't show error on background sync
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("visiox-project-classes");
+      channel.onmessage = (e: MessageEvent<{ type: string; projectId: number }>) => {
+        if (e.data?.type === "classes-updated" && e.data?.projectId === projectId) {
+          void handleSyncLabels();
+        }
+      };
+    } catch {
+      // BroadcastChannel not supported
+    }
+    return () => {
+      try { channel?.close(); } catch { /* ignore */ }
+    };
+  }, [projectId, handleSyncLabels]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
@@ -755,6 +799,23 @@ export default function AnnotatePageClient() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
+      <AnimatePresence>
+        {saveSuccess && (
+          <motion.div
+            key="save-toast"
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="fixed left-1/2 top-6 z-[100] -translate-x-1/2 flex items-center gap-2.5 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-xl shadow-emerald-500/30"
+          >
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Saved successfully
+          </motion.div>
+        )}
+      </AnimatePresence>
       <WorkspaceHeader
         datasetId={params.id}
         imageId={params.imageId}
@@ -796,6 +857,8 @@ export default function AnnotatePageClient() {
           onActiveClassIdChange={setActiveClassId}
           onShapesChange={setShapes}
           onToolChange={setActiveTool}
+          onSelectedIdChange={setSelectedShapeId}
+          externalSelectedId={selectedShapeId}
         />
 
         <RightPane
@@ -809,6 +872,7 @@ export default function AnnotatePageClient() {
           newLabelName={newLabelName}
           newLabelColor={newLabelColor}
           labelBusyId={labelBusyId}
+          selectedShapeId={selectedShapeId}
           onTabChange={setActiveRightTab}
           onNewLabelNameChange={setNewLabelName}
           onNewLabelColorChange={setNewLabelColor}
@@ -819,6 +883,7 @@ export default function AnnotatePageClient() {
           onOpenClassMenuIdChange={setOpenClassMenuId}
           onToggleShapeHidden={toggleShapeHidden}
           onToggleShapePinned={toggleShapePinned}
+          onSelectShape={setSelectedShapeId}
         />
       </main>
 

@@ -29,6 +29,8 @@ interface AnnotationEditorProps {
   polygonVertexCount: number;
   hiddenShapeIds?: string[];
   pinnedShapeIds?: string[];
+  onSelectedIdChange?: (id: string | null) => void;
+  externalSelectedId?: string | null;
 }
 
 function layerPos(
@@ -97,6 +99,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   polygonVertexCount,
   hiddenShapeIds = [],
   pinnedShapeIds = [],
+  onSelectedIdChange,
+  externalSelectedId,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeFrameRef = useRef<number | null>(null);
@@ -104,6 +108,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const dimensionsRef = useRef(dimensions);
   const [image] = useImage(imageUrl, "anonymous");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const onSelectedIdChangeRef = useRef(onSelectedIdChange);
+  onSelectedIdChangeRef.current = onSelectedIdChange;
+  useEffect(() => { onSelectedIdChangeRef.current?.(selectedId); }, [selectedId]);
+  useEffect(() => { if (externalSelectedId !== undefined) setSelectedId(externalSelectedId ?? null); }, [externalSelectedId]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [newBox, setNewBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [pathDraft, setPathDraft] = useState<number[]>([]);

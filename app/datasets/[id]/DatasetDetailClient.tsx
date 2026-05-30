@@ -140,6 +140,8 @@ export default function DatasetDetailClient({ id }: Props) {
 
   const [stats, setStats] = useState<DatasetStats | null>(null);
   const [browserData, setBrowserData] = useState<BrowserData | null>(null);
+  const [annotatedCountApi, setAnnotatedCountApi] = useState<number | null>(null);
+  const [mediaCountApi, setMediaCountApi] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -155,11 +157,16 @@ export default function DatasetDetailClient({ id }: Props) {
   const imageBrowserPanelRef = useRef<HTMLDivElement>(null);
 
   const refreshStatsAndBrowser = useCallback(async () => {
-    const [statsResult, browserResult, mediaResult] = await Promise.allSettled([
+    const [dsResult, statsResult, browserResult, mediaResult] = await Promise.allSettled([
+      datasets.get(numericId),
       datasets.stats(numericId),
       datasets.browser(numericId),
       datasets.media(numericId),
     ]);
+    if (dsResult.status === 'fulfilled') {
+      setAnnotatedCountApi(dsResult.value.annotated_count ?? null);
+      setMediaCountApi(dsResult.value.media_count ?? null);
+    }
     if (statsResult.status === 'fulfilled') setStats(statsResult.value);
     if (browserResult.status === 'fulfilled') {
       const browser = browserResult.value;
@@ -168,7 +175,7 @@ export default function DatasetDetailClient({ id }: Props) {
     } else if (mediaResult.status === 'fulfilled' && mediaResult.value.some((item) => item.type === 'image')) {
       setBrowserData(buildMediaFallbackBrowserData(mediaResult.value, numericId));
     }
-    if (statsResult.status === 'rejected' && browserResult.status === 'rejected') {
+    if (dsResult.status === 'rejected' && statsResult.status === 'rejected' && browserResult.status === 'rejected') {
       setError('Failed to load dataset data');
     }
   }, [numericId]);
@@ -197,6 +204,28 @@ export default function DatasetDetailClient({ id }: Props) {
     anchorFrameIndexRef.current = null;
     setCurrentPage(1);
   }, [numericId]);
+
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("visiox-annotations");
+      channel.onmessage = (e: MessageEvent<{ type: string; datasetId: number }>) => {
+        if (e.data?.type === "annotations-saved" && e.data?.datasetId === numericId) {
+          void refreshStatsAndBrowser();
+        }
+      };
+    } catch { /* BroadcastChannel not supported */ }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshStatsAndBrowser();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      try { channel?.close(); } catch { /* ignore */ }
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [numericId, refreshStatsAndBrowser]);
 
   useEffect(() => {
     function handleDocMouseDown(e: MouseEvent) {
@@ -319,16 +348,19 @@ export default function DatasetDetailClient({ id }: Props) {
   };
 
   const cvat = stats?.cvat;
-  const totalImages = Math.max(cvat?.size ?? 0, browserData?.frame_count ?? 0);
+  const totalImages = Math.max(cvat?.size ?? 0, browserData?.frame_count ?? 0, mediaCountApi ?? 0);
   const totalAnnotations = cvat?.annotations?.total ?? browserData?.annotation_count ?? 0;
   const labels = browserData?.labels ?? [];
   const name = stats?.name ?? browserData?.dataset_name ?? `Dataset #${id}`;
   const taskId = stats?.cvat_task_id ?? browserData?.task_id;
   const jobs = cvat?.jobs ?? [];
 
-  const annotatedCount = browserData
-    ? browserData.frames.filter(f => f.annotations.length > 0).length
-    : (totalAnnotations > 0 ? totalImages : 0);
+  const annotatedCount =
+    annotatedCountApi !== null
+      ? annotatedCountApi
+      : browserData
+        ? browserData.frames.filter(f => f.annotations.length > 0).length
+        : (totalAnnotations > 0 ? totalImages : 0);
 
   if (loading) {
     return (
