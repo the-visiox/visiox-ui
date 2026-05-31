@@ -613,6 +613,42 @@ export const datasets = {
   syncCvat(id: string | number) {
     return request<{ status: string; version: number; cvat_status?: string; total_labels?: number }>(`/api/datasets/${id}/sync_cvat/`, { method: 'POST' });
   },
+  augmentPreview(id: number, config: {
+    preprocess: {
+      auto_orient: boolean; resize: boolean;
+      resize_width: number; resize_height: number; grayscale: boolean;
+    };
+    augment: {
+      flip_h: boolean; flip_v: boolean; rotate90: boolean;
+      rotation: number; brightness: number; blur: number;
+      noise: number; shear: number; contrast: number;
+      hue: number; saturation: number; motion_blur: number; cutout: boolean;
+    };
+    count?: number;
+  }) {
+    return request<{ previews: Array<{ media_id: number; name: string; augmented_url: string }> }>(
+      `/api/datasets/${id}/augment-preview/`,
+      { method: 'POST', body: JSON.stringify(config) },
+    );
+  },
+  augmentApply(id: number, config: {
+    preprocess: {
+      auto_orient: boolean; resize: boolean;
+      resize_width: number; resize_height: number; grayscale: boolean;
+    };
+    augment: {
+      flip_h: boolean; flip_v: boolean; rotate90: boolean;
+      rotation: number; brightness: number; blur: number;
+      noise: number; shear: number; contrast: number;
+      hue: number; saturation: number; motion_blur: number; cutout: boolean;
+    };
+    multiplier: number;
+  }) {
+    return request<{ generated: number; total: number }>(
+      `/api/datasets/${id}/augment-apply/`,
+      { method: 'POST', body: JSON.stringify(config) },
+    );
+  },
 };
 
 // ── Dataverse ───────────────────────────────────────────────────────────────

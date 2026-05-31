@@ -9,6 +9,9 @@ import {
   Loader2, AlertTriangle, BarChart3, Layers, ExternalLink,
   Image as ImageIcon, Box, Crosshair, Activity, Trash2,
   CheckCircle2, Circle, Users, Check, ChevronLeft, ChevronRight,
+  Wand2, Eye, FlipHorizontal, FlipVertical, RotateCcw, RotateCw,
+  Sun, Aperture, Zap, Scissors, Sliders, Palette, Droplets,
+  Wind, Square, Maximize2,
 } from 'lucide-react';
 
 const BATCH_SIZE = 50;
@@ -134,6 +137,48 @@ const JOB_STATE_STYLE: Record<string, { icon: React.ElementType; color: string }
   rejected: { icon: AlertTriangle, color: 'text-red-500' },
 };
 
+interface AugCardDef {
+  key: string;
+  label: string;
+  desc: string;
+  Icon: React.ElementType;
+  type: 'toggle' | 'slider';
+  defaultVal: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  format?: (v: number) => string;
+}
+
+interface PreprocessCardDef {
+  key: string;
+  label: string;
+  desc: string;
+  Icon: React.ElementType;
+}
+
+const PREPROCESS_CARDS: PreprocessCardDef[] = [
+  { key: 'auto_orient', label: 'Auto-Orient', desc: 'Fix EXIF rotation metadata', Icon: RefreshCw },
+  { key: 'resize',      label: 'Resize',      desc: 'Standardize to fixed dimensions', Icon: Maximize2 },
+  { key: 'grayscale',   label: 'Grayscale',   desc: 'Convert images to grayscale', Icon: Circle },
+];
+
+const AUG_CARDS: AugCardDef[] = [
+  { key: 'flip_h',      label: 'Flip',         desc: 'Horizontal mirror',           Icon: FlipHorizontal, type: 'toggle', defaultVal: 1 },
+  { key: 'flip_v',      label: 'Flip Vertical', desc: 'Vertical mirror',             Icon: FlipVertical,   type: 'toggle', defaultVal: 1 },
+  { key: 'rotate90',    label: '90° Rotate',    desc: 'Random 90° step rotation',    Icon: RotateCw,       type: 'toggle', defaultVal: 1 },
+  { key: 'rotation',    label: 'Rotation',      desc: 'Random angle within range',   Icon: RotateCcw,      type: 'slider', defaultVal: 15,  min: 1,    max: 45,  step: 1,    format: v => `±${v}°` },
+  { key: 'shear',       label: 'Shear',         desc: 'Geometric shear transform',   Icon: Scissors,       type: 'slider', defaultVal: 10,  min: 5,    max: 30,  step: 5,    format: v => `±${v}°` },
+  { key: 'brightness',  label: 'Brightness',    desc: 'Random brightness shift',     Icon: Sun,            type: 'slider', defaultVal: 0.2, min: 0.05, max: 0.5, step: 0.05, format: v => `±${Math.round(v * 100)}%` },
+  { key: 'contrast',    label: 'Contrast',      desc: 'Random contrast shift',       Icon: Sliders,        type: 'slider', defaultVal: 0.2, min: 0.05, max: 0.5, step: 0.05, format: v => `±${Math.round(v * 100)}%` },
+  { key: 'hue',         label: 'Hue',           desc: 'Random hue shift',            Icon: Palette,        type: 'slider', defaultVal: 20,  min: 5,    max: 60,  step: 5,    format: v => `±${v}` },
+  { key: 'saturation',  label: 'Saturation',    desc: 'Random saturation shift',     Icon: Droplets,       type: 'slider', defaultVal: 30,  min: 5,    max: 80,  step: 5,    format: v => `±${v}` },
+  { key: 'blur',        label: 'Blur',          desc: 'Gaussian blur effect',        Icon: Aperture,       type: 'slider', defaultVal: 1.5, min: 0.5,  max: 5,   step: 0.5,  format: v => `${v.toFixed(1)}px` },
+  { key: 'noise',       label: 'Noise',         desc: 'Gaussian noise injection',    Icon: Zap,            type: 'slider', defaultVal: 0.1, min: 0.05, max: 0.5, step: 0.05, format: v => `${Math.round(v * 100)}%` },
+  { key: 'motion_blur', label: 'Motion Blur',   desc: 'Directional motion blur',     Icon: Wind,           type: 'slider', defaultVal: 7,   min: 3,    max: 15,  step: 2,    format: v => `${v}px` },
+  { key: 'cutout',      label: 'Cutout',        desc: 'Random rectangular dropout',  Icon: Square,         type: 'toggle', defaultVal: 1 },
+];
+
 export default function DatasetDetailClient({ id }: Props) {
   const router = useRouter();
   const numericId = parseInt(id, 10);
@@ -155,6 +200,21 @@ export default function DatasetDetailClient({ id }: Props) {
   const anchorFrameIndexRef = useRef<number | null>(null);
   /** Image browser card — clicks outside clear selection. */
   const imageBrowserPanelRef = useRef<HTMLDivElement>(null);
+
+  const [augOpen, setAugOpen] = useState(false);
+  const [augStep, setAugStep] = useState<1 | 2>(1);
+  const [preprocessConfig, setPreprocessConfig] = useState({
+    auto_orient: false, resize: false, resize_width: 640, resize_height: 640, grayscale: false,
+  });
+  const [augConfig, setAugConfig] = useState({
+    flip_h: false, flip_v: false, rotate90: false,
+    rotation: 0, brightness: 0, blur: 0, noise: 0, shear: 0, contrast: 0,
+    hue: 0, saturation: 0, motion_blur: 0, cutout: false,
+  });
+  const [multiplier, setMultiplier] = useState(1);
+  const [augPreviews, setAugPreviews] = useState<Array<{ media_id: number; name: string; augmented_url: string }>>([]);
+  const [augLoading, setAugLoading] = useState(false);
+  const [augApplying, setAugApplying] = useState(false);
 
   const refreshStatsAndBrowser = useCallback(async () => {
     const [dsResult, statsResult, browserResult, mediaResult] = await Promise.allSettled([
@@ -339,6 +399,67 @@ export default function DatasetDetailClient({ id }: Props) {
     } catch { setError('Sync failed'); }
     finally { setSyncing(false); }
   };
+
+  const handleAugPreview = async () => {
+    setAugLoading(true);
+    setAugPreviews([]);
+    try {
+      const result = await datasets.augmentPreview(numericId, {
+        preprocess: preprocessConfig,
+        augment: augConfig,
+        count: 6,
+      });
+      setAugPreviews(result.previews);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Augmentation preview failed');
+    } finally {
+      setAugLoading(false);
+    }
+  };
+
+  const handleAugApply = async () => {
+    if (!window.confirm(`Generate ${(browserData?.frames.length ?? 0) * multiplier} augmented images and add them to this dataset?`)) return;
+    setAugApplying(true);
+    setError('');
+    try {
+      await datasets.augmentApply(numericId, {
+        preprocess: preprocessConfig,
+        augment: augConfig,
+        multiplier,
+      });
+      await refreshStatsAndBrowser();
+      setAugPreviews([]);
+      setAugOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Apply failed');
+    } finally {
+      setAugApplying(false);
+    }
+  };
+
+  const isAugEnabled = (key: string): boolean => {
+    const val = augConfig[key as keyof typeof augConfig];
+    return typeof val === 'boolean' ? val : (val as number) > 0;
+  };
+
+  const toggleAug = (card: AugCardDef) => {
+    setAugConfig(c => {
+      const current = c[card.key as keyof typeof c];
+      if (typeof current === 'boolean') return { ...c, [card.key]: !current };
+      return { ...c, [card.key]: (current as number) === 0 ? card.defaultVal : 0 };
+    });
+    setAugPreviews([]);
+  };
+
+  const togglePreprocess = (key: string) => {
+    setPreprocessConfig(c => ({ ...c, [key]: !c[key as keyof typeof c] }));
+    setAugPreviews([]);
+  };
+
+  const augActiveCount = AUG_CARDS.filter(c => isAugEnabled(c.key)).length;
+  const preprocessActiveCount = PREPROCESS_CARDS.filter(
+    c => !!preprocessConfig[c.key as keyof typeof preprocessConfig],
+  ).length;
 
   const handleExport = (format: ExportFormat) => {
     setExportOpen(false);
@@ -862,6 +983,296 @@ export default function DatasetDetailClient({ id }: Props) {
                 </div>
               </div>
             )}
+          </motion.div>
+        )}
+
+        {/* Generate Dataset Section */}
+        {browserData && browserData.frames.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.32 }}
+            className="bg-white rounded-2xl border border-stone-200 overflow-hidden"
+          >
+            {/* Collapsible header */}
+            <button
+              type="button"
+              onClick={() => { setAugOpen(v => !v); }}
+              className="w-full flex items-center justify-between px-6 py-5 hover:bg-stone-50/60 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center shadow-lg shadow-violet-500/25">
+                  <Wand2 className="w-4 h-4 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-base font-bold text-stone-900">Generate Dataset</h3>
+                  <p className="text-xs text-stone-400 mt-0.5">Preprocessing · Augmentation · Apply to dataset</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5">
+                {(preprocessActiveCount + augActiveCount) > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-[11px] font-bold text-violet-700">
+                    {preprocessActiveCount + augActiveCount} active
+                  </span>
+                )}
+                <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform duration-200 ${augOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {augOpen && (
+              <div className="border-t border-stone-100 px-6 pb-6 pt-5 space-y-5">
+                {/* Step indicator */}
+                <div className="flex items-center">
+                  <button type="button" onClick={() => setAugStep(1)} className="flex items-center gap-2">
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
+                      augStep === 1 ? 'bg-violet-500 text-white shadow-md shadow-violet-500/30' : 'bg-emerald-500 text-white'
+                    }`}>
+                      {augStep > 1 ? <Check className="w-3.5 h-3.5" /> : '1'}
+                    </span>
+                    <span className={`text-xs font-bold ${augStep === 1 ? 'text-violet-600' : 'text-stone-400'}`}>Preprocessing</span>
+                  </button>
+                  <div className="mx-3 flex-1 h-px bg-stone-200" />
+                  <button type="button" onClick={() => setAugStep(2)} className="flex items-center gap-2">
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
+                      augStep === 2 ? 'bg-violet-500 text-white shadow-md shadow-violet-500/30' : 'bg-stone-200 text-stone-500'
+                    }`}>2</span>
+                    <span className={`text-xs font-bold ${augStep === 2 ? 'text-violet-600' : 'text-stone-400'}`}>Augmentation</span>
+                  </button>
+                </div>
+
+                {/* ── Step 1: Preprocessing ── */}
+                {augStep === 1 && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {PREPROCESS_CARDS.map(card => {
+                        const enabled = !!preprocessConfig[card.key as keyof typeof preprocessConfig];
+                        return (
+                          <div key={card.key} className={`rounded-xl border p-4 transition-all duration-200 ${
+                            enabled ? 'border-violet-300 bg-violet-50/40 shadow-sm shadow-violet-500/10' : 'border-stone-200 hover:border-stone-300'
+                          }`}>
+                            <div className="flex items-start justify-between mb-3">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                                enabled ? 'bg-violet-500 text-white shadow-md shadow-violet-500/30' : 'bg-stone-100 text-stone-400'
+                              }`}>
+                                <card.Icon className="w-4 h-4" />
+                              </div>
+                              <button
+                                role="switch" aria-checked={enabled}
+                                onClick={() => togglePreprocess(card.key)}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-200 ${
+                                  enabled ? 'bg-violet-500 shadow-md shadow-violet-500/25' : 'bg-stone-200 hover:bg-stone-300'
+                                }`}
+                              >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                                }`} />
+                              </button>
+                            </div>
+                            <p className="text-sm font-bold text-stone-800">{card.label}</p>
+                            <p className="text-xs text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                            {enabled && card.key === 'resize' && (
+                              <div className="mt-3 pt-3 border-t border-violet-200/70">
+                                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Dimensions</p>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number" min={32} max={4096} step={32}
+                                    value={preprocessConfig.resize_width}
+                                    onChange={e => setPreprocessConfig(c => ({ ...c, resize_width: parseInt(e.target.value) || 640 }))}
+                                    className="w-20 text-xs border border-violet-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+                                  />
+                                  <span className="text-xs text-stone-400">×</span>
+                                  <input
+                                    type="number" min={32} max={4096} step={32}
+                                    value={preprocessConfig.resize_height}
+                                    onChange={e => setPreprocessConfig(c => ({ ...c, resize_height: parseInt(e.target.value) || 640 }))}
+                                    className="w-20 text-xs border border-violet-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+                                  />
+                                  <span className="text-[10px] text-stone-400">px</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex justify-end pt-1 border-t border-stone-100">
+                      <button
+                        type="button"
+                        onClick={() => setAugStep(2)}
+                        className="flex items-center gap-2 px-5 py-2 bg-violet-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-500/25 hover:scale-105 active:scale-95 transition-all"
+                      >
+                        Next: Augmentation <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 2: Augmentation ── */}
+                {augStep === 2 && (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+                      {AUG_CARDS.map(card => {
+                        const enabled = isAugEnabled(card.key);
+                        const numVal = augConfig[card.key as keyof typeof augConfig] as number;
+                        return (
+                          <div key={card.key} className={`rounded-xl border p-3.5 transition-all duration-200 ${
+                            enabled ? 'border-violet-300 bg-violet-50/40 shadow-sm shadow-violet-500/10' : 'border-stone-200 hover:border-stone-300 bg-white'
+                          }`}>
+                            <div className="flex items-start justify-between mb-2.5">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                                enabled ? 'bg-violet-500 text-white shadow-md shadow-violet-500/30' : 'bg-stone-100 text-stone-400'
+                              }`}>
+                                <card.Icon className="w-4 h-4" />
+                              </div>
+                              <button
+                                role="switch" aria-checked={enabled}
+                                onClick={() => toggleAug(card)}
+                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 ${
+                                  enabled ? 'bg-violet-500 shadow-md shadow-violet-500/25' : 'bg-stone-200 hover:bg-stone-300'
+                                }`}
+                              >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                                }`} />
+                              </button>
+                            </div>
+                            <p className="text-xs font-bold text-stone-800">{card.label}</p>
+                            <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                            {enabled && card.type === 'slider' && card.format && (
+                              <div className="mt-3 pt-2.5 border-t border-violet-200/70">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="range" min={card.min} max={card.max} step={card.step} value={numVal}
+                                    onChange={e => setAugConfig(c => ({ ...c, [card.key]: parseFloat(e.target.value) }))}
+                                    className="flex-1 h-1 accent-violet-500 cursor-pointer"
+                                  />
+                                  <span className="w-10 shrink-0 text-right text-[10px] font-bold text-violet-600 tabular-nums">
+                                    {card.format(numVal)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Multiplier */}
+                    <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-bold text-stone-800">Dataset Multiplier</p>
+                          <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
+                        </div>
+                        <span className="text-xs font-bold text-violet-600 tabular-nums">
+                          {(browserData?.frames.length ?? 0) * multiplier} total images
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        {([1, 2, 3] as const).map(m => (
+                          <button
+                            key={m} type="button"
+                            onClick={() => setMultiplier(m)}
+                            className={`flex-1 rounded-lg border py-2.5 text-xs font-bold transition-all ${
+                              multiplier === m
+                                ? 'border-violet-400 bg-violet-500 text-white shadow-md shadow-violet-500/25'
+                                : 'border-stone-200 bg-white text-stone-600 hover:border-violet-300 hover:bg-violet-50'
+                            }`}
+                          >
+                            {m}×
+                            <span className={`block text-[10px] font-medium mt-0.5 ${multiplier === m ? 'text-violet-200' : 'text-stone-400'}`}>
+                              +{(browserData?.frames.length ?? 0) * m} imgs
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-between pt-1 border-t border-stone-100">
+                      <button
+                        type="button"
+                        onClick={() => setAugStep(1)}
+                        className="flex items-center gap-1.5 text-xs font-bold text-stone-400 hover:text-stone-600 transition-colors"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" /> Back
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleAugPreview()}
+                          disabled={augLoading || augActiveCount === 0}
+                          className="flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 bg-white text-stone-600 rounded-xl text-xs font-bold hover:bg-stone-50 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          {augLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleAugApply()}
+                          disabled={augApplying || augActiveCount === 0}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-violet-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-500/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          {augApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                          Apply to Dataset
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Augmented Images Preview */}
+        {augPreviews.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className="bg-white rounded-2xl border border-stone-200 p-6"
+          >
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-base font-bold text-stone-900">Augmented Preview</h3>
+                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-600">
+                    {augPreviews.length} images
+                  </span>
+                </div>
+                <p className="text-sm text-stone-400">Current config applied — original images unchanged</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAugPreviews([])}
+                className="text-xs font-medium text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+              {augPreviews.map(preview => (
+                <div key={preview.media_id}
+                  className="group overflow-hidden rounded-2xl border border-violet-200/60 bg-white hover:shadow-md hover:border-violet-300 transition-all duration-300"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-violet-50 to-purple-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={preview.augmented_url} alt={`Augmented ${preview.name}`}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-violet-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  </div>
+                  <div className="px-2.5 py-2 bg-white">
+                    <p className="truncate text-xs font-semibold text-stone-800">{preview.name}</p>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-500" />
+                      <p className="text-[10px] font-medium text-violet-500">Augmented</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </motion.div>
         )}
       </div>
