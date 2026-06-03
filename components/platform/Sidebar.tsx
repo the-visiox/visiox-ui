@@ -137,49 +137,49 @@ export default function Sidebar() {
                   {initials}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-slate-700">{displayName}</p>
-                  <p className="truncate text-xs font-medium text-slate-500">{displayEmail}</p>
+                  <p className="truncate text-sm font-bold text-stone-700">{displayName}</p>
+                  <p className="truncate text-xs font-medium text-stone-500">{displayEmail}</p>
                 </div>
               </div>
 
               <div className="border-t border-stone-200 py-2">
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-stone-50 hover:text-slate-900">
-                  <User className="h-4 w-4 text-slate-400" />
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                  <User className="h-4 w-4 text-stone-400" />
                   Account Settings
                 </button>
                 <button
                   onClick={logout}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-stone-50 hover:text-slate-900"
+                  className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900"
                 >
-                  <LogOut className="h-4 w-4 text-slate-400" />
+                  <LogOut className="h-4 w-4 text-stone-400" />
                   Sign Out
                 </button>
               </div>
 
               <div className="border-t border-stone-200 py-2">
-                <p className="px-4 pb-1 text-xs font-bold text-slate-800">Resources</p>
-                <Link href="/about/blog" className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-stone-50 hover:text-slate-900">
-                  <FileText className="h-4 w-4 text-slate-400" />
+                <p className="px-4 pb-1 text-xs font-bold text-stone-800">Resources</p>
+                <Link href="/about/blog" className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                  <FileText className="h-4 w-4 text-stone-400" />
                   Documentation
                 </Link>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-stone-50 hover:text-slate-900">
-                  <MessagesSquare className="h-4 w-4 text-slate-400" />
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                  <MessagesSquare className="h-4 w-4 text-stone-400" />
                   Community Forum
                 </button>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-stone-50 hover:text-slate-900">
-                  <FileText className="h-4 w-4 text-slate-400" />
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                  <FileText className="h-4 w-4 text-stone-400" />
                   Changelog
                 </button>
               </div>
 
               <div className="border-t border-stone-200 py-2">
-                <p className="px-4 pb-1 text-xs font-bold text-slate-800">Get Help</p>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-stone-50 hover:text-slate-900">
-                  <Pencil className="h-4 w-4 text-slate-400" />
+                <p className="px-4 pb-1 text-xs font-bold text-stone-800">Get Help</p>
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                  <Pencil className="h-4 w-4 text-stone-400" />
                   Send Feedback
                 </button>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-stone-50 hover:text-slate-900">
-                  <Bug className="h-4 w-4 text-slate-400" />
+                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                  <Bug className="h-4 w-4 text-stone-400" />
                   Report a Bug
                 </button>
                 {[
@@ -189,10 +189,10 @@ export default function Sidebar() {
                 ].map((item) => (
                   <button
                     key={item.label}
-                    className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-slate-400"
+                    className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-400"
                     disabled
                   >
-                    <item.icon className="h-4 w-4 text-slate-300" />
+                    <item.icon className="h-4 w-4 text-stone-300" />
                     <span className="flex-1 text-left">{item.label}</span>
                     <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
                       <Lock className="h-3.5 w-3.5" />

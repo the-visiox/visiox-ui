@@ -20,7 +20,7 @@ export default function HomePage() {
   const firstName = user?.first_name || user?.email?.split("@")[0] || "there";
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-white px-6 py-10 text-stone-900">
+    <main className="relative min-h-screen overflow-hidden bg-[#fcfaf7] px-6 py-10 text-stone-900">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[460px] bg-[radial-gradient(circle_at_50%_18%,rgba(251,146,60,0.14),transparent_46%)]" />
 
       <section className="relative z-10 mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-6xl flex-col items-center">

@@ -94,7 +94,7 @@ export default function LoginPage() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-orange-100 via-amber-100 to-orange-300 px-6 py-12">
       <Link
         href="/"
-        className="absolute left-6 top-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-bold text-white backdrop-blur transition hover:bg-white/30"
+        className="absolute left-6 top-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-black backdrop-blur transition hover:bg-white/60"
       >
         <ArrowLeft className="h-4 w-4" />
         Back

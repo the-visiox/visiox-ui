@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft, Download, ChevronDown, Tag, RefreshCw, Upload,
   Loader2, AlertTriangle, BarChart3, Layers, ExternalLink,
-  Image as ImageIcon, Box, Crosshair, Activity, Trash2,
+  Image as ImageIcon, Box, Activity, Trash2,
   CheckCircle2, Circle, Users, Check, ChevronLeft, ChevronRight,
   Wand2, Eye, FlipHorizontal, FlipVertical, RotateCcw, RotateCw,
   Sun, Aperture, Zap, Scissors, Sliders, Palette, Droplets,
@@ -538,17 +538,17 @@ export default function DatasetDetailClient({ id }: Props) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+          <div className="flex flex-wrap items-center gap-3 md:justify-end">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading || syncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50 hover:-translate-y-0.5 active:translate-y-0"
+              className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
             >
               {uploading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
+                <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
               ) : (
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="w-4 h-4" />
               )}
               Upload
             </button>
@@ -557,19 +557,19 @@ export default function DatasetDetailClient({ id }: Props) {
               type="button"
               onClick={handleSync}
               disabled={syncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
+              className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
               Sync
             </button>
 
             <div className="relative">
               <button
                 onClick={() => setExportOpen(v => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all"
+                className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all"
               >
-                <Download className="w-3.5 h-3.5" /> Export
-                <ChevronDown className={`w-3 h-3 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
+                <Download className="w-4 h-4" /> Export
+                <ChevronDown className={`w-4 h-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
               </button>
               {exportOpen && (
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
@@ -577,7 +577,7 @@ export default function DatasetDetailClient({ id }: Props) {
                 >
                   {EXPORT_FORMATS.map(fmt => (
                     <button key={fmt} onClick={() => handleExport(fmt)}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-50 uppercase"
+                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50 uppercase"
                     >
                       {fmt === 'coco' ? 'COCO JSON' : fmt === 'yolo' ? 'YOLO txt' : 'Pascal VOC'}
                     </button>
@@ -588,18 +588,18 @@ export default function DatasetDetailClient({ id }: Props) {
 
             {!!taskId && (
               <a href={`${CVAT_URL}/tasks/${taskId}`} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all"
+                className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all"
               >
-                <ExternalLink className="w-3.5 h-3.5" /> CVAT
+                <ExternalLink className="w-4 h-4" /> CVAT
               </a>
             )}
 
             <button
               type="button"
               onClick={() => router.push(`/datasets/${id}/annotate/native?mode=simple`)}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
             >
-              <Layers className="w-3.5 h-3.5" /> Annotate Native
+              <Layers className="w-4 h-4" /> Annotate Native
             </button>
           </div>
         </nav>
@@ -614,18 +614,303 @@ export default function DatasetDetailClient({ id }: Props) {
       {/* Main Content */}
       <div className="z-10 flex-1 overflow-auto p-6 space-y-4 max-w-8xl mx-auto w-full">
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* ── Generate Dataset (TOP) ── */}
+        {browserData && browserData.frames.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.05 }}
+            className="bg-white rounded-2xl border border-stone-200 overflow-hidden"
+          >
+            <button
+              type="button"
+              onClick={() => { setAugOpen(v => !v); }}
+              className="w-full flex items-center justify-between px-6 py-5 hover:bg-stone-50/60 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                  <Wand2 className="w-4 h-4 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-base font-bold text-stone-900">Generate Dataset</h3>
+                  <p className="text-xs text-stone-400 mt-0.5">Preprocessing · Augmentation · Apply to dataset</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5">
+                {(preprocessActiveCount + augActiveCount) > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-[11px] font-bold text-orange-700">
+                    {preprocessActiveCount + augActiveCount} active
+                  </span>
+                )}
+                <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform duration-200 ${augOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {augOpen && (
+              <div className="border-t border-stone-100 px-6 pb-6 pt-5 space-y-5">
+                {/* Step indicator */}
+                <div className="flex items-center">
+                  <button type="button" onClick={() => setAugStep(1)} className="flex items-center gap-2">
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
+                      augStep === 1 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-emerald-500 text-white'
+                    }`}>
+                      {augStep > 1 ? <Check className="w-3.5 h-3.5" /> : '1'}
+                    </span>
+                    <span className={`text-xs font-bold ${augStep === 1 ? 'text-orange-600' : 'text-stone-400'}`}>Preprocessing</span>
+                  </button>
+                  <div className="mx-3 flex-1 h-px bg-stone-200" />
+                  <button type="button" onClick={() => setAugStep(2)} className="flex items-center gap-2">
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
+                      augStep === 2 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-200 text-stone-500'
+                    }`}>2</span>
+                    <span className={`text-xs font-bold ${augStep === 2 ? 'text-orange-600' : 'text-stone-400'}`}>Augmentation</span>
+                  </button>
+                </div>
+
+                {/* ── Step 1: Preprocessing ── */}
+                {augStep === 1 && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {PREPROCESS_CARDS.map(card => {
+                        const enabled = !!preprocessConfig[card.key as keyof typeof preprocessConfig];
+                        return (
+                          <div key={card.key} className={`rounded-xl border p-4 transition-all duration-200 ${
+                            enabled ? 'border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10' : 'border-stone-200 hover:border-stone-300'
+                          }`}>
+                            <div className="flex items-start justify-between mb-3">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                                enabled ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-100 text-stone-400'
+                              }`}>
+                                <card.Icon className="w-4 h-4" />
+                              </div>
+                              <button
+                                role="switch" aria-checked={enabled}
+                                onClick={() => togglePreprocess(card.key)}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-200 ${
+                                  enabled ? 'bg-orange-500 shadow-md shadow-orange-500/25' : 'bg-stone-200 hover:bg-stone-300'
+                                }`}
+                              >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                                }`} />
+                              </button>
+                            </div>
+                            <p className="text-sm font-bold text-stone-800">{card.label}</p>
+                            <p className="text-xs text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                            {enabled && card.key === 'resize' && (
+                              <div className="mt-3 pt-3 border-t border-orange-200/70">
+                                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Dimensions</p>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number" min={32} max={4096} step={32}
+                                    value={preprocessConfig.resize_width}
+                                    onChange={e => setPreprocessConfig(c => ({ ...c, resize_width: parseInt(e.target.value) || 640 }))}
+                                    className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                  />
+                                  <span className="text-xs text-stone-400">×</span>
+                                  <input
+                                    type="number" min={32} max={4096} step={32}
+                                    value={preprocessConfig.resize_height}
+                                    onChange={e => setPreprocessConfig(c => ({ ...c, resize_height: parseInt(e.target.value) || 640 }))}
+                                    className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                  />
+                                  <span className="text-[10px] text-stone-400">px</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex justify-end pt-1 border-t border-stone-100">
+                      <button
+                        type="button"
+                        onClick={() => setAugStep(2)}
+                        className="flex items-center gap-2 px-5 py-2 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-500/25 hover:scale-105 active:scale-95 transition-all"
+                      >
+                        Next: Augmentation <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 2: Augmentation ── */}
+                {augStep === 2 && (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+                      {AUG_CARDS.map(card => {
+                        const enabled = isAugEnabled(card.key);
+                        const numVal = augConfig[card.key as keyof typeof augConfig] as number;
+                        return (
+                          <div key={card.key} className={`rounded-xl border p-3.5 transition-all duration-200 ${
+                            enabled ? 'border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10' : 'border-stone-200 hover:border-stone-300 bg-white'
+                          }`}>
+                            <div className="flex items-start justify-between mb-2.5">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                                enabled ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-100 text-stone-400'
+                              }`}>
+                                <card.Icon className="w-4 h-4" />
+                              </div>
+                              <button
+                                role="switch" aria-checked={enabled}
+                                onClick={() => toggleAug(card)}
+                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 ${
+                                  enabled ? 'bg-orange-500 shadow-md shadow-orange-500/25' : 'bg-stone-200 hover:bg-stone-300'
+                                }`}
+                              >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                                }`} />
+                              </button>
+                            </div>
+                            <p className="text-xs font-bold text-stone-800">{card.label}</p>
+                            <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                            {enabled && card.type === 'slider' && card.format && (
+                              <div className="mt-3 pt-2.5 border-t border-orange-200/70">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="range" min={card.min} max={card.max} step={card.step} value={numVal}
+                                    onChange={e => setAugConfig(c => ({ ...c, [card.key]: parseFloat(e.target.value) }))}
+                                    className="flex-1 h-1 accent-orange-500 cursor-pointer"
+                                  />
+                                  <span className="w-10 shrink-0 text-right text-[10px] font-bold text-orange-600 tabular-nums">
+                                    {card.format(numVal)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Multiplier */}
+                    <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-bold text-stone-800">Dataset Multiplier</p>
+                          <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
+                        </div>
+                        <span className="text-xs font-bold text-orange-600 tabular-nums">
+                          {(browserData?.frames.length ?? 0) * multiplier} total images
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        {([1, 2, 3] as const).map(m => (
+                          <button
+                            key={m} type="button"
+                            onClick={() => setMultiplier(m)}
+                            className={`flex-1 rounded-lg border py-2.5 text-xs font-bold transition-all ${
+                              multiplier === m
+                                ? 'border-orange-400 bg-orange-500 text-white shadow-md shadow-orange-500/25'
+                                : 'border-stone-200 bg-white text-stone-600 hover:border-orange-300 hover:bg-orange-50'
+                            }`}
+                          >
+                            {m}×
+                            <span className={`block text-[10px] font-medium mt-0.5 ${multiplier === m ? 'text-orange-200' : 'text-stone-400'}`}>
+                              +{(browserData?.frames.length ?? 0) * m} imgs
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-between pt-1 border-t border-stone-100">
+                      <button
+                        type="button"
+                        onClick={() => setAugStep(1)}
+                        className="flex items-center gap-1.5 text-xs font-bold text-stone-400 hover:text-stone-600 transition-colors"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" /> Back
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleAugPreview()}
+                          disabled={augLoading || augActiveCount === 0}
+                          className="flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 bg-white text-stone-600 rounded-xl text-xs font-bold hover:bg-stone-50 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          {augLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleAugApply()}
+                          disabled={augApplying || augActiveCount === 0}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-500/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          {augApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                          Apply to Dataset
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* ── Augmented Images Preview ── */}
+        {augPreviews.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className="bg-white rounded-2xl border border-stone-200 p-6"
+          >
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-base font-bold text-stone-900">Augmented Preview</h3>
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-600">
+                    {augPreviews.length} images
+                  </span>
+                </div>
+                <p className="text-sm text-stone-400">Current config applied — original images unchanged</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAugPreviews([])}
+                className="text-xs font-medium text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+              {augPreviews.map(preview => (
+                <div key={preview.media_id}
+                  className="group overflow-hidden rounded-2xl border border-orange-200/60 bg-white hover:shadow-md hover:border-orange-300 transition-all duration-300"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-orange-50 to-amber-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={preview.augmented_url} alt={`Augmented ${preview.name}`}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-orange-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  </div>
+                  <div className="px-2.5 py-2 bg-white">
+                    <p className="truncate text-xs font-semibold text-stone-800">{preview.name}</p>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
+                      <p className="text-[10px] font-medium text-orange-500">Augmented</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Stat Cards (3 columns — Annotated Images merged into Progress below) ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <StatCard icon={ImageIcon} label="Total Images" value={totalImages} color="orange" delay={0} />
           <StatCard icon={Tag} label="Annotations" value={totalAnnotations}
             sub={totalAnnotations > 0 ? `${cvat?.annotations?.shapes ?? 0} shapes · ${cvat?.annotations?.tags ?? 0} tags · ${cvat?.annotations?.tracks ?? 0} tracks` : undefined}
             color="blue" delay={0.05}
           />
           <StatCard icon={Box} label="Labels" value={labels.length} color="purple" delay={0.1} />
-          <StatCard icon={Crosshair} label="Annotated Images" value={`${annotatedCount} / ${totalImages}`}
-            sub={totalImages > 0 ? `${Math.round((annotatedCount / totalImages) * 100)}% complete` : 'No images'}
-            color="emerald" delay={0.15}
-          />
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
@@ -986,295 +1271,6 @@ export default function DatasetDetailClient({ id }: Props) {
           </motion.div>
         )}
 
-        {/* Generate Dataset Section */}
-        {browserData && browserData.frames.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.32 }}
-            className="bg-white rounded-2xl border border-stone-200 overflow-hidden"
-          >
-            {/* Collapsible header */}
-            <button
-              type="button"
-              onClick={() => { setAugOpen(v => !v); }}
-              className="w-full flex items-center justify-between px-6 py-5 hover:bg-stone-50/60 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center shadow-lg shadow-violet-500/25">
-                  <Wand2 className="w-4 h-4 text-white" />
-                </div>
-                <div className="text-left">
-                  <h3 className="text-base font-bold text-stone-900">Generate Dataset</h3>
-                  <p className="text-xs text-stone-400 mt-0.5">Preprocessing · Augmentation · Apply to dataset</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2.5">
-                {(preprocessActiveCount + augActiveCount) > 0 && (
-                  <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-[11px] font-bold text-violet-700">
-                    {preprocessActiveCount + augActiveCount} active
-                  </span>
-                )}
-                <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform duration-200 ${augOpen ? 'rotate-180' : ''}`} />
-              </div>
-            </button>
-
-            {augOpen && (
-              <div className="border-t border-stone-100 px-6 pb-6 pt-5 space-y-5">
-                {/* Step indicator */}
-                <div className="flex items-center">
-                  <button type="button" onClick={() => setAugStep(1)} className="flex items-center gap-2">
-                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
-                      augStep === 1 ? 'bg-violet-500 text-white shadow-md shadow-violet-500/30' : 'bg-emerald-500 text-white'
-                    }`}>
-                      {augStep > 1 ? <Check className="w-3.5 h-3.5" /> : '1'}
-                    </span>
-                    <span className={`text-xs font-bold ${augStep === 1 ? 'text-violet-600' : 'text-stone-400'}`}>Preprocessing</span>
-                  </button>
-                  <div className="mx-3 flex-1 h-px bg-stone-200" />
-                  <button type="button" onClick={() => setAugStep(2)} className="flex items-center gap-2">
-                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
-                      augStep === 2 ? 'bg-violet-500 text-white shadow-md shadow-violet-500/30' : 'bg-stone-200 text-stone-500'
-                    }`}>2</span>
-                    <span className={`text-xs font-bold ${augStep === 2 ? 'text-violet-600' : 'text-stone-400'}`}>Augmentation</span>
-                  </button>
-                </div>
-
-                {/* ── Step 1: Preprocessing ── */}
-                {augStep === 1 && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      {PREPROCESS_CARDS.map(card => {
-                        const enabled = !!preprocessConfig[card.key as keyof typeof preprocessConfig];
-                        return (
-                          <div key={card.key} className={`rounded-xl border p-4 transition-all duration-200 ${
-                            enabled ? 'border-violet-300 bg-violet-50/40 shadow-sm shadow-violet-500/10' : 'border-stone-200 hover:border-stone-300'
-                          }`}>
-                            <div className="flex items-start justify-between mb-3">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                                enabled ? 'bg-violet-500 text-white shadow-md shadow-violet-500/30' : 'bg-stone-100 text-stone-400'
-                              }`}>
-                                <card.Icon className="w-4 h-4" />
-                              </div>
-                              <button
-                                role="switch" aria-checked={enabled}
-                                onClick={() => togglePreprocess(card.key)}
-                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-200 ${
-                                  enabled ? 'bg-violet-500 shadow-md shadow-violet-500/25' : 'bg-stone-200 hover:bg-stone-300'
-                                }`}
-                              >
-                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
-                                }`} />
-                              </button>
-                            </div>
-                            <p className="text-sm font-bold text-stone-800">{card.label}</p>
-                            <p className="text-xs text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
-                            {enabled && card.key === 'resize' && (
-                              <div className="mt-3 pt-3 border-t border-violet-200/70">
-                                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Dimensions</p>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number" min={32} max={4096} step={32}
-                                    value={preprocessConfig.resize_width}
-                                    onChange={e => setPreprocessConfig(c => ({ ...c, resize_width: parseInt(e.target.value) || 640 }))}
-                                    className="w-20 text-xs border border-violet-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400/40"
-                                  />
-                                  <span className="text-xs text-stone-400">×</span>
-                                  <input
-                                    type="number" min={32} max={4096} step={32}
-                                    value={preprocessConfig.resize_height}
-                                    onChange={e => setPreprocessConfig(c => ({ ...c, resize_height: parseInt(e.target.value) || 640 }))}
-                                    className="w-20 text-xs border border-violet-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400/40"
-                                  />
-                                  <span className="text-[10px] text-stone-400">px</span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex justify-end pt-1 border-t border-stone-100">
-                      <button
-                        type="button"
-                        onClick={() => setAugStep(2)}
-                        className="flex items-center gap-2 px-5 py-2 bg-violet-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-500/25 hover:scale-105 active:scale-95 transition-all"
-                      >
-                        Next: Augmentation <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Step 2: Augmentation ── */}
-                {augStep === 2 && (
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
-                      {AUG_CARDS.map(card => {
-                        const enabled = isAugEnabled(card.key);
-                        const numVal = augConfig[card.key as keyof typeof augConfig] as number;
-                        return (
-                          <div key={card.key} className={`rounded-xl border p-3.5 transition-all duration-200 ${
-                            enabled ? 'border-violet-300 bg-violet-50/40 shadow-sm shadow-violet-500/10' : 'border-stone-200 hover:border-stone-300 bg-white'
-                          }`}>
-                            <div className="flex items-start justify-between mb-2.5">
-                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
-                                enabled ? 'bg-violet-500 text-white shadow-md shadow-violet-500/30' : 'bg-stone-100 text-stone-400'
-                              }`}>
-                                <card.Icon className="w-4 h-4" />
-                              </div>
-                              <button
-                                role="switch" aria-checked={enabled}
-                                onClick={() => toggleAug(card)}
-                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 ${
-                                  enabled ? 'bg-violet-500 shadow-md shadow-violet-500/25' : 'bg-stone-200 hover:bg-stone-300'
-                                }`}
-                              >
-                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
-                                }`} />
-                              </button>
-                            </div>
-                            <p className="text-xs font-bold text-stone-800">{card.label}</p>
-                            <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
-                            {enabled && card.type === 'slider' && card.format && (
-                              <div className="mt-3 pt-2.5 border-t border-violet-200/70">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="range" min={card.min} max={card.max} step={card.step} value={numVal}
-                                    onChange={e => setAugConfig(c => ({ ...c, [card.key]: parseFloat(e.target.value) }))}
-                                    className="flex-1 h-1 accent-violet-500 cursor-pointer"
-                                  />
-                                  <span className="w-10 shrink-0 text-right text-[10px] font-bold text-violet-600 tabular-nums">
-                                    {card.format(numVal)}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Multiplier */}
-                    <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="text-sm font-bold text-stone-800">Dataset Multiplier</p>
-                          <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
-                        </div>
-                        <span className="text-xs font-bold text-violet-600 tabular-nums">
-                          {(browserData?.frames.length ?? 0) * multiplier} total images
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        {([1, 2, 3] as const).map(m => (
-                          <button
-                            key={m} type="button"
-                            onClick={() => setMultiplier(m)}
-                            className={`flex-1 rounded-lg border py-2.5 text-xs font-bold transition-all ${
-                              multiplier === m
-                                ? 'border-violet-400 bg-violet-500 text-white shadow-md shadow-violet-500/25'
-                                : 'border-stone-200 bg-white text-stone-600 hover:border-violet-300 hover:bg-violet-50'
-                            }`}
-                          >
-                            {m}×
-                            <span className={`block text-[10px] font-medium mt-0.5 ${multiplier === m ? 'text-violet-200' : 'text-stone-400'}`}>
-                              +{(browserData?.frames.length ?? 0) * m} imgs
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-between pt-1 border-t border-stone-100">
-                      <button
-                        type="button"
-                        onClick={() => setAugStep(1)}
-                        className="flex items-center gap-1.5 text-xs font-bold text-stone-400 hover:text-stone-600 transition-colors"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" /> Back
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleAugPreview()}
-                          disabled={augLoading || augActiveCount === 0}
-                          className="flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 bg-white text-stone-600 rounded-xl text-xs font-bold hover:bg-stone-50 transition-all disabled:opacity-40 disabled:pointer-events-none"
-                        >
-                          {augLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
-                          Preview
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleAugApply()}
-                          disabled={augApplying || augActiveCount === 0}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-violet-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-500/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-                        >
-                          {augApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                          Apply to Dataset
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {/* Augmented Images Preview */}
-        {augPreviews.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            className="bg-white rounded-2xl border border-stone-200 p-6"
-          >
-            <div className="mb-4 flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-base font-bold text-stone-900">Augmented Preview</h3>
-                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-600">
-                    {augPreviews.length} images
-                  </span>
-                </div>
-                <p className="text-sm text-stone-400">Current config applied — original images unchanged</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAugPreviews([])}
-                className="text-xs font-medium text-stone-400 hover:text-stone-600 transition-colors"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-              {augPreviews.map(preview => (
-                <div key={preview.media_id}
-                  className="group overflow-hidden rounded-2xl border border-violet-200/60 bg-white hover:shadow-md hover:border-violet-300 transition-all duration-300"
-                >
-                  <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-violet-50 to-purple-50">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={preview.augmented_url} alt={`Augmented ${preview.name}`}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-violet-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  </div>
-                  <div className="px-2.5 py-2 bg-white">
-                    <p className="truncate text-xs font-semibold text-stone-800">{preview.name}</p>
-                    <div className="mt-0.5 flex items-center gap-1">
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-500" />
-                      <p className="text-[10px] font-medium text-violet-500">Augmented</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
       </div>
     </div>
   );
