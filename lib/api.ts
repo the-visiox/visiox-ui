@@ -5,6 +5,17 @@ export const API_BASE_URL =
 const BASE_URL = API_BASE_URL;
 const LOCALHOST_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public body?: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 function resolveBaseUrl(): string {
   const normalized = BASE_URL.replace(/\/+$/, '');
   if (typeof window === 'undefined') return normalized;
@@ -16,6 +27,15 @@ function resolveBaseUrl(): string {
 
     if (LOCALHOST_HOSTNAMES.has(parsed.hostname) && !browserIsLocalhost) {
       parsed.hostname = browserHost;
+    }
+
+    // Upgrade http→https when the browser is already on HTTPS and the API host is not localhost
+    if (
+      window.location.protocol === 'https:' &&
+      parsed.protocol === 'http:' &&
+      !LOCALHOST_HOSTNAMES.has(parsed.hostname)
+    ) {
+      parsed.protocol = 'https:';
     }
 
     return parsed.toString().replace(/\/+$/, '');
@@ -49,13 +69,18 @@ export function getAccessToken(): string | null {
   return localStorage.getItem(TOKEN_KEYS.access);
 }
 
+const SESSION_COOKIE = 'visiox_session';
+
 export function saveTokens(access: string, refresh: string) {
   localStorage.setItem(TOKEN_KEYS.access, access);
   localStorage.setItem(TOKEN_KEYS.refresh, refresh);
+  // Mirror a session flag cookie so the server-side middleware can detect auth state
+  document.cookie = `${SESSION_COOKIE}=1; Path=/; SameSite=Lax; Max-Age=86400`;
 }
 
 export function clearTokens() {
   Object.values(TOKEN_KEYS).forEach((k) => localStorage.removeItem(k));
+  document.cookie = `${SESSION_COOKIE}=; Path=/; Max-Age=0`;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -211,7 +236,7 @@ export interface PaginatedResponse<T> {
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options: RequestInit = {},
   retryOn401 = true,
