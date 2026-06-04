@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft, Download, ChevronDown, Tag, RefreshCw, Upload,
   Loader2, AlertTriangle, BarChart3, Layers, ExternalLink,
-  Image as ImageIcon, Box, Activity, Trash2,
+  Image as ImageIcon, Activity, Trash2,
   CheckCircle2, Circle, Users, Check, ChevronLeft, ChevronRight,
   Wand2, Eye, FlipHorizontal, FlipVertical, RotateCcw, RotateCw,
   Sun, Aperture, Zap, Scissors, Sliders, Palette, Droplets,
@@ -18,10 +18,12 @@ const BATCH_SIZE = 50;
 import BlueprintGrid from '@/components/BlueprintGrid';
 import {
   datasets,
+  annotationClasses,
   resolveMediaUrl,
   type DatasetStats,
   type BrowserData,
   type Media,
+  type AnnotationClass,
 } from '@/lib/api';
 
 const CVAT_URL = process.env.NEXT_PUBLIC_CVAT_URL || 'http://localhost:8080';
@@ -81,54 +83,14 @@ function buildBrowserDataWithMediaFallback(browser: BrowserData, media: Media[],
   };
 }
 
-function StatCard({ icon: Icon, label, value, sub, color = 'orange', delay = 0 }: {
-  icon: React.ElementType; label: string; value: string | number;
-  sub?: string; color?: string; delay?: number;
-}) {
-  const colorMap: Record<string, string> = {
-    orange: 'from-orange-500 to-amber-400',
-    emerald: 'from-emerald-500 to-teal-400',
-    blue: 'from-blue-500 to-cyan-400',
-    purple: 'from-purple-500 to-violet-400',
-  };
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
-      className="bg-white rounded-2xl border border-stone-200 p-5 hover:shadow-lg hover:border-stone-300 transition-all"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colorMap[color]} flex items-center justify-center shadow-lg`}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-      </div>
-      <p className="text-2xl font-bold text-stone-900">{value}</p>
-      <p className="text-sm font-medium text-stone-500 mt-0.5">{label}</p>
-      {sub && <p className="text-xs text-stone-400 mt-1">{sub}</p>}
-    </motion.div>
-  );
-}
 
-function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-1.5">
-        <span className="text-sm font-medium text-stone-600">{label}</span>
-        <span className="text-sm font-bold text-stone-800">{pct}%</span>
-      </div>
-      <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-          className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full"
-        />
-      </div>
-    </div>
-  );
-}
+
+// ── Class management ──────────────────────────────────────────────────────────
+const CARD      = "bg-white rounded-2xl border border-stone-200";
+const CARD_P    = `${CARD} p-6`;
+const CARD_COL1 = `flex h-full min-h-0 flex-col space-y-4 ${CARD_P}`;
+const CARD_COL2 = `flex h-full min-h-0 flex-col items-center justify-center border-dashed ${CARD} p-8 text-center`;
+// ──────────────────────────────────────────────────────────────────────────────
 
 const JOB_STATE_STYLE: Record<string, { icon: React.ElementType; color: string }> = {
   new: { icon: Circle, color: 'text-stone-400' },
@@ -215,6 +177,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [augPreviews, setAugPreviews] = useState<Array<{ media_id: number; name: string; augmented_url: string }>>([]);
   const [augLoading, setAugLoading] = useState(false);
   const [augApplying, setAugApplying] = useState(false);
+  const [allClasses, setAllClasses] = useState<AnnotationClass[]>([]);
 
   const refreshStatsAndBrowser = useCallback(async () => {
     const [dsResult, statsResult, browserResult, mediaResult] = await Promise.allSettled([
@@ -227,7 +190,13 @@ export default function DatasetDetailClient({ id }: Props) {
       setAnnotatedCountApi(dsResult.value.annotated_count ?? null);
       setMediaCountApi(dsResult.value.media_count ?? null);
     }
-    if (statsResult.status === 'fulfilled') setStats(statsResult.value);
+    if (statsResult.status === 'fulfilled') {
+      setStats(statsResult.value);
+      const projectId = statsResult.value.project_id;
+      if (projectId) {
+        annotationClasses.list(projectId).then(res => setAllClasses(res.results)).catch(() => {});
+      }
+    }
     if (browserResult.status === 'fulfilled') {
       const browser = browserResult.value;
       const media = mediaResult.status === 'fulfilled' ? mediaResult.value : [];
@@ -614,13 +583,164 @@ export default function DatasetDetailClient({ id }: Props) {
       {/* Main Content */}
       <div className="z-10 flex-1 overflow-auto p-6 space-y-4 max-w-8xl mx-auto w-full">
 
-        {/* ── Generate Dataset (TOP) ── */}
+        {/* ── Augmented Images Preview ── */}
+        {augPreviews.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className={CARD_P}
+          >
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-base font-bold text-stone-900">Augmented Preview</h3>
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-600">
+                    {augPreviews.length} images
+                  </span>
+                </div>
+                <p className="text-sm text-stone-400">Current config applied — original images unchanged</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAugPreviews([])}
+                className="text-xs font-medium text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+              {augPreviews.map(preview => (
+                <div key={preview.media_id}
+                  className="group overflow-hidden rounded-2xl border border-orange-200/60 bg-white hover:shadow-md hover:border-orange-300 transition-all duration-300"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-orange-50 to-amber-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={preview.augmented_url} alt={`Augmented ${preview.name}`}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-orange-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  </div>
+                  <div className="px-2.5 py-2 bg-white">
+                    <p className="truncate text-xs font-semibold text-stone-800">{preview.name}</p>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
+                      <p className="text-[10px] font-medium text-orange-500">Augmented</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
+
+          {/* Column 1: Stats, Annotation Progress & Label Distribution */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+            className={CARD_COL1}
+          >
+            {/* Mini stats */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {([
+                { label: 'Total Images', value: totalImages, Icon: ImageIcon, iconClass: 'bg-orange-100 text-orange-500' },
+                { label: 'Labels', value: allClasses.length || labels.length, Icon: Tag, iconClass: 'bg-purple-100 text-purple-500' },
+                { label: 'Annotations', value: totalAnnotations, Icon: BarChart3, iconClass: 'bg-blue-100 text-blue-500' },
+                { label: 'Annotated images', value: annotatedCount, Icon: CheckCircle2, iconClass: 'bg-emerald-100 text-emerald-500' },
+              ] as const).map(({ label, value, Icon, iconClass }) => (
+                <div key={label} className="rounded-xl bg-stone-50 px-3 py-3">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-2 ${iconClass}`}>
+                    <Icon className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-xl font-bold text-stone-900">{value}</p>
+                  <p className="text-xs font-medium text-stone-500 mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {(allClasses.length > 0 || labels.length > 0) && browserData && (() => {
+              // Build a name→count map from CVAT browser labels
+              const cvatCountByName = new Map<string, number>();
+              labels.forEach(label => {
+                const count = browserData.frames.reduce(
+                  (sum, f) => sum + f.annotations.filter(a => a.label_id === label.id).length, 0
+                );
+                cvatCountByName.set(label.name.toLowerCase(), count);
+              });
+
+              // Use project classes (all labels) if available, else fall back to browserData labels
+              const source = allClasses.length > 0 ? allClasses : labels;
+              const counts = source.map(label => ({
+                id: label.id,
+                name: label.name,
+                color: label.color,
+                count: cvatCountByName.get(label.name.toLowerCase()) ?? 0,
+              }));
+              const maxCount = Math.max(...counts.map(c => c.count), 1);
+              return (
+                <div>
+                  <h3 className="text-base font-bold text-stone-900 mb-3">Label Distribution</h3>
+                  <div className="flex items-end gap-1.5">
+                    {counts.map(lbl => {
+                      const pct = (lbl.count / maxCount) * 100;
+                      return (
+                        <div key={lbl.id} className="flex-1 min-w-0 flex flex-col items-center gap-1">
+                          <div className="relative w-full h-48">
+                            <motion.div
+                              initial={{ height: 0 }}
+                              animate={{ height: `${pct}%` }}
+                              transition={{ duration: 0.6, ease: 'easeOut' }}
+                              className="absolute bottom-0 left-2 right-2 rounded-t-[4px] min-h-[2px] overflow-hidden"
+                              style={{ backgroundColor: lbl.color }}
+                            >
+                              {lbl.count > 0 && (
+                                <span className="absolute top-2 left-0 right-0 text-[10px] font-bold text-stone-600 tabular-nums text-center leading-none">
+                                  {lbl.count}
+                                </span>
+                              )}
+                            </motion.div>
+                          </div>
+                          <span className="text-[10px] text-stone-400 truncate w-full text-center">{lbl.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {labels.length === 0 && (
+              <div className="text-center py-6 text-stone-400">
+                <Tag className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm font-bold">No labels yet</p>
+                <p className="text-xs mt-1">Add labels via the Annotate interface</p>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Column 2: Model Performance placeholder */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.25 }}
+            className={CARD_COL2}
+          >
+            <BarChart3 className="w-8 h-8 text-stone-300 mx-auto mb-3" />
+            <p className="text-base font-bold text-stone-400">Model Performance</p>
+            <p className="text-sm text-stone-300 mt-1 max-w-xs">
+              Train a model to see predictions & metrics here
+            </p>
+          </motion.div>
+        </div>
+
+        {/* ── Generate Dataset ── */}
         {browserData && browserData.frames.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.05 }}
-            className="bg-white rounded-2xl border border-stone-200 overflow-hidden"
+            className={`${CARD} overflow-hidden`}
           >
             <button
               type="button"
@@ -796,7 +916,7 @@ export default function DatasetDetailClient({ id }: Props) {
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        {([1, 2, 3] as const).map(m => (
+                        {([1, 2, 3, 4, 5] as const).map(m => (
                           <button
                             key={m} type="button"
                             onClick={() => setMultiplier(m)}
@@ -852,142 +972,11 @@ export default function DatasetDetailClient({ id }: Props) {
           </motion.div>
         )}
 
-        {/* ── Augmented Images Preview ── */}
-        {augPreviews.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            className="bg-white rounded-2xl border border-stone-200 p-6"
-          >
-            <div className="mb-4 flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-base font-bold text-stone-900">Augmented Preview</h3>
-                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-600">
-                    {augPreviews.length} images
-                  </span>
-                </div>
-                <p className="text-sm text-stone-400">Current config applied — original images unchanged</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAugPreviews([])}
-                className="text-xs font-medium text-stone-400 hover:text-stone-600 transition-colors"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-              {augPreviews.map(preview => (
-                <div key={preview.media_id}
-                  className="group overflow-hidden rounded-2xl border border-orange-200/60 bg-white hover:shadow-md hover:border-orange-300 transition-all duration-300"
-                >
-                  <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-orange-50 to-amber-50">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={preview.augmented_url} alt={`Augmented ${preview.name}`}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-orange-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  </div>
-                  <div className="px-2.5 py-2 bg-white">
-                    <p className="truncate text-xs font-semibold text-stone-800">{preview.name}</p>
-                    <div className="mt-0.5 flex items-center gap-1">
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
-                      <p className="text-[10px] font-medium text-orange-500">Augmented</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* ── Stat Cards (3 columns — Annotated Images merged into Progress below) ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          <StatCard icon={ImageIcon} label="Total Images" value={totalImages} color="orange" delay={0} />
-          <StatCard icon={Tag} label="Annotations" value={totalAnnotations}
-            sub={totalAnnotations > 0 ? `${cvat?.annotations?.shapes ?? 0} shapes · ${cvat?.annotations?.tags ?? 0} tags · ${cvat?.annotations?.tracks ?? 0} tracks` : undefined}
-            color="blue" delay={0.05}
-          />
-          <StatCard icon={Box} label="Labels" value={labels.length} color="purple" delay={0.1} />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
-
-          {/* Column 1: Annotation Progress & Label Distribution */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
-            className="flex h-full min-h-0 flex-col space-y-4 bg-white rounded-2xl border border-stone-200 p-6"
-          >
-            <div>
-              <h3 className="text-base font-bold text-stone-900 mb-4">Annotation Progress</h3>
-              <ProgressBar value={annotatedCount} max={totalImages} label="Images annotated" />
-            </div>
-
-            {labels.length > 0 && browserData && (
-              <div>
-                <h3 className="text-base font-bold text-stone-900 mb-4">Label Distribution</h3>
-                <div className="space-y-3">
-                  {labels.map(label => {
-                    const count = browserData.frames.reduce(
-                      (sum, f) => sum + f.annotations.filter(a => a.label_id === label.id).length, 0
-                    );
-                    const pct = totalAnnotations > 0 ? (count / totalAnnotations) * 100 : 0;
-                    return (
-                      <div key={label.id}>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: label.color }} />
-                            <span className="text-sm font-medium text-stone-600">{label.name}</span>
-                          </div>
-                          <span className="text-sm font-bold text-stone-800">{count}</span>
-                        </div>
-                        <div className="w-full h-2 bg-stone-100 rounded-full overflow-hidden">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pct}%` }}
-                            transition={{ duration: 0.6, ease: 'easeOut' }}
-                            className="h-full rounded-full"
-                            style={{ backgroundColor: label.color }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {labels.length === 0 && (
-              <div className="text-center py-6 text-stone-400">
-                <Tag className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm font-bold">No labels yet</p>
-                <p className="text-xs mt-1">Add labels via the Annotate interface</p>
-              </div>
-            )}
-          </motion.div>
-
-          {/* Column 2: Model Performance placeholder */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.25 }}
-            className="flex h-full min-h-0 flex-col items-center justify-center bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"
-          >
-            <BarChart3 className="w-8 h-8 text-stone-300 mx-auto mb-3" />
-            <p className="text-base font-bold text-stone-400">Model Performance</p>
-            <p className="text-sm text-stone-300 mt-1 max-w-xs">
-              Train a model to see predictions & metrics here
-            </p>
-          </motion.div>
-        </div>
-
         {jobs.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.28 }}
-            className="bg-white rounded-2xl border border-stone-200 p-6"
+            className={CARD_P}
           >
             <h3 className="text-base font-bold text-stone-900 mb-3">Jobs</h3>
             <div className="border border-stone-100 rounded-xl overflow-hidden">
@@ -1066,7 +1055,7 @@ export default function DatasetDetailClient({ id }: Props) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.28 }}
-            className="bg-white rounded-2xl border border-stone-200 p-6"
+            className={CARD_P}
           >
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
