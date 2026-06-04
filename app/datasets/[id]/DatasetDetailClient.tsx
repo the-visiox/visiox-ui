@@ -164,7 +164,6 @@ export default function DatasetDetailClient({ id }: Props) {
   const imageBrowserPanelRef = useRef<HTMLDivElement>(null);
 
   const [augOpen, setAugOpen] = useState(false);
-  const [augStep, setAugStep] = useState<1 | 2>(1);
   const [preprocessConfig, setPreprocessConfig] = useState({
     auto_orient: false, resize: false, resize_width: 640, resize_height: 640, grayscale: false,
   });
@@ -696,7 +695,7 @@ export default function DatasetDetailClient({ id }: Props) {
                               style={{ backgroundColor: lbl.color }}
                             >
                               {lbl.count > 0 && (
-                                <span className="absolute top-2 left-0 right-0 text-[10px] font-bold text-stone-600 tabular-nums text-center leading-none">
+                                <span className="absolute top-2 left-0 right-0 text-[10px] font-bold text-stone-700 tabular-nums text-center leading-none">
                                   {lbl.count}
                                 </span>
                               )}
@@ -768,205 +767,167 @@ export default function DatasetDetailClient({ id }: Props) {
 
             {augOpen && (
               <div className="border-t border-stone-100 px-6 pb-6 pt-5 space-y-5">
-                {/* Step indicator */}
-                <div className="flex items-center">
-                  <button type="button" onClick={() => setAugStep(1)} className="flex items-center gap-2">
-                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
-                      augStep === 1 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-emerald-500 text-white'
-                    }`}>
-                      {augStep > 1 ? <Check className="w-3.5 h-3.5" /> : '1'}
-                    </span>
-                    <span className={`text-xs font-bold ${augStep === 1 ? 'text-orange-600' : 'text-stone-400'}`}>Preprocessing</span>
-                  </button>
-                  <div className="mx-3 flex-1 h-px bg-stone-200" />
-                  <button type="button" onClick={() => setAugStep(2)} className="flex items-center gap-2">
-                    <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
-                      augStep === 2 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-200 text-stone-500'
-                    }`}>2</span>
-                    <span className={`text-xs font-bold ${augStep === 2 ? 'text-orange-600' : 'text-stone-400'}`}>Augmentation</span>
-                  </button>
+
+                {/* ── Preprocessing ── */}
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Preprocessing</p>
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+                    {PREPROCESS_CARDS.map(card => {
+                      const enabled = !!preprocessConfig[card.key as keyof typeof preprocessConfig];
+                      return (
+                        <div key={card.key} className={`rounded-xl border p-3.5 transition-all duration-200 ${
+                          enabled ? 'border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10' : 'border-stone-200 hover:border-stone-300 bg-white'
+                        }`}>
+                          <div className="flex items-start justify-between mb-2.5">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                              enabled ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-100 text-stone-400'
+                            }`}>
+                              <card.Icon className="w-4 h-4" />
+                            </div>
+                            <button
+                              role="switch" aria-checked={enabled}
+                              onClick={() => togglePreprocess(card.key)}
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 ${
+                                enabled ? 'bg-orange-500 shadow-md shadow-orange-500/25' : 'bg-stone-200 hover:bg-stone-300'
+                              }`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                              }`} />
+                            </button>
+                          </div>
+                          <p className="text-xs font-bold text-stone-800">{card.label}</p>
+                          <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                          {enabled && card.key === 'resize' && (
+                            <div className="mt-3 pt-3 border-t border-orange-200/70">
+                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Dimensions</p>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number" min={32} max={4096} step={32}
+                                  value={preprocessConfig.resize_width}
+                                  onChange={e => setPreprocessConfig(c => ({ ...c, resize_width: parseInt(e.target.value) || 640 }))}
+                                  className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                />
+                                <span className="text-xs text-stone-400">×</span>
+                                <input
+                                  type="number" min={32} max={4096} step={32}
+                                  value={preprocessConfig.resize_height}
+                                  onChange={e => setPreprocessConfig(c => ({ ...c, resize_height: parseInt(e.target.value) || 640 }))}
+                                  className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                />
+                                <span className="text-[10px] text-stone-400">px</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* ── Step 1: Preprocessing ── */}
-                {augStep === 1 && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      {PREPROCESS_CARDS.map(card => {
-                        const enabled = !!preprocessConfig[card.key as keyof typeof preprocessConfig];
-                        return (
-                          <div key={card.key} className={`rounded-xl border p-4 transition-all duration-200 ${
-                            enabled ? 'border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10' : 'border-stone-200 hover:border-stone-300'
-                          }`}>
-                            <div className="flex items-start justify-between mb-3">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-                                enabled ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-100 text-stone-400'
-                              }`}>
-                                <card.Icon className="w-4 h-4" />
-                              </div>
-                              <button
-                                role="switch" aria-checked={enabled}
-                                onClick={() => togglePreprocess(card.key)}
-                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-200 ${
-                                  enabled ? 'bg-orange-500 shadow-md shadow-orange-500/25' : 'bg-stone-200 hover:bg-stone-300'
-                                }`}
-                              >
-                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
-                                }`} />
-                              </button>
+                {/* ── Augmentation ── */}
+                <div className="space-y-3 pt-2 border-t border-stone-100">
+                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Augmentation</p>
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+                    {AUG_CARDS.map(card => {
+                      const enabled = isAugEnabled(card.key);
+                      const numVal = augConfig[card.key as keyof typeof augConfig] as number;
+                      return (
+                        <div key={card.key} className={`rounded-xl border p-3.5 transition-all duration-200 ${
+                          enabled ? 'border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10' : 'border-stone-200 hover:border-stone-300 bg-white'
+                        }`}>
+                          <div className="flex items-start justify-between mb-2.5">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                              enabled ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-100 text-stone-400'
+                            }`}>
+                              <card.Icon className="w-4 h-4" />
                             </div>
-                            <p className="text-sm font-bold text-stone-800">{card.label}</p>
-                            <p className="text-xs text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
-                            {enabled && card.key === 'resize' && (
-                              <div className="mt-3 pt-3 border-t border-orange-200/70">
-                                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Dimensions</p>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number" min={32} max={4096} step={32}
-                                    value={preprocessConfig.resize_width}
-                                    onChange={e => setPreprocessConfig(c => ({ ...c, resize_width: parseInt(e.target.value) || 640 }))}
-                                    className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
-                                  />
-                                  <span className="text-xs text-stone-400">×</span>
-                                  <input
-                                    type="number" min={32} max={4096} step={32}
-                                    value={preprocessConfig.resize_height}
-                                    onChange={e => setPreprocessConfig(c => ({ ...c, resize_height: parseInt(e.target.value) || 640 }))}
-                                    className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
-                                  />
-                                  <span className="text-[10px] text-stone-400">px</span>
-                                </div>
-                              </div>
-                            )}
+                            <button
+                              role="switch" aria-checked={enabled}
+                              onClick={() => toggleAug(card)}
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 ${
+                                enabled ? 'bg-orange-500 shadow-md shadow-orange-500/25' : 'bg-stone-200 hover:bg-stone-300'
+                              }`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                              }`} />
+                            </button>
                           </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex justify-end pt-1 border-t border-stone-100">
-                      <button
-                        type="button"
-                        onClick={() => setAugStep(2)}
-                        className="flex items-center gap-2 px-5 py-2 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-500/25 hover:scale-105 active:scale-95 transition-all"
-                      >
-                        Next: Augmentation <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Step 2: Augmentation ── */}
-                {augStep === 2 && (
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
-                      {AUG_CARDS.map(card => {
-                        const enabled = isAugEnabled(card.key);
-                        const numVal = augConfig[card.key as keyof typeof augConfig] as number;
-                        return (
-                          <div key={card.key} className={`rounded-xl border p-3.5 transition-all duration-200 ${
-                            enabled ? 'border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10' : 'border-stone-200 hover:border-stone-300 bg-white'
-                          }`}>
-                            <div className="flex items-start justify-between mb-2.5">
-                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
-                                enabled ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-100 text-stone-400'
-                              }`}>
-                                <card.Icon className="w-4 h-4" />
+                          <p className="text-xs font-bold text-stone-800">{card.label}</p>
+                          <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                          {enabled && card.type === 'slider' && card.format && (
+                            <div className="mt-3 pt-2.5 border-t border-orange-200/70">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="range" min={card.min} max={card.max} step={card.step} value={numVal}
+                                  onChange={e => setAugConfig(c => ({ ...c, [card.key]: parseFloat(e.target.value) }))}
+                                  className="flex-1 h-1 accent-orange-500 cursor-pointer"
+                                />
+                                <span className="w-10 shrink-0 text-right text-[10px] font-bold text-orange-600 tabular-nums">
+                                  {card.format(numVal)}
+                                </span>
                               </div>
-                              <button
-                                role="switch" aria-checked={enabled}
-                                onClick={() => toggleAug(card)}
-                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 ${
-                                  enabled ? 'bg-orange-500 shadow-md shadow-orange-500/25' : 'bg-stone-200 hover:bg-stone-300'
-                                }`}
-                              >
-                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
-                                }`} />
-                              </button>
                             </div>
-                            <p className="text-xs font-bold text-stone-800">{card.label}</p>
-                            <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
-                            {enabled && card.type === 'slider' && card.format && (
-                              <div className="mt-3 pt-2.5 border-t border-orange-200/70">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="range" min={card.min} max={card.max} step={card.step} value={numVal}
-                                    onChange={e => setAugConfig(c => ({ ...c, [card.key]: parseFloat(e.target.value) }))}
-                                    className="flex-1 h-1 accent-orange-500 cursor-pointer"
-                                  />
-                                  <span className="w-10 shrink-0 text-right text-[10px] font-bold text-orange-600 tabular-nums">
-                                    {card.format(numVal)}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Multiplier */}
-                    <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="text-sm font-bold text-stone-800">Dataset Multiplier</p>
-                          <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
+                          )}
                         </div>
-                        <span className="text-xs font-bold text-orange-600 tabular-nums">
-                          {(browserData?.frames.length ?? 0) * multiplier} total images
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        {([1, 2, 3, 4, 5] as const).map(m => (
-                          <button
-                            key={m} type="button"
-                            onClick={() => setMultiplier(m)}
-                            className={`flex-1 rounded-lg border py-2.5 text-xs font-bold transition-all ${
-                              multiplier === m
-                                ? 'border-orange-400 bg-orange-500 text-white shadow-md shadow-orange-500/25'
-                                : 'border-stone-200 bg-white text-stone-600 hover:border-orange-300 hover:bg-orange-50'
-                            }`}
-                          >
-                            {m}×
-                            <span className={`block text-[10px] font-medium mt-0.5 ${multiplier === m ? 'text-orange-200' : 'text-stone-400'}`}>
-                              +{(browserData?.frames.length ?? 0) * m} imgs
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-between pt-1 border-t border-stone-100">
-                      <button
-                        type="button"
-                        onClick={() => setAugStep(1)}
-                        className="flex items-center gap-1.5 text-xs font-bold text-stone-400 hover:text-stone-600 transition-colors"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" /> Back
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleAugPreview()}
-                          disabled={augLoading || augActiveCount === 0}
-                          className="flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 bg-white text-stone-600 rounded-xl text-xs font-bold hover:bg-stone-50 transition-all disabled:opacity-40 disabled:pointer-events-none"
-                        >
-                          {augLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
-                          Preview
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleAugApply()}
-                          disabled={augApplying || augActiveCount === 0}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-500/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-                        >
-                          {augApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                          Apply to Dataset
-                        </button>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
+
+                {/* Multiplier */}
+                <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-sm font-bold text-stone-800">Dataset Multiplier</p>
+                      <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
+                    </div>
+                    <span className="text-xs font-bold text-orange-600 tabular-nums">
+                      {(browserData?.frames.length ?? 0) * multiplier} total images
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    {([1, 2, 3, 4, 5] as const).map(m => (
+                      <button
+                        key={m} type="button"
+                        onClick={() => setMultiplier(m)}
+                        className={`flex-1 rounded-lg border py-2.5 text-xs font-bold transition-all ${
+                          multiplier === m
+                            ? 'border-orange-400 bg-orange-500 text-white shadow-md shadow-orange-500/25'
+                            : 'border-stone-200 bg-white text-stone-600 hover:border-orange-300 hover:bg-orange-50'
+                        }`}
+                      >
+                        {m}×
+                        <span className={`block text-[10px] font-medium mt-0.5 ${multiplier === m ? 'text-orange-200' : 'text-stone-400'}`}>
+                          +{(browserData?.frames.length ?? 0) * m} imgs
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-100">
+                  <button
+                    type="button"
+                    onClick={() => void handleAugPreview()}
+                    disabled={augLoading || augActiveCount === 0}
+                    className="flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 bg-white text-stone-600 rounded-xl text-xs font-bold hover:bg-stone-50 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {augLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                    Preview
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleAugApply()}
+                    disabled={augApplying || augActiveCount === 0}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-500/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {augApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                    Apply to Dataset
+                  </button>
+                </div>
               </div>
             )}
           </motion.div>
