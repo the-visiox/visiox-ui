@@ -108,19 +108,35 @@ lib/
   auth.tsx              # AuthProvider (uses lib/api.ts)
 ```
 
+## API client (`lib/api.ts`)
+
+Tất cả requests đến backend đi qua `lib/api.ts`. Backend dùng prefix `/api/v1/` cho mọi endpoint.
+
+| Namespace | Mô tả |
+| --------- | ----- |
+| `auth` | Login, register, OAuth, logout, token refresh |
+| `projects` | CRUD project |
+| `teams` | Team, thành viên, invitation |
+| `datasets` | CRUD dataset, upload, augmentation, export, sync CVAT |
+| `annotationClasses` | Labels của project |
+| `training` | Training jobs (`startJob` → PATCH `{"status":"queued"}`), experiments, metrics |
+| `deployments` | Model registry, inference endpoints (`startEndpoint` → PATCH `{"status":"active"}`) |
+| `dataverse` | Public datasets, chia sẻ (`shareProject` → POST `/api/v1/dataverse/`), fork |
+
 ## Annotation workspace
 
-- Route: `/datasets/[datasetId]/annotate/[mediaId]`  
-- Optional query: `?jobId=<labelingTaskId>` to **load/save** via `GET` / `PATCH /api/jobs/{id}/annotations/`.  
-- **Box tool**: drag on the image. **Polygon tool**: choose vertex count in the toolbar, then click corners; **Esc** cancels in-progress polygon.  
-- **Demo mode**: no token → placeholder image and demo labels; API calls skipped until logged in.
+- Route: `/datasets/[datasetId]/annotate/[mediaId]`
+- Optional query: `?jobId=<labelingTaskId>` để load/save qua `GET` / `PATCH /api/v1/jobs/{id}/annotations/`
+- **Box tool**: kéo thả trên ảnh. **Polygon tool**: chọn số đỉnh trong toolbar rồi click; **Esc** huỷ polygon đang vẽ.
+- **Demo mode**: không có token → ảnh placeholder và labels demo; API calls bị skip cho đến khi đăng nhập.
 
 ## Login
 
-1. Start the Visiox API (`python manage.py runserver 0.0.0.0:8000` or Docker).  
-2. Open `/login`.  
-3. Use a real user (e.g. after `seed_demo_data`: `demo@visiox.ai` / `Demo1234!`).  
-If the UI shows a network error, confirm `NEXT_PUBLIC_API_URL` and that the browser can reach `/api/docs/` on the API host.
+1. Chạy Visiox API (`python manage.py runserver 0.0.0.0:8000` hoặc Docker).
+2. Mở `/login`.
+3. Dùng tài khoản thực (sau `seed_demo_data`: `demo@visiox.ai` / `Demo1234!`).
+
+Nếu UI báo lỗi network, kiểm tra `NEXT_PUBLIC_API_URL` và truy cập thử `http://localhost:8000/api/docs/`.
 
 ## Agent / AI skills
 
