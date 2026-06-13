@@ -96,8 +96,8 @@ export interface User {
 
 export interface Project {
   id: number;
-  team: number;
-  team_name: string;
+  team: number | null;
+  team_name: string | null;
   owner: number | null;
   name: string;
   task_type: string;
@@ -374,7 +374,7 @@ export const projects = {
   get(id: number) {
     return request<Project>(`/api/v1/projects/${id}/`);
   },
-  create(data: { team: number; name: string; task_type: string; description?: string; is_public?: boolean }) {
+  create(data: { team?: number; name: string; task_type: string; description?: string; is_public?: boolean }) {
     return request<Project>('/api/v1/projects/', { method: 'POST', body: JSON.stringify(data) });
   },
   delete(id: number) {

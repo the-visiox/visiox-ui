@@ -6,7 +6,6 @@ import {
   Plus,
   Search,
   ArrowLeft,
-  Folder,
   ImageIcon,
   Layers,
   Database,
@@ -246,9 +245,11 @@ export default function ProjectsPage() {
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         ) : (
-                          <div className="flex h-full items-center justify-center">
-                            <Folder className="h-12 w-12 text-stone-300" />
-                          </div>
+                          <img
+                            src="/project-placeholder.svg"
+                            alt="No images yet"
+                            className="h-full w-full object-cover"
+                          />
                         )}
                         <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-stone-900 shadow-sm backdrop-blur">
                           {TASK_TYPE_LABEL[p.task_type] ?? p.task_type}
