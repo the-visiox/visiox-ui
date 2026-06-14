@@ -7,18 +7,23 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft, Download, ChevronDown, Tag, RefreshCw, Upload,
   Loader2, AlertTriangle, BarChart3, Layers, ExternalLink,
-  Image as ImageIcon, Box, Crosshair, Activity, Trash2,
+  Image as ImageIcon, Activity, Trash2,
   CheckCircle2, Circle, Users, Check, ChevronLeft, ChevronRight,
+  Wand2, Eye, FlipHorizontal, FlipVertical, RotateCcw, RotateCw,
+  Sun, Aperture, Zap, Scissors, Sliders, Palette, Droplets,
+  Wind, Square, Maximize2,
 } from 'lucide-react';
 
 const BATCH_SIZE = 50;
 import BlueprintGrid from '@/components/BlueprintGrid';
 import {
   datasets,
+  annotationClasses,
   resolveMediaUrl,
   type DatasetStats,
   type BrowserData,
   type Media,
+  type AnnotationClass,
 } from '@/lib/api';
 
 const CVAT_URL = process.env.NEXT_PUBLIC_CVAT_URL || 'http://localhost:8080';
@@ -78,54 +83,14 @@ function buildBrowserDataWithMediaFallback(browser: BrowserData, media: Media[],
   };
 }
 
-function StatCard({ icon: Icon, label, value, sub, color = 'orange', delay = 0 }: {
-  icon: React.ElementType; label: string; value: string | number;
-  sub?: string; color?: string; delay?: number;
-}) {
-  const colorMap: Record<string, string> = {
-    orange: 'from-orange-500 to-amber-400',
-    emerald: 'from-emerald-500 to-teal-400',
-    blue: 'from-blue-500 to-cyan-400',
-    purple: 'from-purple-500 to-violet-400',
-  };
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
-      className="bg-white rounded-2xl border border-stone-200 p-5 hover:shadow-lg hover:border-stone-300 transition-all"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colorMap[color]} flex items-center justify-center shadow-lg`}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-      </div>
-      <p className="text-2xl font-bold text-stone-900">{value}</p>
-      <p className="text-sm font-medium text-stone-500 mt-0.5">{label}</p>
-      {sub && <p className="text-xs text-stone-400 mt-1">{sub}</p>}
-    </motion.div>
-  );
-}
 
-function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-1.5">
-        <span className="text-sm font-medium text-stone-600">{label}</span>
-        <span className="text-sm font-bold text-stone-800">{pct}%</span>
-      </div>
-      <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-          className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full"
-        />
-      </div>
-    </div>
-  );
-}
+
+// ── Class management ──────────────────────────────────────────────────────────
+const CARD      = "bg-white rounded-2xl border border-stone-200";
+const CARD_P    = `${CARD} p-6`;
+const CARD_COL1 = `flex h-full min-h-0 flex-col space-y-4 ${CARD_P}`;
+const CARD_COL2 = `flex h-full min-h-0 flex-col items-center justify-center border-dashed ${CARD} p-8 text-center`;
+// ──────────────────────────────────────────────────────────────────────────────
 
 const JOB_STATE_STYLE: Record<string, { icon: React.ElementType; color: string }> = {
   new: { icon: Circle, color: 'text-stone-400' },
@@ -133,6 +98,48 @@ const JOB_STATE_STYLE: Record<string, { icon: React.ElementType; color: string }
   completed: { icon: CheckCircle2, color: 'text-emerald-500' },
   rejected: { icon: AlertTriangle, color: 'text-red-500' },
 };
+
+interface AugCardDef {
+  key: string;
+  label: string;
+  desc: string;
+  Icon: React.ElementType;
+  type: 'toggle' | 'slider';
+  defaultVal: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  format?: (v: number) => string;
+}
+
+interface PreprocessCardDef {
+  key: string;
+  label: string;
+  desc: string;
+  Icon: React.ElementType;
+}
+
+const PREPROCESS_CARDS: PreprocessCardDef[] = [
+  { key: 'auto_orient', label: 'Auto-Orient', desc: 'Fix EXIF rotation metadata', Icon: RefreshCw },
+  { key: 'resize',      label: 'Resize',      desc: 'Standardize to fixed dimensions', Icon: Maximize2 },
+  { key: 'grayscale',   label: 'Grayscale',   desc: 'Convert images to grayscale', Icon: Circle },
+];
+
+const AUG_CARDS: AugCardDef[] = [
+  { key: 'flip_h',      label: 'Flip',         desc: 'Horizontal mirror',           Icon: FlipHorizontal, type: 'toggle', defaultVal: 1 },
+  { key: 'flip_v',      label: 'Flip Vertical', desc: 'Vertical mirror',             Icon: FlipVertical,   type: 'toggle', defaultVal: 1 },
+  { key: 'rotate90',    label: '90° Rotate',    desc: 'Random 90° step rotation',    Icon: RotateCw,       type: 'toggle', defaultVal: 1 },
+  { key: 'rotation',    label: 'Rotation',      desc: 'Random angle within range',   Icon: RotateCcw,      type: 'slider', defaultVal: 15,  min: 1,    max: 45,  step: 1,    format: v => `±${v}°` },
+  { key: 'shear',       label: 'Shear',         desc: 'Geometric shear transform',   Icon: Scissors,       type: 'slider', defaultVal: 10,  min: 5,    max: 30,  step: 5,    format: v => `±${v}°` },
+  { key: 'brightness',  label: 'Brightness',    desc: 'Random brightness shift',     Icon: Sun,            type: 'slider', defaultVal: 0.2, min: 0.05, max: 0.5, step: 0.05, format: v => `±${Math.round(v * 100)}%` },
+  { key: 'contrast',    label: 'Contrast',      desc: 'Random contrast shift',       Icon: Sliders,        type: 'slider', defaultVal: 0.2, min: 0.05, max: 0.5, step: 0.05, format: v => `±${Math.round(v * 100)}%` },
+  { key: 'hue',         label: 'Hue',           desc: 'Random hue shift',            Icon: Palette,        type: 'slider', defaultVal: 20,  min: 5,    max: 60,  step: 5,    format: v => `±${v}` },
+  { key: 'saturation',  label: 'Saturation',    desc: 'Random saturation shift',     Icon: Droplets,       type: 'slider', defaultVal: 30,  min: 5,    max: 80,  step: 5,    format: v => `±${v}` },
+  { key: 'blur',        label: 'Blur',          desc: 'Gaussian blur effect',        Icon: Aperture,       type: 'slider', defaultVal: 1.5, min: 0.5,  max: 5,   step: 0.5,  format: v => `${v.toFixed(1)}px` },
+  { key: 'noise',       label: 'Noise',         desc: 'Gaussian noise injection',    Icon: Zap,            type: 'slider', defaultVal: 0.1, min: 0.05, max: 0.5, step: 0.05, format: v => `${Math.round(v * 100)}%` },
+  { key: 'motion_blur', label: 'Motion Blur',   desc: 'Directional motion blur',     Icon: Wind,           type: 'slider', defaultVal: 7,   min: 3,    max: 15,  step: 2,    format: v => `${v}px` },
+  { key: 'cutout',      label: 'Cutout',        desc: 'Random rectangular dropout',  Icon: Square,         type: 'toggle', defaultVal: 1 },
+];
 
 export default function DatasetDetailClient({ id }: Props) {
   const router = useRouter();
@@ -156,6 +163,21 @@ export default function DatasetDetailClient({ id }: Props) {
   /** Image browser card — clicks outside clear selection. */
   const imageBrowserPanelRef = useRef<HTMLDivElement>(null);
 
+  const [augOpen, setAugOpen] = useState(false);
+  const [preprocessConfig, setPreprocessConfig] = useState({
+    auto_orient: false, resize: false, resize_width: 640, resize_height: 640, grayscale: false,
+  });
+  const [augConfig, setAugConfig] = useState({
+    flip_h: false, flip_v: false, rotate90: false,
+    rotation: 0, brightness: 0, blur: 0, noise: 0, shear: 0, contrast: 0,
+    hue: 0, saturation: 0, motion_blur: 0, cutout: false,
+  });
+  const [multiplier, setMultiplier] = useState(1);
+  const [augPreviews, setAugPreviews] = useState<Array<{ media_id: number; name: string; augmented_url: string }>>([]);
+  const [augLoading, setAugLoading] = useState(false);
+  const [augApplying, setAugApplying] = useState(false);
+  const [allClasses, setAllClasses] = useState<AnnotationClass[]>([]);
+
   const refreshStatsAndBrowser = useCallback(async () => {
     const [dsResult, statsResult, browserResult, mediaResult] = await Promise.allSettled([
       datasets.get(numericId),
@@ -167,7 +189,13 @@ export default function DatasetDetailClient({ id }: Props) {
       setAnnotatedCountApi(dsResult.value.annotated_count ?? null);
       setMediaCountApi(dsResult.value.media_count ?? null);
     }
-    if (statsResult.status === 'fulfilled') setStats(statsResult.value);
+    if (statsResult.status === 'fulfilled') {
+      setStats(statsResult.value);
+      const projectId = statsResult.value.project_id;
+      if (projectId) {
+        annotationClasses.list(projectId).then(res => setAllClasses(res.results)).catch(() => {});
+      }
+    }
     if (browserResult.status === 'fulfilled') {
       const browser = browserResult.value;
       const media = mediaResult.status === 'fulfilled' ? mediaResult.value : [];
@@ -340,6 +368,67 @@ export default function DatasetDetailClient({ id }: Props) {
     finally { setSyncing(false); }
   };
 
+  const handleAugPreview = async () => {
+    setAugLoading(true);
+    setAugPreviews([]);
+    try {
+      const result = await datasets.augmentPreview(numericId, {
+        preprocess: preprocessConfig,
+        augment: augConfig,
+        count: 6,
+      });
+      setAugPreviews(result.previews);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Augmentation preview failed');
+    } finally {
+      setAugLoading(false);
+    }
+  };
+
+  const handleAugApply = async () => {
+    if (!window.confirm(`Generate ${(browserData?.frames.length ?? 0) * multiplier} augmented images and add them to this dataset?`)) return;
+    setAugApplying(true);
+    setError('');
+    try {
+      await datasets.augmentApply(numericId, {
+        preprocess: preprocessConfig,
+        augment: augConfig,
+        multiplier,
+      });
+      await refreshStatsAndBrowser();
+      setAugPreviews([]);
+      setAugOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Apply failed');
+    } finally {
+      setAugApplying(false);
+    }
+  };
+
+  const isAugEnabled = (key: string): boolean => {
+    const val = augConfig[key as keyof typeof augConfig];
+    return typeof val === 'boolean' ? val : (val as number) > 0;
+  };
+
+  const toggleAug = (card: AugCardDef) => {
+    setAugConfig(c => {
+      const current = c[card.key as keyof typeof c];
+      if (typeof current === 'boolean') return { ...c, [card.key]: !current };
+      return { ...c, [card.key]: (current as number) === 0 ? card.defaultVal : 0 };
+    });
+    setAugPreviews([]);
+  };
+
+  const togglePreprocess = (key: string) => {
+    setPreprocessConfig(c => ({ ...c, [key]: !c[key as keyof typeof c] }));
+    setAugPreviews([]);
+  };
+
+  const augActiveCount = AUG_CARDS.filter(c => isAugEnabled(c.key)).length;
+  const preprocessActiveCount = PREPROCESS_CARDS.filter(
+    c => !!preprocessConfig[c.key as keyof typeof preprocessConfig],
+  ).length;
+
   const handleExport = (format: ExportFormat) => {
     setExportOpen(false);
     const url = datasets.exportUrl(numericId, format);
@@ -417,17 +506,17 @@ export default function DatasetDetailClient({ id }: Props) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+          <div className="flex flex-wrap items-center gap-3 md:justify-end">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading || syncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50 hover:-translate-y-0.5 active:translate-y-0"
+              className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
             >
               {uploading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
+                <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
               ) : (
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="w-4 h-4" />
               )}
               Upload
             </button>
@@ -436,19 +525,19 @@ export default function DatasetDetailClient({ id }: Props) {
               type="button"
               onClick={handleSync}
               disabled={syncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
+              className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
               Sync
             </button>
 
             <div className="relative">
               <button
                 onClick={() => setExportOpen(v => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all"
+                className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all"
               >
-                <Download className="w-3.5 h-3.5" /> Export
-                <ChevronDown className={`w-3 h-3 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
+                <Download className="w-4 h-4" /> Export
+                <ChevronDown className={`w-4 h-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
               </button>
               {exportOpen && (
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
@@ -456,7 +545,7 @@ export default function DatasetDetailClient({ id }: Props) {
                 >
                   {EXPORT_FORMATS.map(fmt => (
                     <button key={fmt} onClick={() => handleExport(fmt)}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-50 uppercase"
+                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50 uppercase"
                     >
                       {fmt === 'coco' ? 'COCO JSON' : fmt === 'yolo' ? 'YOLO txt' : 'Pascal VOC'}
                     </button>
@@ -467,18 +556,18 @@ export default function DatasetDetailClient({ id }: Props) {
 
             {!!taskId && (
               <a href={`${CVAT_URL}/tasks/${taskId}`} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-50 transition-all"
+                className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all"
               >
-                <ExternalLink className="w-3.5 h-3.5" /> CVAT
+                <ExternalLink className="w-4 h-4" /> CVAT
               </a>
             )}
 
             <button
               type="button"
               onClick={() => router.push(`/datasets/${id}/annotate/native?mode=simple`)}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
             >
-              <Layers className="w-3.5 h-3.5" /> Annotate Native
+              <Layers className="w-4 h-4" /> Annotate Native
             </button>
           </div>
         </nav>
@@ -493,66 +582,133 @@ export default function DatasetDetailClient({ id }: Props) {
       {/* Main Content */}
       <div className="z-10 flex-1 overflow-auto p-6 space-y-4 max-w-8xl mx-auto w-full">
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard icon={ImageIcon} label="Total Images" value={totalImages} color="orange" delay={0} />
-          <StatCard icon={Tag} label="Annotations" value={totalAnnotations}
-            sub={totalAnnotations > 0 ? `${cvat?.annotations?.shapes ?? 0} shapes · ${cvat?.annotations?.tags ?? 0} tags · ${cvat?.annotations?.tracks ?? 0} tracks` : undefined}
-            color="blue" delay={0.05}
-          />
-          <StatCard icon={Box} label="Labels" value={labels.length} color="purple" delay={0.1} />
-          <StatCard icon={Crosshair} label="Annotated Images" value={`${annotatedCount} / ${totalImages}`}
-            sub={totalImages > 0 ? `${Math.round((annotatedCount / totalImages) * 100)}% complete` : 'No images'}
-            color="emerald" delay={0.15}
-          />
-        </div>
+        {/* ── Augmented Images Preview ── */}
+        {augPreviews.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className={CARD_P}
+          >
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-base font-bold text-stone-900">Augmented Preview</h3>
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-600">
+                    {augPreviews.length} images
+                  </span>
+                </div>
+                <p className="text-sm text-stone-400">Current config applied — original images unchanged</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAugPreviews([])}
+                className="text-xs font-medium text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+              {augPreviews.map(preview => (
+                <div key={preview.media_id}
+                  className="group overflow-hidden rounded-2xl border border-orange-200/60 bg-white hover:shadow-md hover:border-orange-300 transition-all duration-300"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-orange-50 to-amber-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={preview.augmented_url} alt={`Augmented ${preview.name}`}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-orange-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  </div>
+                  <div className="px-2.5 py-2 bg-white">
+                    <p className="truncate text-xs font-semibold text-stone-800">{preview.name}</p>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
+                      <p className="text-[10px] font-medium text-orange-500">Augmented</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
 
-          {/* Column 1: Annotation Progress & Label Distribution */}
+          {/* Column 1: Stats, Annotation Progress & Label Distribution */}
           <motion.div
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
-            className="flex h-full min-h-0 flex-col space-y-4 bg-white rounded-2xl border border-stone-200 p-6"
+            className={CARD_COL1}
           >
-            <div>
-              <h3 className="text-base font-bold text-stone-900 mb-4">Annotation Progress</h3>
-              <ProgressBar value={annotatedCount} max={totalImages} label="Images annotated" />
+            {/* Mini stats */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {([
+                { label: 'Total Images', value: totalImages, Icon: ImageIcon, iconClass: 'bg-orange-100 text-orange-500' },
+                { label: 'Labels', value: allClasses.length || labels.length, Icon: Tag, iconClass: 'bg-purple-100 text-purple-500' },
+                { label: 'Annotations', value: totalAnnotations, Icon: BarChart3, iconClass: 'bg-blue-100 text-blue-500' },
+                { label: 'Annotated images', value: annotatedCount, Icon: CheckCircle2, iconClass: 'bg-emerald-100 text-emerald-500' },
+              ] as const).map(({ label, value, Icon, iconClass }) => (
+                <div key={label} className="rounded-xl bg-stone-50 px-3 py-3">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-2 ${iconClass}`}>
+                    <Icon className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-xl font-bold text-stone-900">{value}</p>
+                  <p className="text-xs font-medium text-stone-500 mt-0.5">{label}</p>
+                </div>
+              ))}
             </div>
 
-            {labels.length > 0 && browserData && (
-              <div>
-                <h3 className="text-base font-bold text-stone-900 mb-4">Label Distribution</h3>
-                <div className="space-y-3">
-                  {labels.map(label => {
-                    const count = browserData.frames.reduce(
-                      (sum, f) => sum + f.annotations.filter(a => a.label_id === label.id).length, 0
-                    );
-                    const pct = totalAnnotations > 0 ? (count / totalAnnotations) * 100 : 0;
-                    return (
-                      <div key={label.id}>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: label.color }} />
-                            <span className="text-sm font-medium text-stone-600">{label.name}</span>
+            {(allClasses.length > 0 || labels.length > 0) && browserData && (() => {
+              // Build a name→count map from CVAT browser labels
+              const cvatCountByName = new Map<string, number>();
+              labels.forEach(label => {
+                const count = browserData.frames.reduce(
+                  (sum, f) => sum + f.annotations.filter(a => a.label_id === label.id).length, 0
+                );
+                cvatCountByName.set(label.name.toLowerCase(), count);
+              });
+
+              // Use project classes (all labels) if available, else fall back to browserData labels
+              const source = allClasses.length > 0 ? allClasses : labels;
+              const counts = source.map(label => ({
+                id: label.id,
+                name: label.name,
+                color: label.color,
+                count: cvatCountByName.get(label.name.toLowerCase()) ?? 0,
+              }));
+              const maxCount = Math.max(...counts.map(c => c.count), 1);
+              return (
+                <div>
+                  <h3 className="text-base font-bold text-stone-900 mb-3">Label Distribution</h3>
+                  <div className="flex items-end gap-1.5">
+                    {counts.map(lbl => {
+                      const pct = (lbl.count / maxCount) * 100;
+                      return (
+                        <div key={lbl.id} className="flex-1 min-w-0 flex flex-col items-center gap-1">
+                          <div className="relative w-full h-48">
+                            <motion.div
+                              initial={{ height: 0 }}
+                              animate={{ height: `${pct}%` }}
+                              transition={{ duration: 0.6, ease: 'easeOut' }}
+                              className="absolute bottom-0 left-2 right-2 rounded-t-[4px] min-h-[2px] overflow-hidden"
+                              style={{ backgroundColor: lbl.color }}
+                            >
+                              {lbl.count > 0 && (
+                                <span className="absolute top-2 left-0 right-0 text-[10px] font-bold text-stone-700 tabular-nums text-center leading-none">
+                                  {lbl.count}
+                                </span>
+                              )}
+                            </motion.div>
                           </div>
-                          <span className="text-sm font-bold text-stone-800">{count}</span>
+                          <span className="text-[10px] text-stone-400 truncate w-full text-center">{lbl.name}</span>
                         </div>
-                        <div className="w-full h-2 bg-stone-100 rounded-full overflow-hidden">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pct}%` }}
-                            transition={{ duration: 0.6, ease: 'easeOut' }}
-                            className="h-full rounded-full"
-                            style={{ backgroundColor: label.color }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {labels.length === 0 && (
               <div className="text-center py-6 text-stone-400">
@@ -567,7 +723,7 @@ export default function DatasetDetailClient({ id }: Props) {
           <motion.div
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.25 }}
-            className="flex h-full min-h-0 flex-col items-center justify-center bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"
+            className={CARD_COL2}
           >
             <BarChart3 className="w-8 h-8 text-stone-300 mx-auto mb-3" />
             <p className="text-base font-bold text-stone-400">Model Performance</p>
@@ -577,11 +733,211 @@ export default function DatasetDetailClient({ id }: Props) {
           </motion.div>
         </div>
 
+        {/* ── Generate Dataset ── */}
+        {browserData && browserData.frames.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.05 }}
+            className={`${CARD} overflow-hidden`}
+          >
+            <button
+              type="button"
+              onClick={() => { setAugOpen(v => !v); }}
+              className="w-full flex items-center justify-between px-6 py-5 hover:bg-stone-50/60 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                  <Wand2 className="w-4 h-4 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-base font-bold text-stone-900">Generate Dataset</h3>
+                  <p className="text-xs text-stone-400 mt-0.5">Preprocessing · Augmentation · Apply to dataset</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5">
+                {(preprocessActiveCount + augActiveCount) > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-[11px] font-bold text-orange-700">
+                    {preprocessActiveCount + augActiveCount} active
+                  </span>
+                )}
+                <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform duration-200 ${augOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {augOpen && (
+              <div className="border-t border-stone-100 px-6 pb-6 pt-5 space-y-5">
+
+                {/* ── Preprocessing ── */}
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Preprocessing</p>
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+                    {PREPROCESS_CARDS.map(card => {
+                      const enabled = !!preprocessConfig[card.key as keyof typeof preprocessConfig];
+                      return (
+                        <div key={card.key} className={`rounded-xl border p-3.5 transition-all duration-200 ${
+                          enabled ? 'border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10' : 'border-stone-200 hover:border-stone-300 bg-white'
+                        }`}>
+                          <div className="flex items-start justify-between mb-2.5">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                              enabled ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-100 text-stone-400'
+                            }`}>
+                              <card.Icon className="w-4 h-4" />
+                            </div>
+                            <button
+                              role="switch" aria-checked={enabled}
+                              onClick={() => togglePreprocess(card.key)}
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 ${
+                                enabled ? 'bg-orange-500 shadow-md shadow-orange-500/25' : 'bg-stone-200 hover:bg-stone-300'
+                              }`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                              }`} />
+                            </button>
+                          </div>
+                          <p className="text-xs font-bold text-stone-800">{card.label}</p>
+                          <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                          {enabled && card.key === 'resize' && (
+                            <div className="mt-3 pt-3 border-t border-orange-200/70">
+                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Dimensions</p>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number" min={32} max={4096} step={32}
+                                  value={preprocessConfig.resize_width}
+                                  onChange={e => setPreprocessConfig(c => ({ ...c, resize_width: parseInt(e.target.value) || 640 }))}
+                                  className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                />
+                                <span className="text-xs text-stone-400">×</span>
+                                <input
+                                  type="number" min={32} max={4096} step={32}
+                                  value={preprocessConfig.resize_height}
+                                  onChange={e => setPreprocessConfig(c => ({ ...c, resize_height: parseInt(e.target.value) || 640 }))}
+                                  className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                                />
+                                <span className="text-[10px] text-stone-400">px</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Augmentation ── */}
+                <div className="space-y-3 pt-2 border-t border-stone-100">
+                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Augmentation</p>
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+                    {AUG_CARDS.map(card => {
+                      const enabled = isAugEnabled(card.key);
+                      const numVal = augConfig[card.key as keyof typeof augConfig] as number;
+                      return (
+                        <div key={card.key} className={`rounded-xl border p-3.5 transition-all duration-200 ${
+                          enabled ? 'border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10' : 'border-stone-200 hover:border-stone-300 bg-white'
+                        }`}>
+                          <div className="flex items-start justify-between mb-2.5">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                              enabled ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-stone-100 text-stone-400'
+                            }`}>
+                              <card.Icon className="w-4 h-4" />
+                            </div>
+                            <button
+                              role="switch" aria-checked={enabled}
+                              onClick={() => toggleAug(card)}
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-200 ${
+                                enabled ? 'bg-orange-500 shadow-md shadow-orange-500/25' : 'bg-stone-200 hover:bg-stone-300'
+                              }`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                              }`} />
+                            </button>
+                          </div>
+                          <p className="text-xs font-bold text-stone-800">{card.label}</p>
+                          <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                          {enabled && card.type === 'slider' && card.format && (
+                            <div className="mt-3 pt-2.5 border-t border-orange-200/70">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="range" min={card.min} max={card.max} step={card.step} value={numVal}
+                                  onChange={e => setAugConfig(c => ({ ...c, [card.key]: parseFloat(e.target.value) }))}
+                                  className="flex-1 h-1 accent-orange-500 cursor-pointer"
+                                />
+                                <span className="w-10 shrink-0 text-right text-[10px] font-bold text-orange-600 tabular-nums">
+                                  {card.format(numVal)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Multiplier */}
+                <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-sm font-bold text-stone-800">Dataset Multiplier</p>
+                      <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
+                    </div>
+                    <span className="text-xs font-bold text-orange-600 tabular-nums">
+                      {(browserData?.frames.length ?? 0) * multiplier} total images
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    {([1, 2, 3, 4, 5] as const).map(m => (
+                      <button
+                        key={m} type="button"
+                        onClick={() => setMultiplier(m)}
+                        className={`flex-1 rounded-lg border py-2.5 text-xs font-bold transition-all ${
+                          multiplier === m
+                            ? 'border-orange-400 bg-orange-500 text-white shadow-md shadow-orange-500/25'
+                            : 'border-stone-200 bg-white text-stone-600 hover:border-orange-300 hover:bg-orange-50'
+                        }`}
+                      >
+                        {m}×
+                        <span className={`block text-[10px] font-medium mt-0.5 ${multiplier === m ? 'text-orange-200' : 'text-stone-400'}`}>
+                          +{(browserData?.frames.length ?? 0) * m} imgs
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-100">
+                  <button
+                    type="button"
+                    onClick={() => void handleAugPreview()}
+                    disabled={augLoading || augActiveCount === 0}
+                    className="flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 bg-white text-stone-600 rounded-xl text-xs font-bold hover:bg-stone-50 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {augLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                    Preview
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleAugApply()}
+                    disabled={augApplying || augActiveCount === 0}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-500/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {augApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                    Apply to Dataset
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+
         {jobs.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.28 }}
-            className="bg-white rounded-2xl border border-stone-200 p-6"
+            className={CARD_P}
           >
             <h3 className="text-base font-bold text-stone-900 mb-3">Jobs</h3>
             <div className="border border-stone-100 rounded-xl overflow-hidden">
@@ -660,7 +1016,7 @@ export default function DatasetDetailClient({ id }: Props) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.28 }}
-            className="bg-white rounded-2xl border border-stone-200 p-6"
+            className={CARD_P}
           >
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -864,6 +1220,7 @@ export default function DatasetDetailClient({ id }: Props) {
             )}
           </motion.div>
         )}
+
       </div>
     </div>
   );

@@ -750,7 +750,8 @@ export default function ProjectDetailPage() {
     }
   }, [projectIdNum]);
 
-  const loadMembers = useCallback(async (teamId: number) => {
+  const loadMembers = useCallback(async (teamId: number | null) => {
+    if (teamId == null) { setMembers([]); return; }
     try {
       const res = await teams.members(teamId);
       setMembers(res);
@@ -759,7 +760,8 @@ export default function ProjectDetailPage() {
     }
   }, []);
 
-  const loadInvitations = useCallback(async (teamId: number) => {
+  const loadInvitations = useCallback(async (teamId: number | null) => {
+    if (teamId == null) { setInvitations([]); return; }
     try {
       const res = await teams.listInvitations(teamId);
       setInvitations(res);
@@ -820,15 +822,16 @@ export default function ProjectDetailPage() {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!project || !inviteEmail.trim()) return;
+    if (!project || project.team == null || !inviteEmail.trim()) return;
+    const teamId = project.team;
     setInviteSaving(true);
     setInviteError("");
     try {
-      await teams.sendInvitation(project.team, inviteEmail.trim(), inviteRole);
+      await teams.sendInvitation(teamId, inviteEmail.trim(), inviteRole);
       setInviteEmail("");
       setInviteRole("member");
       setInviteOpen(false);
-      await loadInvitations(project.team);
+      await loadInvitations(teamId);
     } catch (err: unknown) {
       setInviteError(err instanceof Error ? err.message : "Could not send invitation");
     } finally {
@@ -1066,6 +1069,7 @@ export default function ProjectDetailPage() {
           </div>
         </motion.section>
 
+        {project.team != null && (
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1210,7 +1214,7 @@ export default function ProjectDetailPage() {
                             <button
                               type="button"
                               title="Cancel invitation"
-                              onClick={() => { void teams.cancelInvitation(project.team, inv.id).then(() => loadInvitations(project.team)); }}
+                              onClick={() => { if (project.team == null) return; const t = project.team; void teams.cancelInvitation(t, inv.id).then(() => loadInvitations(t)); }}
                               className="shrink-0 rounded-md p-1 text-stone-400 hover:bg-red-50 hover:text-red-500 transition-colors"
                             >
                               <X className="w-3 h-3" />
@@ -1225,6 +1229,7 @@ export default function ProjectDetailPage() {
             </>
           )}
         </motion.section>
+        )}
         </div>
 
         <h2 id="project-datasets" className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Datasets</h2>

@@ -1,0 +1,36 @@
+<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="400" y2="300" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF7ED"/>
+      <stop offset="0.5" stop-color="#FFEDD5"/>
+      <stop offset="1" stop-color="#F5F5F4"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="200" y1="120" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FB923C"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="300" fill="url(#bg)"/>
+
+  <!-- soft decorative circles -->
+  <circle cx="60" cy="60" r="90" fill="#FB923C" opacity="0.06"/>
+  <circle cx="350" cy="250" r="110" fill="#F97316" opacity="0.05"/>
+
+  <!-- framed picture -->
+  <rect x="120" y="95" width="160" height="120" rx="14" fill="#FFFFFF" stroke="#FED7AA" stroke-width="2"/>
+
+  <!-- sun -->
+  <circle cx="165" cy="135" r="13" fill="url(#sun)"/>
+
+  <!-- mountains -->
+  <path d="M132 195 L172 150 L200 182 L232 138 L268 195 Z" fill="#FDBA74"/>
+  <path d="M132 195 L196 162 L230 195 Z" fill="#FB923C"/>
+
+  <!-- base line -->
+  <rect x="120" y="193" width="160" height="22" rx="0" fill="#FFEDD5"/>
+  <rect x="120" y="201" width="160" height="14" rx="0" fill="#FFFFFF" opacity="0"/>
+
+  <!-- caption -->
+  <text x="200" y="252" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="15" font-weight="600" fill="#A8A29E" text-anchor="middle">No images yet</text>
+</svg>

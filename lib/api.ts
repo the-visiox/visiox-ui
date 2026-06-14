@@ -5,6 +5,17 @@ export const API_BASE_URL =
 const BASE_URL = API_BASE_URL;
 const LOCALHOST_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public body?: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 function resolveBaseUrl(): string {
   const normalized = BASE_URL.replace(/\/+$/, '');
   if (typeof window === 'undefined') return normalized;
@@ -16,6 +27,15 @@ function resolveBaseUrl(): string {
 
     if (LOCALHOST_HOSTNAMES.has(parsed.hostname) && !browserIsLocalhost) {
       parsed.hostname = browserHost;
+    }
+
+    // Upgrade http→https when the browser is already on HTTPS and the API host is not localhost
+    if (
+      window.location.protocol === 'https:' &&
+      parsed.protocol === 'http:' &&
+      !LOCALHOST_HOSTNAMES.has(parsed.hostname)
+    ) {
+      parsed.protocol = 'https:';
     }
 
     return parsed.toString().replace(/\/+$/, '');
@@ -49,13 +69,18 @@ export function getAccessToken(): string | null {
   return localStorage.getItem(TOKEN_KEYS.access);
 }
 
+const SESSION_COOKIE = 'visiox_session';
+
 export function saveTokens(access: string, refresh: string) {
   localStorage.setItem(TOKEN_KEYS.access, access);
   localStorage.setItem(TOKEN_KEYS.refresh, refresh);
+  // Mirror a session flag cookie so the server-side middleware can detect auth state
+  document.cookie = `${SESSION_COOKIE}=1; Path=/; SameSite=Lax; Max-Age=86400`;
 }
 
 export function clearTokens() {
   Object.values(TOKEN_KEYS).forEach((k) => localStorage.removeItem(k));
+  document.cookie = `${SESSION_COOKIE}=; Path=/; Max-Age=0`;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -71,8 +96,8 @@ export interface User {
 
 export interface Project {
   id: number;
-  team: number;
-  team_name: string;
+  team: number | null;
+  team_name: string | null;
   owner: number | null;
   name: string;
   task_type: string;
@@ -211,7 +236,7 @@ export interface PaginatedResponse<T> {
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options: RequestInit = {},
   retryOn401 = true,
@@ -294,7 +319,7 @@ async function tryRefresh(): Promise<boolean> {
   if (!refresh) return false;
   try {
     const baseUrl = resolveBaseUrl();
-    const res = await fetch(`${baseUrl}/api/auth/token/refresh/`, {
+    const res = await fetch(`${baseUrl}/api/v1/auth/token/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh }),
@@ -312,28 +337,28 @@ async function tryRefresh(): Promise<boolean> {
 
 export const auth = {
   login(username: string, password: string) {
-    return request<User>('/api/auth/login/', {
+    return request<User>('/api/v1/auth/login/', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }, false);
   },
 
   register(username: string, email: string, password: string, first_name = '', last_name = '') {
-    return request<User>('/api/auth/register/', {
+    return request<User>('/api/v1/auth/register/', {
       method: 'POST',
       body: JSON.stringify({ username, email, password, first_name, last_name }),
     }, false);
   },
 
   oauth(provider: 'google' | 'github', code: string, redirect_uri: string) {
-    return request<User>('/api/auth/oauth/', {
+    return request<User>('/api/v1/auth/oauth/', {
       method: 'POST',
       body: JSON.stringify({ provider, code, redirect_uri }),
     }, false);
   },
 
   logout(refresh_token: string) {
-    return request<void>('/api/auth/logout/', {
+    return request<void>('/api/v1/auth/logout/', {
       method: 'POST',
       body: JSON.stringify({ refresh_token }),
     });
@@ -344,16 +369,16 @@ export const auth = {
 
 export const projects = {
   list() {
-    return request<PaginatedResponse<Project>>('/api/projects/');
+    return request<PaginatedResponse<Project>>('/api/v1/projects/');
   },
   get(id: number) {
-    return request<Project>(`/api/projects/${id}/`);
+    return request<Project>(`/api/v1/projects/${id}/`);
   },
-  create(data: { team: number; name: string; task_type: string; description?: string; is_public?: boolean }) {
-    return request<Project>('/api/projects/', { method: 'POST', body: JSON.stringify(data) });
+  create(data: { team?: number; name: string; task_type: string; description?: string; is_public?: boolean }) {
+    return request<Project>('/api/v1/projects/', { method: 'POST', body: JSON.stringify(data) });
   },
   delete(id: number) {
-    return request<void>(`/api/projects/${id}/`, { method: 'DELETE' });
+    return request<void>(`/api/v1/projects/${id}/`, { method: 'DELETE' });
   },
 };
 
@@ -393,40 +418,40 @@ export interface Invitation {
 
 export const teams = {
   list() {
-    return request<PaginatedResponse<Team>>('/api/teams/');
+    return request<PaginatedResponse<Team>>('/api/v1/teams/');
   },
   create(name: string) {
-    return request<Team>('/api/teams/', { method: 'POST', body: JSON.stringify({ name }) });
+    return request<Team>('/api/v1/teams/', { method: 'POST', body: JSON.stringify({ name }) });
   },
   members(teamId: number) {
-    return request<TeamMember[]>(`/api/teams/${teamId}/members/`);
+    return request<TeamMember[]>(`/api/v1/teams/${teamId}/members/`);
   },
   invite(teamId: number, username: string, role: MemberRole = 'member') {
-    return request<TeamMember>(`/api/teams/${teamId}/invite/`, {
+    return request<TeamMember>(`/api/v1/teams/${teamId}/invite/`, {
       method: 'POST',
       body: JSON.stringify({ username, role }),
     });
   },
   sendInvitation(teamId: number, email: string, role: MemberRole = 'member') {
-    return request<Invitation>(`/api/teams/${teamId}/send_invitation/`, {
+    return request<Invitation>(`/api/v1/teams/${teamId}/invitations/`, {
       method: 'POST',
       body: JSON.stringify({ email, role }),
     });
   },
   listInvitations(teamId: number) {
-    return request<Invitation[]>(`/api/teams/${teamId}/invitations/`);
+    return request<Invitation[]>(`/api/v1/teams/${teamId}/invitations/`);
   },
   cancelInvitation(teamId: number, inviteId: number) {
-    return request<void>(`/api/teams/${teamId}/invitations/${inviteId}/`, { method: 'DELETE' });
+    return request<void>(`/api/v1/teams/${teamId}/invitations/${inviteId}/`, { method: 'DELETE' });
   },
   acceptInvitation(token: string) {
-    return request<{ detail: string; member: TeamMember }>(`/api/invitations/${token}/accept/`, { method: 'POST' });
+    return request<{ detail: string; member: TeamMember }>(`/api/v1/invitations/${token}/accept/`, { method: 'POST' });
   },
   removeMember(teamId: number, memberId: number) {
-    return request<void>(`/api/teams/${teamId}/members/${memberId}/`, { method: 'DELETE' });
+    return request<void>(`/api/v1/teams/${teamId}/members/${memberId}/`, { method: 'DELETE' });
   },
   updateMemberRole(teamId: number, memberId: number, role: MemberRole) {
-    return request<TeamMember>(`/api/teams/${teamId}/members/${memberId}/role/`, {
+    return request<TeamMember>(`/api/v1/teams/${teamId}/members/${memberId}/`, {
       method: 'PATCH',
       body: JSON.stringify({ role }),
     });
@@ -447,7 +472,7 @@ export interface AnnotationClass {
 
 export const annotationClasses = {
   list(projectId: number) {
-    return request<PaginatedResponse<AnnotationClass>>(`/api/classes/?project=${projectId}`);
+    return request<PaginatedResponse<AnnotationClass>>(`/api/v1/classes/?project=${projectId}`);
   },
   create(data: {
     project: number;
@@ -455,19 +480,19 @@ export const annotationClasses = {
     color?: string;
     attributes?: Record<string, unknown>;
   }) {
-    return request<AnnotationClass>('/api/classes/', { method: 'POST', body: JSON.stringify(data) });
+    return request<AnnotationClass>('/api/v1/classes/', { method: 'POST', body: JSON.stringify(data) });
   },
   update(
     id: number,
     data: { name?: string; color?: string; attributes?: Record<string, unknown> },
   ) {
-    return request<AnnotationClass>(`/api/classes/${id}/`, {
+    return request<AnnotationClass>(`/api/v1/classes/${id}/`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   },
   delete(id: number) {
-    return request<void>(`/api/classes/${id}/`, { method: 'DELETE' });
+    return request<void>(`/api/v1/classes/${id}/`, { method: 'DELETE' });
   },
 };
 
@@ -562,56 +587,92 @@ export interface BrowserData {
 export const datasets = {
   list(projectId?: number) {
     const qs = projectId ? `?project=${projectId}` : '';
-    return request<PaginatedResponse<Dataset>>(`/api/datasets/${qs}`);
+    return request<PaginatedResponse<Dataset>>(`/api/v1/datasets/${qs}`);
   },
   get(id: number) {
-    return request<Dataset>(`/api/datasets/${id}/`);
+    return request<Dataset>(`/api/v1/datasets/${id}/`);
   },
   create(data: { project: number; name: string; description?: string }) {
-    return request<Dataset>('/api/datasets/', { method: 'POST', body: JSON.stringify(data) });
+    return request<Dataset>('/api/v1/datasets/', { method: 'POST', body: JSON.stringify(data) });
   },
   media(id: number) {
-    return request<Media[]>(`/api/datasets/${id}/media/`);
+    return request<Media[]>(`/api/v1/datasets/${id}/media/`);
   },
   upload(id: number, file: File, type: 'image' | 'video' = 'image') {
     const form = new FormData();
     form.append('file', file);
     form.append('type', type);
-    return request<Media>(`/api/datasets/${id}/upload/`, { method: 'POST', body: form });
+    return request<Media>(`/api/v1/datasets/${id}/upload/`, { method: 'POST', body: form });
   },
   deleteMedia(id: number, mediaIds: number[]) {
-    return request<{ deleted: number; ids: number[] }>(`/api/datasets/${id}/delete-media/`, {
-      method: 'POST',
+    return request<{ deleted: number; ids: number[] }>(`/api/v1/datasets/${id}/media/`, {
+      method: 'DELETE',
       body: JSON.stringify({ media_ids: mediaIds }),
     });
   },
   stats(id: number) {
-    return request<DatasetStats>(`/api/datasets/${id}/stats/`);
+    return request<DatasetStats>(`/api/v1/datasets/${id}/stats/`);
   },
   browser(id: number) {
-    return request<BrowserData>(`/api/datasets/${id}/browser/`);
+    return request<BrowserData>(`/api/v1/datasets/${id}/browser/`);
   },
   frameUrl(id: number, frameNum: number, quality: 'compressed' | 'original' = 'compressed') {
     const token = getAccessToken();
     const baseUrl = resolveBaseUrl();
-    return `${baseUrl}/api/datasets/${id}/frames/${frameNum}/?quality=${quality}${token ? `&token=${token}` : ''}`;
+    return `${baseUrl}/api/v1/datasets/${id}/frames/${frameNum}/?quality=${quality}${token ? `&token=${token}` : ''}`;
   },
   exportUrl(id: number, format: 'coco' | 'yolo' | 'voc') {
     const token = getAccessToken();
     const baseUrl = resolveBaseUrl();
-    return `${baseUrl}/api/datasets/${id}/export/?format=${format}${token ? `&token=${token}` : ''}`;
+    return `${baseUrl}/api/v1/datasets/${id}/export/?format=${format}${token ? `&token=${token}` : ''}`;
   },
   delete(id: number) {
-    return request<void>(`/api/datasets/${id}/`, { method: 'DELETE' });
+    return request<void>(`/api/v1/datasets/${id}/`, { method: 'DELETE' });
   },
   newVersion(id: number) {
-    return request<Dataset>(`/api/datasets/${id}/new_version/`, { method: 'POST' });
+    return request<Dataset>(`/api/v1/datasets/${id}/versions/`, { method: 'POST' });
   },
   annotateUrl(id: string | number) {
-    return request<{ url?: string; error?: string }>(`/api/datasets/${id}/annotate_url/`);
+    return request<{ url?: string; error?: string }>(`/api/v1/datasets/${id}/annotate-url/`);
   },
   syncCvat(id: string | number) {
-    return request<{ status: string; version: number; cvat_status?: string; total_labels?: number }>(`/api/datasets/${id}/sync_cvat/`, { method: 'POST' });
+    return request<{ status: string; version: number; cvat_status?: string; total_labels?: number }>(`/api/v1/datasets/${id}/cvat-sync/`, { method: 'POST' });
+  },
+  augmentPreview(id: number, config: {
+    preprocess: {
+      auto_orient: boolean; resize: boolean;
+      resize_width: number; resize_height: number; grayscale: boolean;
+    };
+    augment: {
+      flip_h: boolean; flip_v: boolean; rotate90: boolean;
+      rotation: number; brightness: number; blur: number;
+      noise: number; shear: number; contrast: number;
+      hue: number; saturation: number; motion_blur: number; cutout: boolean;
+    };
+    count?: number;
+  }) {
+    return request<{ previews: Array<{ media_id: number; name: string; augmented_url: string }> }>(
+      `/api/v1/datasets/${id}/augmentations/preview/`,
+      { method: 'POST', body: JSON.stringify(config) },
+    );
+  },
+  augmentApply(id: number, config: {
+    preprocess: {
+      auto_orient: boolean; resize: boolean;
+      resize_width: number; resize_height: number; grayscale: boolean;
+    };
+    augment: {
+      flip_h: boolean; flip_v: boolean; rotate90: boolean;
+      rotation: number; brightness: number; blur: number;
+      noise: number; shear: number; contrast: number;
+      hue: number; saturation: number; motion_blur: number; cutout: boolean;
+    };
+    multiplier: number;
+  }) {
+    return request<{ generated: number; total: number }>(
+      `/api/v1/datasets/${id}/augmentations/`,
+      { method: 'POST', body: JSON.stringify(config) },
+    );
   },
 };
 
@@ -620,10 +681,10 @@ export const datasets = {
 export const dataverse = {
   list(search?: string) {
     const qs = search ? `?search=${encodeURIComponent(search)}` : '';
-    return request<PaginatedResponse<DataverseProject>>(`/api/dataverse/${qs}`);
+    return request<PaginatedResponse<DataverseProject>>(`/api/v1/dataverse/${qs}`);
   },
   get(id: number) {
-    return request<DataverseProject>(`/api/dataverse/${id}/`);
+    return request<DataverseProject>(`/api/v1/dataverse/${id}/`);
   },
   shareProject(data: {
     project: number;
@@ -633,13 +694,13 @@ export const dataverse = {
     license?: string;
     is_public?: boolean;
   }) {
-    return request<DataverseProject>('/api/dataverse/share-project/', {
+    return request<DataverseProject>('/api/v1/dataverse/', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
   fork(id: number, data: { team: number; name?: string }) {
-    return request<{ project_id: number; name: string }>(`/api/dataverse/${id}/fork/`, {
+    return request<{ project_id: number; name: string }>(`/api/v1/dataverse/${id}/fork/`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -650,13 +711,13 @@ export const dataverse = {
 
 export const training = {
   listArchitectures() {
-    return request<PaginatedResponse<ModelArchitecture>>('/api/architectures/');
+    return request<PaginatedResponse<ModelArchitecture>>('/api/v1/architectures/');
   },
   listJobs() {
-    return request<PaginatedResponse<TrainingJob>>('/api/training-jobs/');
+    return request<PaginatedResponse<TrainingJob>>('/api/v1/training-jobs/');
   },
   getJob(id: number) {
-    return request<TrainingJob>(`/api/training-jobs/${id}/`);
+    return request<TrainingJob>(`/api/v1/training-jobs/${id}/`);
   },
   createJob(data: {
     project: number;
@@ -665,19 +726,25 @@ export const training = {
     architecture?: number;
     hyperparams?: Record<string, unknown>;
   }) {
-    return request<TrainingJob>('/api/training-jobs/', { method: 'POST', body: JSON.stringify(data) });
+    return request<TrainingJob>('/api/v1/training-jobs/', { method: 'POST', body: JSON.stringify(data) });
   },
   startJob(id: number) {
-    return request<TrainingJob>(`/api/training-jobs/${id}/start/`, { method: 'POST' });
+    return request<TrainingJob>(`/api/v1/training-jobs/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'queued' }),
+    });
   },
   stopJob(id: number) {
-    return request<TrainingJob>(`/api/training-jobs/${id}/stop/`, { method: 'POST' });
+    return request<TrainingJob>(`/api/v1/training-jobs/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
   },
   getExperiments(jobId: number) {
-    return request<Experiment[]>(`/api/training-jobs/${jobId}/experiments/`);
+    return request<Experiment[]>(`/api/v1/training-jobs/${jobId}/experiments/`);
   },
   getMetrics(experimentId: number) {
-    return request<RunMetric[]>(`/api/experiments/${experimentId}/metrics/`);
+    return request<RunMetric[]>(`/api/v1/experiments/${experimentId}/metrics/`);
   },
 };
 
@@ -685,21 +752,27 @@ export const training = {
 
 export const deployments = {
   listRegistry() {
-    return request<PaginatedResponse<ModelRegistry>>('/api/registry/');
+    return request<PaginatedResponse<ModelRegistry>>('/api/v1/registry/');
   },
   listEndpoints() {
-    return request<PaginatedResponse<InferenceEndpoint>>('/api/endpoints/');
+    return request<PaginatedResponse<InferenceEndpoint>>('/api/v1/endpoints/');
   },
   getEndpoint(id: number) {
-    return request<InferenceEndpoint>(`/api/endpoints/${id}/`);
+    return request<InferenceEndpoint>(`/api/v1/endpoints/${id}/`);
   },
   createEndpoint(data: { registry_entry: number; name: string; confidence_threshold?: number }) {
-    return request<InferenceEndpoint>('/api/endpoints/', { method: 'POST', body: JSON.stringify(data) });
+    return request<InferenceEndpoint>('/api/v1/endpoints/', { method: 'POST', body: JSON.stringify(data) });
   },
   startEndpoint(id: number) {
-    return request<InferenceEndpoint>(`/api/endpoints/${id}/start/`, { method: 'POST' });
+    return request<InferenceEndpoint>(`/api/v1/endpoints/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'active' }),
+    });
   },
   stopEndpoint(id: number) {
-    return request<InferenceEndpoint>(`/api/endpoints/${id}/stop/`, { method: 'POST' });
+    return request<InferenceEndpoint>(`/api/v1/endpoints/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'inactive' }),
+    });
   },
 };

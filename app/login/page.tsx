@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Gift, Github, Loader2, Mail } from "lucide-react";
 import Image from "next/image";
@@ -34,6 +34,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get('next') || '/home';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +46,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (res.ok) {
-      router.push("/home");
+      router.push(nextPath);
       return;
     }
 
@@ -92,7 +94,7 @@ export default function LoginPage() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-orange-100 via-amber-100 to-orange-300 px-6 py-12">
       <Link
         href="/"
-        className="absolute left-6 top-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-bold text-white backdrop-blur transition hover:bg-white/30"
+        className="absolute left-6 top-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-black backdrop-blur transition hover:bg-white/60"
       >
         <ArrowLeft className="h-4 w-4" />
         Back

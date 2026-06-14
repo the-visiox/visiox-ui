@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, Loader2, Users, Plus, Lock, Globe } from "lucide-react";
+import { ArrowLeft, Loader2, Lock, Globe } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
-import { projects, teams, type Team } from "@/lib/api";
+import { projects } from "@/lib/api";
 
 const TASK_TYPES: { value: string; label: string }[] = [
   { value: "object_detection", label: "Object Detection" },
@@ -19,14 +19,6 @@ const TASK_TYPES: { value: string; label: string }[] = [
 
 export default function NewProjectPage() {
   const router = useRouter();
-  const [teamList, setTeamList]         = useState<Team[]>([]);
-  const [loadingTeams, setLoadingTeams] = useState(true);
-  const [teamId, setTeamId]             = useState<number | "">("");
-
-  // inline team creation
-  const [newTeamName, setNewTeamName]   = useState("");
-  const [creatingTeam, setCreatingTeam] = useState(false);
-  const [teamError, setTeamError]       = useState("");
 
   const [name, setName]               = useState("");
   const [taskType, setTaskType]       = useState(TASK_TYPES[0].value);
@@ -35,44 +27,13 @@ export default function NewProjectPage() {
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await teams.list();
-        const list = res.results ?? [];
-        setTeamList(list);
-        if (list.length >= 1) setTeamId(list[0].id);
-      } finally {
-        setLoadingTeams(false);
-      }
-    })();
-  }, []);
-
-  async function handleCreateTeam(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newTeamName.trim()) return;
-    setCreatingTeam(true);
-    setTeamError("");
-    try {
-      const created = await teams.create(newTeamName.trim());
-      setTeamList((prev) => [...prev, created]);
-      setTeamId(created.id);
-      setNewTeamName("");
-    } catch (err: unknown) {
-      setTeamError(err instanceof Error ? err.message : "Could not create team.");
-    } finally {
-      setCreatingTeam(false);
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!teamId) { setError("Select a team."); return; }
+    if (!name.trim()) { setError("Enter a project name."); return; }
     setSaving(true);
     setError("");
     try {
       await projects.create({
-        team: teamId as number,
         name: name.trim(),
         task_type: taskType,
         description: description.trim() || undefined,
@@ -114,49 +75,10 @@ export default function NewProjectPage() {
             </div>
           )}
 
-          {loadingTeams ? (
-            <div className="flex items-center gap-2 text-stone-500 text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading…
-            </div>
-          ) : (
-            <div className="space-y-6">
+          <div className="space-y-6">
 
-              {/* ── No team yet: prompt to create one ────────────────────── */}
-              {teamList.length === 0 && (
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-5">
-                  <div className="mb-3 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-stone-400" />
-                    <span className="text-sm font-bold text-stone-700">Create a team first</span>
-                  </div>
-                  <p className="mb-4 text-xs text-stone-500 leading-relaxed">
-                    Projects belong to a team. Create one now or ask a teammate to invite you.
-                  </p>
-                  <form onSubmit={handleCreateTeam} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newTeamName}
-                      onChange={(e) => setNewTeamName(e.target.value)}
-                      placeholder="Team name…"
-                      required
-                      className="flex-1 px-3 py-2 bg-white border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
-                    />
-                    <button
-                      type="submit"
-                      disabled={creatingTeam || !newTeamName.trim()}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-bold shadow-md shadow-orange-500/20 hover:bg-orange-600 transition-all disabled:opacity-50"
-                    >
-                      {creatingTeam ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                      Create
-                    </button>
-                  </form>
-                  {teamError && <p className="mt-2 text-xs text-red-500">{teamError}</p>}
-                </div>
-              )}
-
-              {/* ── Project form — shown once a team is available ─────────── */}
-              {teamId !== "" && (
-                <form onSubmit={handleSubmit} className="space-y-6">
+              {/* ── Project form ──────────────────────────────────────────── */}
+              <form onSubmit={handleSubmit} className="space-y-6">
                   <div>
                     <label className="block text-xs font-bold text-stone-400 tracking-widest mb-2">
                       Project name
@@ -222,7 +144,7 @@ export default function NewProjectPage() {
                           Private
                         </div>
                         <p className="text-[11px] leading-relaxed text-stone-400">
-                          Only team members can access this project.
+                          Only you and people you share with can access this project.
                         </p>
                       </button>
 
@@ -264,10 +186,8 @@ export default function NewProjectPage() {
                     </Link>
                   </div>
                 </form>
-              )}
 
             </div>
-          )}
         </motion.div>
       </main>
     </div>
