@@ -19,9 +19,9 @@ export type MediaDto = {
 };
 
 export async function getDataset(id: number): Promise<DatasetDto> {
-  return apiFetch<DatasetDto>(`/api/datasets/${id}/`);
+  return apiFetch<DatasetDto>(`/api/v1/datasets/${id}/`);
 }
 
 export async function getDatasetMedia(datasetId: number): Promise<MediaDto[]> {
-  return apiFetch<MediaDto[]>(`/api/datasets/${datasetId}/media/`);
+  return apiFetch<MediaDto[]>(`/api/v1/datasets/${datasetId}/media/`);
 }

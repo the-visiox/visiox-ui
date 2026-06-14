@@ -604,6 +604,12 @@ export const datasets = {
     form.append('type', type);
     return request<Media>(`/api/v1/datasets/${id}/upload/`, { method: 'POST', body: form });
   },
+  uploadBatch(id: number, files: File[], type: 'image' | 'video' = 'image') {
+    const form = new FormData();
+    for (const file of files) form.append('files', file);
+    form.append('type', type);
+    return request<Media[]>(`/api/v1/datasets/${id}/upload-batch/`, { method: 'POST', body: form });
+  },
   deleteMedia(id: number, mediaIds: number[]) {
     return request<{ deleted: number; ids: number[] }>(`/api/v1/datasets/${id}/media/`, {
       method: 'DELETE',

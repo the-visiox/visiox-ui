@@ -347,9 +347,19 @@ export default function DatasetDetailClient({ id }: Props) {
     setError('');
     try {
       const files = Array.from(fileList);
-      for (const file of files) {
-        await datasets.upload(numericId, file, inferUploadMediaType(file));
-      }
+      const images = files.filter((f) => inferUploadMediaType(f) === 'image');
+      const videos = files.filter((f) => inferUploadMediaType(f) === 'video');
+
+      const uploadGroup = async (group: File[], type: 'image' | 'video') => {
+        for (let i = 0; i < group.length; i += 100) {
+          await datasets.uploadBatch(numericId, group.slice(i, i + 100), type);
+        }
+      };
+
+      await Promise.all([
+        images.length > 0 ? uploadGroup(images, 'image') : Promise.resolve(),
+        videos.length > 0 ? uploadGroup(videos, 'video') : Promise.resolve(),
+      ]);
       await refreshStatsAndBrowser();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');

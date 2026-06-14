@@ -172,7 +172,7 @@ export default function Home() {
                                     hover:scale-105 active:scale-95 hover:from-orange-400 hover:to-orange-300 
                                     text-white rounded-2xl transition-all duration-300 font-semibold text-lg flex 
                                     items-center justify-center gap-2 shadow-xl shadow-orange-500/30">
-                    <span>{isLoggedIn ? "Go to Workspace" : "Start Free Trial"}</span>
+                    <span>{"Start Free Trial"}</span>
                     <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>

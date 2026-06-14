@@ -16,7 +16,7 @@ type PaginatedResponse<T> = {
 
 export async function getClassesForProject(projectId: number): Promise<ClassDto[]> {
   const data = await apiFetch<ClassDto[] | PaginatedResponse<ClassDto>>(
-    `/api/classes/?project=${projectId}`
+    `/api/v1/classes/?project=${projectId}`
   );
   return Array.isArray(data) ? data : data.results;
 }
@@ -25,7 +25,7 @@ export async function createClassForProject(
   projectId: number,
   data: { name: string; color: string }
 ): Promise<ClassDto> {
-  return apiFetch<ClassDto>("/api/classes/", {
+  return apiFetch<ClassDto>("/api/v1/classes/", {
     method: "POST",
     json: {
       project: projectId,
@@ -36,7 +36,7 @@ export async function createClassForProject(
 }
 
 export async function deleteClass(classId: number): Promise<void> {
-  await apiFetch<void>(`/api/classes/${classId}/`, {
+  await apiFetch<void>(`/api/v1/classes/${classId}/`, {
     method: "DELETE",
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Gift, Github, Loader2, Mail } from "lucide-react";
@@ -26,19 +26,30 @@ function hasOAuthClientId(value: string | undefined): value is string {
   return Boolean(value && !value.startsWith("PASTE_"));
 }
 
+const BACKOFF_SECONDS = [0, 0, 0, 30, 60, 120];
+
 export default function LoginPage() {
   const [mode, setMode] = useState<LoginMode>("choices");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [failCount, setFailCount] = useState(0);
+  const [cooldown, setCooldown] = useState(0);
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get('next') || '/home';
 
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (cooldown > 0) return;
     setLoading(true);
     setError("");
 
@@ -50,7 +61,11 @@ export default function LoginPage() {
       return;
     }
 
-    if (res.error) setError(res.error);
+    const nextFail = failCount + 1;
+    setFailCount(nextFail);
+    const wait = BACKOFF_SECONDS[Math.min(nextFail, BACKOFF_SECONDS.length - 1)];
+    if (wait > 0) setCooldown(wait);
+    setError(res.error ?? "Login failed");
   };
 
   const handleSocialLogin = (provider: OAuthProvider) => {
@@ -196,11 +211,13 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || cooldown > 0}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-orange-500 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-60"
             >
               {loading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
+              ) : cooldown > 0 ? (
+                `Try again in ${cooldown}s`
               ) : (
                 <>
                   Sign In <ArrowRight className="h-4 w-4" />

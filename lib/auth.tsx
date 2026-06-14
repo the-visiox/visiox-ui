@@ -16,6 +16,15 @@ import {
   API_BASE_URL,
 } from "./api";
 
+function isTokenValid(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 function formatAuthError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   const isNetwork =
@@ -64,13 +73,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const stored = localStorage.getItem(TOKEN_KEYS.user);
     const token = localStorage.getItem(TOKEN_KEYS.access);
-    if (stored && token) {
+    if (stored && token && isTokenValid(token)) {
       try {
         setUser(JSON.parse(stored));
         setIsLoggedIn(true);
       } catch {
         /* ignore */
       }
+    } else if (token && !isTokenValid(token)) {
+      clearTokens();
     }
     setAuthReady(true);
   }, []);

@@ -314,25 +314,23 @@ function CreateDatasetModal({
       });
 
       if (files.length > 0) {
-        setUploadProgress({
-          current: 0,
-          total: files.length,
-        });
+        setUploadProgress({ current: 0, total: files.length });
 
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
+        const images = files.filter((f) => !f.type.startsWith("video/"));
+        const videos = files.filter((f) => f.type.startsWith("video/"));
+        let uploaded = 0;
 
-          const type = file.type.startsWith("video/")
-            ? "video"
-            : "image";
+        const uploadGroup = async (group: File[], type: "image" | "video") => {
+          for (let i = 0; i < group.length; i += 100) {
+            const batch = group.slice(i, i + 100);
+            await datasets.uploadBatch(created.id, batch, type);
+            uploaded += batch.length;
+            setUploadProgress({ current: uploaded, total: files.length });
+          }
+        };
 
-          await datasets.upload(created.id, file, type);
-
-          setUploadProgress({
-            current: i + 1,
-            total: files.length,
-          });
-        }
+        await uploadGroup(images, "image");
+        await uploadGroup(videos, "video");
       }
 
       onCreated(created);
