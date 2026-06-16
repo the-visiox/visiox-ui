@@ -133,6 +133,17 @@ function wrapIndex(oneBasedIdx: number, total: number): number {
   return wrapped + 1;
 }
 
+function broadcastClassesUpdated(projectId: number | null) {
+  if (projectId == null || typeof window === "undefined") return;
+  try {
+    const ch = new BroadcastChannel("visiox-project-classes");
+    ch.postMessage({ type: "classes-updated", projectId });
+    ch.close();
+  } catch {
+    // BroadcastChannel not supported
+  }
+}
+
 export default function AnnotatePageClient() {
   const params = useParams();
   const router = useRouter();
@@ -619,6 +630,34 @@ export default function AnnotatePageClient() {
     }
   }, [canSaveToApi, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, labels, mediaId, persistDraft, shapes]);
 
+  const handleDiscard = useCallback(() => {
+    // Drop every unsaved draft for this dataset so nothing is restored on return.
+    isLoadingRef.current = true;
+    const prefix = `visiox-annotate-draft:dataset:${datasetId}:`;
+    for (const key of Object.keys(draftCacheRef.current)) {
+      if (key.startsWith(prefix)) delete draftCacheRef.current[key];
+    }
+    if (typeof window !== "undefined") {
+      try {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith(prefix)) sessionStorage.removeItem(k);
+        }
+        sessionStorage.removeItem("visiox-annotate-draft:active-key");
+      } catch {
+        // ignore storage failures
+      }
+    }
+    // Reset the current frame back to its last-saved state.
+    try {
+      _setShapes(sessionRef.current.hydrate(JSON.parse(savedShapesJsonRef.current)));
+    } catch {
+      _setShapes(sessionRef.current.hydrate([]));
+    }
+    setShowExitConfirm(false);
+    router.push(`/datasets/${params.id}`);
+  }, [datasetId, params.id, router]);
+
   useEffect(() => {
     if (!openClassMenuId) return;
 
@@ -681,6 +720,7 @@ export default function AnnotatePageClient() {
       setActiveClassId(created.id);
       setNewLabelName("");
       setNewLabelColor(nextLabelColor([...labels.filter((label) => label.id !== created.id), created]));
+      broadcastClassesUpdated(projectId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create label.");
     } finally {
@@ -706,10 +746,12 @@ export default function AnnotatePageClient() {
       await deleteClass(label.id);
       setLabels((prev) => prev.filter((item) => item.id !== label.id));
       if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+      broadcastClassesUpdated(projectId);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setLabels((prev) => prev.filter((item) => item.id !== label.id));
         if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+        broadcastClassesUpdated(projectId);
       } else {
         setError(err instanceof Error ? err.message : "Could not delete label.");
       }
@@ -839,7 +881,7 @@ export default function AnnotatePageClient() {
               {/* Discard */}
               <button
                 type="button"
-                onClick={() => router.push(`/datasets/${params.id}`)}
+                onClick={handleDiscard}
                 className="flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-100"
               >
                 Discard changes

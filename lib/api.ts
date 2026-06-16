@@ -564,6 +564,8 @@ export interface BrowserFrame {
   width: number;
   height: number;
   annotations: FrameAnnotation[];
+  /** True when this frame is an augmentation-generated image (separate browser tab). */
+  augmented?: boolean;
 }
 
 export interface BrowserLabel {

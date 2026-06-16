@@ -22,9 +22,12 @@ import {
   BarChart2,
   Upload,
   Wand2,
+  Check,
+  ChevronDown,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
+import { useAuth } from "@/lib/auth";
 import {
   annotationClasses,
   dataverse,
@@ -51,6 +54,71 @@ const STATUS_DOT: Record<string, string> = {
 function datasetStatus(d: Dataset): "Ready" | "Annotating" | "Draft" {
   if (d.media_count === 0) return "Draft";
   return "Ready";
+}
+
+const ROLE_OPTIONS: { value: MemberRole; label: string; hint: string }[] = [
+  { value: "viewer", label: "Viewer", hint: "Can view only" },
+  { value: "member", label: "Member", hint: "Can edit & annotate" },
+  { value: "admin", label: "Admin", hint: "Can manage & invite" },
+];
+
+function RoleSelect({ value, onChange }: { value: MemberRole; onChange: (v: MemberRole) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = ROLE_OPTIONS.find((o) => o.value === value) ?? ROLE_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-xl bg-stone-100 px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-200"
+      >
+        {selected.label}
+        <ChevronDown className={`h-3.5 w-3.5 text-stone-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.ul
+            initial={{ opacity: 0, y: -4, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.97 }}
+            transition={{ duration: 0.12 }}
+            className="absolute left-0 z-20 mt-1.5 w-44 overflow-hidden rounded-xl border border-stone-200 bg-white p-1 shadow-xl shadow-stone-300/40"
+          >
+            {ROLE_OPTIONS.map((o) => {
+              const active = o.value === value;
+              return (
+                <li key={o.value}>
+                  <button
+                    type="button"
+                    onClick={() => { onChange(o.value); setOpen(false); }}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition ${active ? "bg-orange-50" : "hover:bg-stone-50"}`}
+                  >
+                    <Check className={`h-3.5 w-3.5 shrink-0 ${active ? "text-orange-500" : "text-transparent"}`} />
+                    <span className="min-w-0">
+                      <span className={`block text-xs font-bold ${active ? "text-orange-700" : "text-stone-800"}`}>{o.label}</span>
+                      <span className="block text-[10px] text-stone-400">{o.hint}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 // ─── Color picker utilities ──────────────────────────────────────────────────
@@ -720,6 +788,7 @@ function ClassEditorInline({
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { user: currentUser } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [datasetList, setDatasetList] = useState<Dataset[]>([]);
   const [classList, setClassList] = useState<AnnotationClass[]>([]);
@@ -794,6 +863,24 @@ export default function ProjectDetailPage() {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [id, refreshDatasetCounts]);
+
+  // Refresh the class list when classes are created/deleted elsewhere (e.g. the annotate editor).
+  useEffect(() => {
+    if (!id) return;
+    const projectId = parseInt(id as string, 10);
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("visiox-project-classes");
+      channel.onmessage = (e: MessageEvent<{ type: string; projectId: number }>) => {
+        if (e.data?.type === "classes-updated" && e.data?.projectId === projectId) {
+          void loadClasses();
+        }
+      };
+    } catch { /* ignore */ }
+    return () => {
+      try { channel?.close(); } catch { /* ignore */ }
+    };
+  }, [id, loadClasses]);
 
   useEffect(() => {
     if (!id) return;
@@ -1076,19 +1163,19 @@ export default function ProjectDetailPage() {
         >
           <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-400 flex items-center justify-center shadow-md shadow-violet-500/15 shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-md shadow-orange-500/15 shrink-0">
                 <UserPlus className="w-4 h-4 text-white" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-sm font-bold text-stone-900 leading-tight">Team — {project.team_name}</h2>
-                <p className="text-xs text-stone-500 mt-0.5 leading-snug">{members.length} member{members.length !== 1 ? "s" : ""}</p>
+                <h2 className="text-sm font-bold text-stone-900 leading-tight">Collaborators</h2>
+                <p className="text-xs text-stone-500 mt-0.5 leading-snug">{members.length} {members.length !== 1 ? "people" : "person"} with access</p>
               </div>
             </div>
             {!inviteOpen && (
               <button
                 type="button"
                 onClick={() => { setInviteOpen(true); setInviteError(""); }}
-                className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-violet-300 bg-violet-50/80 px-3 py-1.5 text-xs font-bold text-violet-700 hover:border-violet-400 hover:bg-violet-100/60 transition-colors shrink-0"
+                className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-orange-300 bg-orange-50/80 px-3 py-1.5 text-xs font-bold text-orange-700 hover:border-orange-400 hover:bg-orange-100/60 transition-colors shrink-0"
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 Invite
@@ -1105,29 +1192,20 @@ export default function ProjectDetailPage() {
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="Email address…"
-                className="w-48 rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20"
+                className="w-60 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-xs font-semibold text-stone-800 outline-none transition focus:border-orange-400 focus:bg-white focus:ring-2 focus:ring-orange-400/20"
               />
-              <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as MemberRole)}
-                className="cursor-pointer appearance-none rounded-lg border border-stone-200 bg-stone-50 py-1.5 pl-3 pr-7 text-xs font-semibold text-stone-800 shadow-sm outline-none transition hover:border-violet-300 hover:bg-white focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20"
-                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a8a29e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
-              >
-                <option value="viewer">Viewer</option>
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
+              <RoleSelect value={inviteRole} onChange={setInviteRole} />
               <button
                 type="submit"
                 disabled={inviteSaving || !inviteEmail.trim()}
-                className="shrink-0 rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-violet-500/20 transition hover:bg-violet-600 disabled:opacity-50 flex items-center gap-1"
+                className="shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1"
               >
                 {inviteSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Send invite"}
               </button>
               <button
                 type="button"
                 onClick={() => { setInviteOpen(false); setInviteEmail(""); setInviteError(""); }}
-                className="shrink-0 rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-bold text-stone-600 transition hover:bg-stone-100"
+                className="shrink-0 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-100"
               >
                 Cancel
               </button>
@@ -1155,11 +1233,11 @@ export default function ProjectDetailPage() {
                     const gradientIndex = m.user_username.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % avatarGradients.length;
                     const gradient = avatarGradients[gradientIndex];
                     const initials = m.user_username.slice(0, 2).toUpperCase();
-                    const isOnline = m.is_online ?? false;
+                    const isOnline = m.is_online ?? (currentUser?.user_id === m.user);
                     const roleColors: Record<string, string> = {
                       owner: "text-amber-600",
                       admin: "text-orange-600",
-                      member: "text-violet-600",
+                      member: "text-stone-600",
                       viewer: "text-stone-400",
                     };
                     return (

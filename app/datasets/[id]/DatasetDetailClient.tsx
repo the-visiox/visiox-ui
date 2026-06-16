@@ -157,6 +157,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [browserTab, setBrowserTab] = useState<'original' | 'augmented'>('original');
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Last frame row index for Shift+click range selection (in `browserData.frames` order). */
   const anchorFrameIndexRef = useRef<number | null>(null);
@@ -268,10 +269,16 @@ export default function DatasetDetailClient({ id }: Props) {
     return () => document.removeEventListener('mousedown', handleDocMouseDown);
   }, [selectedMediaIds.length]);
 
-  const totalPages = browserData ? Math.max(1, Math.ceil(browserData.frames.length / BATCH_SIZE)) : 1;
+  const allFrames = browserData?.frames ?? [];
+  const originalCount = allFrames.filter((f) => !f.augmented).length;
+  const augmentedCount = allFrames.filter((f) => f.augmented).length;
+  const activeFrames = allFrames.filter((f) =>
+    browserTab === 'augmented' ? f.augmented : !f.augmented,
+  );
+  const totalPages = Math.max(1, Math.ceil(activeFrames.length / BATCH_SIZE));
   const safePage = Math.min(currentPage, totalPages);
   const pageOffset = (safePage - 1) * BATCH_SIZE;
-  const visibleFrames = browserData?.frames.slice(pageOffset, pageOffset + BATCH_SIZE) ?? [];
+  const visibleFrames = activeFrames.slice(pageOffset, pageOffset + BATCH_SIZE);
 
   const selectableMediaIds = visibleFrames
     .map((f) => f.media_id)
@@ -300,15 +307,18 @@ export default function DatasetDetailClient({ id }: Props) {
 
   const selectMediaRangeByFrameIndex = useCallback((from: number, to: number) => {
     if (!browserData?.frames.length) return;
+    const frames = browserData.frames.filter((f) =>
+      browserTab === 'augmented' ? f.augmented : !f.augmented,
+    );
     const lo = Math.min(from, to);
     const hi = Math.max(from, to);
     const ids: number[] = [];
     for (let i = lo; i <= hi; i++) {
-      const f = browserData.frames[i];
-      if (typeof f.media_id === 'number') ids.push(f.media_id);
+      const f = frames[i];
+      if (f && typeof f.media_id === 'number') ids.push(f.media_id);
     }
     setSelectedMediaIds(ids);
-  }, [browserData]);
+  }, [browserData, browserTab]);
 
   const allSelectableSelected =
     selectableMediaIds.length > 0 &&
@@ -396,7 +406,7 @@ export default function DatasetDetailClient({ id }: Props) {
   };
 
   const handleAugApply = async () => {
-    if (!window.confirm(`Generate ${(browserData?.frames.length ?? 0) * multiplier} augmented images and add them to this dataset?`)) return;
+    if (!window.confirm(`Generate ${originalCount * multiplier} augmented images and add them to this dataset?`)) return;
     setAugApplying(true);
     setError('');
     try {
@@ -408,6 +418,10 @@ export default function DatasetDetailClient({ id }: Props) {
       await refreshStatsAndBrowser();
       setAugPreviews([]);
       setAugOpen(false);
+      // Jump to the Augmented browser so the new images are visible immediately.
+      setBrowserTab('augmented');
+      setCurrentPage(1);
+      setSelectedMediaIds([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Apply failed');
     } finally {
@@ -655,7 +669,7 @@ export default function DatasetDetailClient({ id }: Props) {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {([
                 { label: 'Total Images', value: totalImages, Icon: ImageIcon, iconClass: 'bg-orange-100 text-orange-500' },
-                { label: 'Labels', value: allClasses.length || labels.length, Icon: Tag, iconClass: 'bg-purple-100 text-purple-500' },
+                { label: 'Classes', value: allClasses.length || labels.length, Icon: Tag, iconClass: 'bg-purple-100 text-purple-500' },
                 { label: 'Annotations', value: totalAnnotations, Icon: BarChart3, iconClass: 'bg-blue-100 text-blue-500' },
                 { label: 'Annotated images', value: annotatedCount, Icon: CheckCircle2, iconClass: 'bg-emerald-100 text-emerald-500' },
               ] as const).map(({ label, value, Icon, iconClass }) => (
@@ -688,30 +702,36 @@ export default function DatasetDetailClient({ id }: Props) {
                 count: cvatCountByName.get(label.name.toLowerCase()) ?? 0,
               }));
               const maxCount = Math.max(...counts.map(c => c.count), 1);
+              const totalCount = counts.reduce((s, c) => s + c.count, 0);
               return (
                 <div>
                   <h3 className="text-base font-bold text-stone-900 mb-3">Label Distribution</h3>
-                  <div className="flex items-end gap-1.5">
+                  {/* Horizontal bars — reads cleanly whether there's 1 class or many. */}
+                  <div className="space-y-2.5">
                     {counts.map(lbl => {
                       const pct = (lbl.count / maxCount) * 100;
+                      const share = totalCount > 0 ? Math.round((lbl.count / totalCount) * 100) : 0;
                       return (
-                        <div key={lbl.id} className="flex-1 min-w-0 flex flex-col items-center gap-1">
-                          <div className="relative w-full h-48">
-                            <motion.div
-                              initial={{ height: 0 }}
-                              animate={{ height: `${pct}%` }}
-                              transition={{ duration: 0.6, ease: 'easeOut' }}
-                              className="absolute bottom-0 left-2 right-2 rounded-t-[4px] min-h-[2px] overflow-hidden"
-                              style={{ backgroundColor: lbl.color }}
-                            >
-                              {lbl.count > 0 && (
-                                <span className="absolute top-2 left-0 right-0 text-[10px] font-bold text-stone-700 tabular-nums text-center leading-none">
-                                  {lbl.count}
-                                </span>
-                              )}
-                            </motion.div>
+                        <div key={lbl.id} className="flex items-center gap-3">
+                          <div className="flex w-24 shrink-0 items-center gap-2 min-w-0">
+                            <span className="h-3 w-3 shrink-0 rounded-[3px]" style={{ backgroundColor: lbl.color }} />
+                            <span className="truncate text-xs font-medium text-stone-600">{lbl.name}</span>
                           </div>
-                          <span className="text-[10px] text-stone-400 truncate w-full text-center">{lbl.name}</span>
+                          <div className="relative h-6 flex-1 overflow-hidden rounded-md bg-stone-100">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${pct}%` }}
+                              transition={{ duration: 0.6, ease: 'easeOut' }}
+                              className="absolute inset-y-0 left-0 min-w-[3px] rounded-md"
+                              style={{ backgroundColor: lbl.color }}
+                            />
+                          </div>
+                          <div className="flex w-16 shrink-0 items-baseline justify-end gap-1">
+                            <span className="text-xs font-bold tabular-nums text-stone-800">{lbl.count}</span>
+                            {totalCount > 0 && (
+                              <span className="text-[10px] tabular-nums text-stone-400">{share}%</span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -894,7 +914,7 @@ export default function DatasetDetailClient({ id }: Props) {
                       <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
                     </div>
                     <span className="text-xs font-bold text-orange-600 tabular-nums">
-                      {(browserData?.frames.length ?? 0) * multiplier} total images
+                      {originalCount * multiplier} total images
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -910,7 +930,7 @@ export default function DatasetDetailClient({ id }: Props) {
                       >
                         {m}×
                         <span className={`block text-[10px] font-medium mt-0.5 ${multiplier === m ? 'text-orange-200' : 'text-stone-400'}`}>
-                          +{(browserData?.frames.length ?? 0) * m} imgs
+                          +{originalCount * m} imgs
                         </span>
                       </button>
                     ))}
@@ -1073,6 +1093,47 @@ export default function DatasetDetailClient({ id }: Props) {
               )}
             </div>
 
+            {/* ── Original / Augmented tabs ── */}
+            <div className="mb-4 inline-flex items-center gap-1 rounded-xl bg-stone-100 p-1">
+              {([
+                { key: 'original' as const, label: 'Original', count: originalCount },
+                { key: 'augmented' as const, label: 'Augmented', count: augmentedCount },
+              ]).map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    if (browserTab === tab.key) return;
+                    setBrowserTab(tab.key);
+                    setCurrentPage(1);
+                    setSelectedMediaIds([]);
+                    anchorFrameIndexRef.current = null;
+                  }}
+                  className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${
+                    browserTab === tab.key
+                      ? 'bg-white text-stone-900 shadow-sm'
+                      : 'text-stone-500 hover:text-stone-700'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                    browserTab === tab.key ? 'bg-orange-100 text-orange-700' : 'bg-stone-200 text-stone-500'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {activeFrames.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-stone-200 bg-stone-50/60 py-12 text-center">
+                <p className="text-sm font-medium text-stone-400">
+                  {browserTab === 'augmented'
+                    ? 'No augmented images yet. Use "Generate Dataset" below to create some.'
+                    : 'No original images yet. Upload images to get started.'}
+                </p>
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
               {visibleFrames.map((frame, localIndex) => {
                 const frameIndex = pageOffset + localIndex;
@@ -1167,13 +1228,14 @@ export default function DatasetDetailClient({ id }: Props) {
                 );
               })}
             </div>
+            )}
 
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
                 <p className="text-sm font-medium text-stone-500">
-                  Showing {pageOffset + 1}–{Math.min(pageOffset + BATCH_SIZE, browserData?.frames.length ?? 0)} of{' '}
-                  <span className="font-bold text-stone-700">{browserData?.frames.length ?? 0}</span> images
+                  Showing {pageOffset + 1}–{Math.min(pageOffset + BATCH_SIZE, activeFrames.length)} of{' '}
+                  <span className="font-bold text-stone-700">{activeFrames.length}</span> images
                 </p>
                 <div className="flex items-center gap-1">
                   <button
