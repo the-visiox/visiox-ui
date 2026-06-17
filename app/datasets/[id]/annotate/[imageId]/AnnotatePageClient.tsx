@@ -166,6 +166,10 @@ export default function AnnotatePageClient() {
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState("");
   const [labels, setLabels] = useState<LabelDefinition[]>([]);
+  // Class ids that have annotations somewhere in the project (any frame). Deleting
+  // such a class would cascade-delete those annotations, so its delete is blocked
+  // even on frames where it isn't used.
+  const [usedClassIds, setUsedClassIds] = useState<Set<number>>(new Set());
   const [activeClassId, setActiveClassId] = useState(0);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [newLabelName, setNewLabelName] = useState("");
@@ -207,6 +211,7 @@ export default function AnnotatePageClient() {
   const previousDraftKeyRef = useRef<string | null>(null);
   const draftCacheRef = useRef<Record<string, EditorShape[]>>({});
   const savedShapesJsonRef = useRef<string>("[]");
+  const savedLabelsJsonRef = useRef<string>("[]");
   shapesRef.current = shapes;
 
   const currentDraftKey = useMemo(
@@ -253,6 +258,39 @@ export default function AnnotatePageClient() {
     []
   );
 
+  // Frames the user actually edited this session. Kept in sessionStorage so it
+  // survives remounts (re-entering the workspace) — unlike navigation drafts,
+  // which exist for every visited frame and must NOT all be re-saved.
+  const dirtyFramesKey = `visiox-annotate-dirty:dataset:${datasetId}`;
+  const readDirtyFrames = useCallback((): number[] => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(sessionStorage.getItem(dirtyFramesKey) ?? "[]") as number[];
+    } catch {
+      return [];
+    }
+  }, [dirtyFramesKey]);
+  const markFrameDirty = useCallback((fi: number) => {
+    if (typeof window === "undefined") return;
+    try {
+      const set = new Set<number>(readDirtyFrames());
+      set.add(fi);
+      sessionStorage.setItem(dirtyFramesKey, JSON.stringify([...set]));
+    } catch {
+      // ignore storage failures
+    }
+  }, [dirtyFramesKey, readDirtyFrames]);
+  const clearFrameDirty = useCallback((fi: number) => {
+    if (typeof window === "undefined") return;
+    try {
+      const set = new Set<number>(readDirtyFrames());
+      set.delete(fi);
+      sessionStorage.setItem(dirtyFramesKey, JSON.stringify([...set]));
+    } catch {
+      // ignore storage failures
+    }
+  }, [dirtyFramesKey, readDirtyFrames]);
+
   useLayoutEffect(() => {
     const previousDraftKey = previousDraftKeyRef.current;
     if (previousDraftKey && previousDraftKey !== currentDraftKey) {
@@ -298,10 +336,29 @@ export default function AnnotatePageClient() {
     }
   }, [objectsPaneWidth, toolPaneWidth]);
 
+  // Compare the current shapes against their last-saved state at the API-payload
+  // level. This ignores editor-only fields and hydrate/draft round-trip quirks
+  // (key order, recomputed bbox, `points: undefined`) that otherwise read as a
+  // change even when nothing was edited.
+  const shapesDifferFromSaved = useCallback(() => {
+    let saved: EditorShape[] = [];
+    try {
+      saved = JSON.parse(savedShapesJsonRef.current) as EditorShape[];
+    } catch {
+      saved = [];
+    }
+    return JSON.stringify(editorToApiPayload(shapes)) !== JSON.stringify(editorToApiPayload(saved));
+  }, [shapes]);
+
   useEffect(() => {
     if (typeof window === "undefined" || isLoadingRef.current) return;
     persistDraft(currentDraftKey, shapes);
-  }, [currentDraftKey, persistDraft, shapes]);
+    if (!isNativeMode) return;
+    // Mark/clear this frame as edited based on whether it differs from its saved
+    // state — drives which frames Save sends to the server.
+    if (shapesDifferFromSaved()) markFrameDirty(frameIndex);
+    else clearFrameDirty(frameIndex);
+  }, [currentDraftKey, persistDraft, shapes, isNativeMode, frameIndex, markFrameDirty, clearFrameDirty, shapesDifferFromSaved]);
 
   const undo = () => {
     const previous = sessionRef.current.undo();
@@ -341,6 +398,7 @@ export default function AnnotatePageClient() {
       if (!token) {
         setImageUrl(demoUrl);
         setLabels([...DEMO_LABELS]);
+        savedLabelsJsonRef.current = JSON.stringify(DEMO_LABELS);
         setActiveClassId(1);
         isLoadingRef.current = false;
         setLoading(false);
@@ -424,15 +482,21 @@ export default function AnnotatePageClient() {
 
         if (cancelled) return;
 
+        setUsedClassIds(new Set(classes.filter((c) => (c.annotation_count ?? 0) > 0).map((c) => c.id)));
+
         if (classes.length) {
           const merged = profileItems.length
             ? mergeProjectClassesWithProfile(classes, profileItems)
             : classes.map((item) => ({ id: item.id, name: item.name, color: item.color || "#f97316" }));
           setLabels(merged);
+          savedLabelsJsonRef.current = JSON.stringify(merged);
           setActiveClassId(merged[0]?.id ?? classes[0].id);
+          setNewLabelColor(nextLabelColor(merged));
         } else {
           setLabels([]);
+          savedLabelsJsonRef.current = "[]";
           setActiveClassId(0);
+          setNewLabelColor(nextLabelColor([]));
         }
 
         const apiShapes = apiShapesToEditor(annotations);
@@ -450,6 +514,7 @@ export default function AnnotatePageClient() {
         setError(e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Failed to load dataset.");
         setImageUrl(demoUrl);
         setLabels([...DEMO_LABELS]);
+        savedLabelsJsonRef.current = JSON.stringify(DEMO_LABELS);
         setActiveClassId(1);
         setMediaIndex(null);
         setMediaTotal(null);
@@ -542,6 +607,17 @@ export default function AnnotatePageClient() {
     }
   }, [current, pendingIndex]);
 
+  // Clamp an out-of-range ?frame= URL (e.g. typed/stale link) to the last real
+  // frame so we never load or create drafts for a frame the dataset doesn't have.
+  useEffect(() => {
+    if (!isNativeMode || mediaTotal == null || mediaTotal <= 0) return;
+    if (frameIndex > mediaTotal - 1) {
+      router.replace(
+        `/datasets/${params.id}/annotate/native?frame=${mediaTotal - 1}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`
+      );
+    }
+  }, [isNativeMode, mediaTotal, frameIndex, params.id, jobIdParam, router]);
+
   const navigateTo = useCallback(
     (oneBasedIdx: number, options?: { wrap?: boolean }) => {
       const totalItems = Math.max(1, total);
@@ -583,37 +659,120 @@ export default function AnnotatePageClient() {
     const tokenNow = getAccessToken();
     if (!tokenNow) {
       setError("Login required to save. In demo mode annotations are kept in-memory only.");
-      return;
+      return false;
     }
     if (!canSaveToApi) {
       setError("Cannot determine save target. Check the URL has a valid dataset/media/job id.");
-      return;
+      return false;
     }
 
     setSaving(true);
     setError(null);
     try {
-      const payload = editorToApiPayload(shapes);
-      if (!Number.isNaN(jobId)) {
-        await patchJobAnnotations(jobId, payload);
-      } else if (isNativeMode) {
-        await putFrameAnnotations(datasetId, frameIndex, payload);
-      } else {
-        await putMediaAnnotations(mediaId, payload);
-      }
+      const labelPayload = labels.map((label) => ({ id: label.id, name: label.name, color: label.color }));
 
-      if (Number.isNaN(jobId) && labels.length) {
-        const labelPayload = labels.map((label) => ({ id: label.id, name: label.name, color: label.color }));
-        try {
-          if (isNativeMode) await putFrameLabelProfile(datasetId, frameIndex, labelPayload);
-          else if (Number.isFinite(mediaId)) await putMediaLabelProfile(mediaId, labelPayload);
-        } catch {
-          setError((prev) => prev || "Annotations saved, but label profile sync failed.");
+      if (!Number.isNaN(jobId)) {
+        await patchJobAnnotations(jobId, editorToApiPayload(shapes));
+      } else if (isNativeMode) {
+        // Save only the frames the user actually edited this session (tracked in
+        // sessionStorage), plus the current frame if just the label roster changed.
+        // Merely navigating through frames must NOT trigger a save for each one.
+        persistDraft(currentDraftKey, shapes);
+
+        const validClassIds = new Set(labels.map((label) => label.id));
+        const totalFrames = mediaTotal ?? Infinity;
+        const prefix = `visiox-annotate-draft:dataset:${datasetId}:frame:`;
+        const dropStaleDraft = (fi: number) => {
+          delete draftCacheRef.current[`${prefix}${fi}`];
+          if (typeof window !== "undefined") {
+            try {
+              sessionStorage.removeItem(`${prefix}${fi}`);
+            } catch {
+              // ignore storage failures
+            }
+          }
+        };
+
+        const labelsDirty = JSON.stringify(labels) !== savedLabelsJsonRef.current;
+        const dirtyFrames = readDirtyFrames();
+        const frameIndices = new Set<number>(dirtyFrames);
+        if (labelsDirty) frameIndices.add(frameIndex);
+
+        const failedFrames: number[] = [];
+        let firstError: unknown = null;
+        let droppedInvalid = 0;
+        let profileFailed = false;
+        for (const fi of frameIndices) {
+          if (fi < 0 || fi >= totalFrames) {
+            dropStaleDraft(fi);
+            clearFrameDirty(fi);
+            continue;
+          }
+          const annotationsEdited = dirtyFrames.includes(fi);
+          const rawShapes = fi === frameIndex ? shapes : readDraft(`${prefix}${fi}`).shapes;
+          // Skip objects whose label was deleted (id no longer a project class):
+          // the backend rejects unknown class ids and would fail the whole save.
+          const frameShapes = rawShapes.filter((s) => validClassIds.has(s.classLabelId));
+          droppedInvalid += rawShapes.length - frameShapes.length;
+
+          // Only the current frame needs a profile write when just the label roster
+          // changed; other untouched frames keep their existing profile.
+          const saveProfile = labelPayload.length > 0 && (annotationsEdited || (labelsDirty && fi === frameIndex));
+          if (!annotationsEdited && !saveProfile) continue;
+
+          try {
+            if (annotationsEdited) {
+              await putFrameAnnotations(datasetId, fi, editorToApiPayload(frameShapes));
+            }
+            if (saveProfile) {
+              try {
+                await putFrameLabelProfile(datasetId, fi, labelPayload);
+              } catch {
+                profileFailed = true;
+              }
+            }
+            clearFrameDirty(fi);
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 404) {
+              // Frame no longer exists in this dataset — drop its stale draft, don't fail.
+              dropStaleDraft(fi);
+              clearFrameDirty(fi);
+              continue;
+            }
+            failedFrames.push(fi);
+            if (!firstError) firstError = err;
+          }
+        }
+        if (failedFrames.length) {
+          const detail =
+            firstError instanceof ApiError
+              ? firstError.body || firstError.message
+              : firstError instanceof Error
+                ? firstError.message
+                : "";
+          throw new Error(
+            `Save failed for frame(s) ${failedFrames.map((f) => f + 1).join(", ")}${detail ? `: ${detail}` : ""}`
+          );
+        }
+        if (profileFailed) {
+          setError((prev) => prev || "Annotations saved, but label profile sync failed for some frames.");
+        } else if (droppedInvalid > 0) {
+          setError((prev) => prev || `Saved. Skipped ${droppedInvalid} object(s) that used a deleted label — reassign them to keep.`);
+        }
+      } else {
+        await putMediaAnnotations(mediaId, editorToApiPayload(shapes));
+        if (labelPayload.length && Number.isFinite(mediaId)) {
+          try {
+            await putMediaLabelProfile(mediaId, labelPayload);
+          } catch {
+            setError((prev) => prev || "Annotations saved, but label profile sync failed.");
+          }
         }
       }
 
       if (typeof window !== "undefined") {
         savedShapesJsonRef.current = JSON.stringify(shapes);
+        savedLabelsJsonRef.current = JSON.stringify(labels);
         persistDraft(currentDraftKey, shapes);
         try {
           const ch = new BroadcastChannel("visiox-annotations");
@@ -623,12 +782,14 @@ export default function AnnotatePageClient() {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2500);
       }
+      return true;
     } catch (e) {
-      setError(e instanceof ApiError ? e.body || e.message : "Save failed.");
+      setError(e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Save failed.");
+      return false;
     } finally {
       setSaving(false);
     }
-  }, [canSaveToApi, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, labels, mediaId, persistDraft, shapes]);
+  }, [canSaveToApi, clearFrameDirty, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, labels, mediaId, mediaTotal, persistDraft, readDirtyFrames, readDraft, shapes]);
 
   const handleDiscard = useCallback(() => {
     // Drop every unsaved draft for this dataset so nothing is restored on return.
@@ -644,6 +805,7 @@ export default function AnnotatePageClient() {
           if (k && k.startsWith(prefix)) sessionStorage.removeItem(k);
         }
         sessionStorage.removeItem("visiox-annotate-draft:active-key");
+        sessionStorage.removeItem(dirtyFramesKey);
       } catch {
         // ignore storage failures
       }
@@ -656,7 +818,7 @@ export default function AnnotatePageClient() {
     }
     setShowExitConfirm(false);
     router.push(`/datasets/${params.id}`);
-  }, [datasetId, params.id, router]);
+  }, [datasetId, dirtyFramesKey, params.id, router]);
 
   useEffect(() => {
     if (!openClassMenuId) return;
@@ -765,12 +927,14 @@ export default function AnnotatePageClient() {
     setError(null);
     try {
       const refreshed = await getClassesForProject(projectId);
+      setUsedClassIds(new Set(refreshed.filter((c) => (c.annotation_count ?? 0) > 0).map((c) => c.id)));
       const synced = refreshed.map((item) => ({
         id: item.id,
         name: item.name,
         color: item.color || "#f97316",
       }));
       setLabels(synced);
+      savedLabelsJsonRef.current = JSON.stringify(synced);
       setNewLabelColor(nextLabelColor(synced));
       if (synced.length > 0) {
         setActiveClassId((prev) => synced.some((l) => l.id === prev) ? prev : synced[0].id);
@@ -892,8 +1056,8 @@ export default function AnnotatePageClient() {
                 type="button"
                 disabled={saving}
                 onClick={async () => {
-                  await handleSave();
-                  router.push(`/datasets/${params.id}`);
+                  const ok = await handleSave();
+                  if (ok) router.push(`/datasets/${params.id}`);
                 }}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
               >
@@ -966,7 +1130,9 @@ export default function AnnotatePageClient() {
         canUndo={canUndo}
         canRedo={canRedo}
         onBack={() => {
-          if (JSON.stringify(shapes) !== savedShapesJsonRef.current) {
+          const dirtyShapes = shapesDifferFromSaved();
+          const dirtyLabels = JSON.stringify(labels) !== savedLabelsJsonRef.current;
+          if (dirtyShapes || dirtyLabels) {
             setShowExitConfirm(true);
           } else {
             router.push(`/datasets/${params.id}`);
@@ -1018,6 +1184,8 @@ export default function AnnotatePageClient() {
           newLabelColor={newLabelColor}
           labelBusyId={labelBusyId}
           selectedShapeId={selectedShapeId}
+          activeClassId={activeClassId}
+          usedClassIds={usedClassIds}
           onTabChange={setActiveRightTab}
           onNewLabelNameChange={setNewLabelName}
           onNewLabelColorChange={setNewLabelColor}

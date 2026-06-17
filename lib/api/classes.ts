@@ -5,6 +5,8 @@ export type ClassDto = {
   project: number;
   name: string;
   color: string;
+  /** Total annotations using this class across the whole project. */
+  annotation_count?: number;
 };
 
 type PaginatedResponse<T> = {

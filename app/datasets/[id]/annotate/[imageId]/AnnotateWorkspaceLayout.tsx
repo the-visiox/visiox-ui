@@ -467,6 +467,8 @@ export function RightPane({
   newLabelColor,
   labelBusyId,
   selectedShapeId,
+  activeClassId,
+  usedClassIds,
   onSelectShape,
   onTabChange,
   onNewLabelNameChange,
@@ -490,6 +492,8 @@ export function RightPane({
   newLabelColor: string;
   labelBusyId: number | "new" | null;
   selectedShapeId: string | null;
+  activeClassId: number;
+  usedClassIds: Set<number>;
   onTabChange: (tab: RightTab) => void;
   onNewLabelNameChange: (value: string) => void;
   onNewLabelColorChange: (value: string) => void;
@@ -517,10 +521,13 @@ export function RightPane({
             newLabelName={newLabelName}
             newLabelColor={newLabelColor}
             labelBusyId={labelBusyId}
+            activeClassId={activeClassId}
+            usedClassIds={usedClassIds}
             onNewLabelNameChange={onNewLabelNameChange}
             onNewLabelColorChange={onNewLabelColorChange}
             onCreateLabel={onCreateLabel}
             onDeleteLabel={onDeleteLabel}
+            onActiveClassIdChange={onActiveClassIdChange}
           />
         ) : (
           <ObjectsPanel
@@ -582,20 +589,26 @@ function LabelsPanel({
   newLabelName,
   newLabelColor,
   labelBusyId,
+  activeClassId,
+  usedClassIds,
   onNewLabelNameChange,
   onNewLabelColorChange,
   onCreateLabel,
   onDeleteLabel,
+  onActiveClassIdChange,
 }: {
   labels: LabelDefinition[];
   shapes: EditorShape[];
   newLabelName: string;
   newLabelColor: string;
   labelBusyId: number | "new" | null;
+  activeClassId: number;
+  usedClassIds: Set<number>;
   onNewLabelNameChange: (value: string) => void;
   onNewLabelColorChange: (value: string) => void;
   onCreateLabel: (e: React.FormEvent) => void;
   onDeleteLabel: (label: LabelDefinition) => void;
+  onActiveClassIdChange: (classId: number) => void;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
@@ -632,8 +645,10 @@ function LabelsPanel({
             <LabelRow
               key={label.id}
               label={label}
-              isUsed={shapes.some((shape) => shape.classLabelId === label.id)}
+              isUsed={usedClassIds.has(label.id) || shapes.some((shape) => shape.classLabelId === label.id)}
               deleting={labelBusyId === label.id}
+              isActive={label.id === activeClassId}
+              onSelect={onActiveClassIdChange}
               onDelete={onDeleteLabel}
             />
           ))
@@ -875,24 +890,47 @@ function LabelRow({
   label,
   isUsed,
   deleting,
+  isActive,
+  onSelect,
   onDelete,
 }: {
   label: LabelDefinition;
   isUsed: boolean;
   deleting: boolean;
+  isActive: boolean;
+  onSelect: (classId: number) => void;
   onDelete: (label: LabelDefinition) => void;
 }) {
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-xl bg-white/70 px-3 py-2 text-left text-base font-semibold text-stone-700 shadow-sm shadow-stone-200/40">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(label.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(label.id);
+        }
+      }}
+      aria-pressed={isActive}
+      title={`Use “${label.name}” for new labels`}
+      className="group flex min-w-0 shrink-0 cursor-pointer items-center gap-3  rounded-xl border p-2 text-left text-sm font-semibold text-stone-700 transition-colors"
+      style={{
+        borderColor: isActive ? label.color : `${label.color}55`,
+        backgroundColor: isActive ? `${label.color}26` : `${label.color}0F`,
+        // Inset ring in the label's own colour: uniform tone, never bleeds past the card.
+        boxShadow: isActive ? `inset 0 0 0 0px ${label.color}` : undefined,
+      }}
+    >
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
       <span className="min-w-0 flex-1 truncate">{label.name}</span>
       <button
         type="button"
-        onClick={() => void onDelete(label)}
+        onClick={(e) => { e.stopPropagation(); void onDelete(label); }}
         disabled={deleting || isUsed}
         title={isUsed ? "Label is in use" : "Delete label"}
         aria-label={isUsed ? "Label is in use" : "Delete label"}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-stone-400"
       >
         {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
       </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -11,11 +12,12 @@ import {
   CheckCircle2, Circle, Users, Check, ChevronLeft, ChevronRight,
   Wand2, Eye, FlipHorizontal, FlipVertical, RotateCcw, RotateCw,
   Sun, Aperture, Zap, Scissors, Sliders, Palette, Droplets,
-  Wind, Square, Maximize2,
+  Wind, Square, Maximize2, X,
 } from 'lucide-react';
 
 const BATCH_SIZE = 50;
 import BlueprintGrid from '@/components/BlueprintGrid';
+import { useConfirm } from '@/components/useConfirm';
 import {
   datasets,
   annotationClasses,
@@ -54,6 +56,9 @@ function mediaFallbackFrames(media: Media[]): BrowserData['frames'] {
       width: item.width ?? 0,
       height: item.height ?? 0,
       annotations: [],
+      augmented:
+        (item.metadata as { category?: string })?.category === 'augmented' ||
+        (item.file ?? '').includes('/augmented/'),
     }));
 }
 
@@ -177,7 +182,9 @@ export default function DatasetDetailClient({ id }: Props) {
   const [augPreviews, setAugPreviews] = useState<Array<{ media_id: number; name: string; augmented_url: string }>>([]);
   const [augLoading, setAugLoading] = useState(false);
   const [augApplying, setAugApplying] = useState(false);
+  const [augConfirmOpen, setAugConfirmOpen] = useState(false);
   const [allClasses, setAllClasses] = useState<AnnotationClass[]>([]);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const refreshStatsAndBrowser = useCallback(async () => {
     const [dsResult, statsResult, browserResult, mediaResult] = await Promise.allSettled([
@@ -286,18 +293,17 @@ export default function DatasetDetailClient({ id }: Props) {
 
   useEffect(() => {
     if (!browserData?.frames.length) return;
-    const warmFrames = browserData.frames.slice(0, Math.min(browserData.frames.length, 12));
+    // Prefetch only the first few annotate routes for fast click-through. Gallery
+    // images are lazy-loaded thumbnails, so we no longer eagerly fetch them here.
+    const warmFrames = browserData.frames.slice(0, Math.min(browserData.frames.length, 6));
     warmFrames.forEach((frame) => {
       const href =
         frame.image_url && typeof frame.media_id === 'number'
           ? `/datasets/${id}/annotate/${frame.media_id}?mode=simple`
           : `/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`;
       router.prefetch(href);
-      const img = new Image();
-      img.decoding = 'async';
-      img.src = frame.image_url ? resolveMediaUrl(frame.image_url) : datasets.frameUrl(numericId, frame.frame);
     });
-  }, [browserData, id, numericId, router]);
+  }, [browserData, id, router]);
 
   const toggleMediaSelection = (mediaId: number) => {
     setSelectedMediaIds((prev) =>
@@ -335,7 +341,12 @@ export default function DatasetDetailClient({ id }: Props) {
 
   const handleDeleteSelectedMedia = async () => {
     if (!selectedMediaIds.length || isNaN(numericId)) return;
-    if (!window.confirm(`Delete ${selectedMediaIds.length} image(s)? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: 'Delete images',
+      message: `Delete ${selectedMediaIds.length} image(s)? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    }))) return;
     setDeleting(true);
     setError('');
     try {
@@ -406,7 +417,6 @@ export default function DatasetDetailClient({ id }: Props) {
   };
 
   const handleAugApply = async () => {
-    if (!window.confirm(`Generate ${originalCount * multiplier} augmented images and add them to this dataset?`)) return;
     setAugApplying(true);
     setError('');
     try {
@@ -417,6 +427,7 @@ export default function DatasetDetailClient({ id }: Props) {
       });
       await refreshStatsAndBrowser();
       setAugPreviews([]);
+      setAugConfirmOpen(false);
       setAugOpen(false);
       // Jump to the Augmented browser so the new images are visible immediately.
       setBrowserTab('augmented');
@@ -715,9 +726,9 @@ export default function DatasetDetailClient({ id }: Props) {
                         <div key={lbl.id} className="flex items-center gap-3">
                           <div className="flex w-24 shrink-0 items-center gap-2 min-w-0">
                             <span className="h-3 w-3 shrink-0 rounded-[3px]" style={{ backgroundColor: lbl.color }} />
-                            <span className="truncate text-xs font-medium text-stone-600">{lbl.name}</span>
+                            <span className="truncate text-xs font-bold text-stone-600">{lbl.name}</span>
                           </div>
-                          <div className="relative h-6 flex-1 overflow-hidden rounded-md bg-stone-100">
+                          <div className="relative h-2 flex-1 overflow-hidden rounded-md bg-stone-100">
                             <motion.div
                               initial={{ width: 0 }}
                               animate={{ width: `${pct}%` }}
@@ -726,11 +737,14 @@ export default function DatasetDetailClient({ id }: Props) {
                               style={{ backgroundColor: lbl.color }}
                             />
                           </div>
-                          <div className="flex w-16 shrink-0 items-baseline justify-end gap-1">
-                            <span className="text-xs font-bold tabular-nums text-stone-800">{lbl.count}</span>
-                            {totalCount > 0 && (
-                              <span className="text-[10px] tabular-nums text-stone-400">{share}%</span>
-                            )}
+                          <div className="ml-1 flex w-20 shrink-0 items-center">
+                            <span className="text-xs font-bold tabular-nums text-stone-800">
+                              {lbl.count}
+                            </span>
+
+                            <span className="ml-auto text-xs font-bold tabular-nums text-stone-400">
+                              {share}%
+                            </span>
                           </div>
                         </div>
                       );
@@ -740,7 +754,7 @@ export default function DatasetDetailClient({ id }: Props) {
               );
             })()}
 
-            {labels.length === 0 && (
+            {allClasses.length === 0 && labels.length === 0 && (
               <div className="text-center py-6 text-stone-400">
                 <Tag className="w-8 h-8 mx-auto mb-2 opacity-40" />
                 <p className="text-sm font-bold">No labels yet</p>
@@ -950,7 +964,7 @@ export default function DatasetDetailClient({ id }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleAugApply()}
+                    onClick={() => setAugConfirmOpen(true)}
                     disabled={augApplying || augActiveCount === 0}
                     className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-500/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
                   >
@@ -961,6 +975,50 @@ export default function DatasetDetailClient({ id }: Props) {
               </div>
             )}
           </motion.div>
+        )}
+
+        {confirmDialog}
+
+        {augConfirmOpen && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="relative w-96 rounded-2xl bg-white p-6 shadow-2xl">
+              <button
+                type="button"
+                onClick={() => setAugConfirmOpen(false)}
+                className="absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <h2 className="text-base font-bold text-stone-900">Generate dataset</h2>
+
+              <p className="mt-1.5 text-sm text-stone-500">
+                Generate <span className="font-bold text-stone-700">{originalCount * multiplier}</span> augmented
+                image{originalCount * multiplier === 1 ? '' : 's'} and add them to this dataset?
+              </p>
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAugConfirmOpen(false)}
+                  className="flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={augApplying}
+                  onClick={() => void handleAugApply()}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                >
+                  {augApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
 
         {jobs.length > 0 && (
@@ -1143,7 +1201,7 @@ export default function DatasetDetailClient({ id }: Props) {
                   frame.image_url && typeof frame.media_id === 'number'
                     ? `/datasets/${id}/annotate/${frame.media_id}?mode=simple`
                     : `/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`;
-                const imageSrc = frame.image_url ? resolveMediaUrl(frame.image_url) : datasets.frameUrl(numericId, frame.frame);
+                const imageSrc = frame.image_url ? resolveMediaUrl(frame.image_url) : datasets.frameUrl(numericId, frame.frame, 'thumb');
                 return (
                   <div
                     key={frame.frame}

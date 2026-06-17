@@ -175,7 +175,10 @@ export function mergeProjectClassesWithProfile(
 ): LabelDefinition[] {
   const byId = new Map(profile.map((p) => [p.id, p]));
 
-  const merged: LabelDefinition[] = classes.map((c) => {
+  // The profile only overrides name/color of real project classes per-image.
+  // Profile entries whose id no longer matches a class are stale leftovers from
+  // deleted classes — drop them so phantom labels don't appear.
+  return classes.map((c) => {
     const override = byId.get(c.id);
     return {
       id: c.id,
@@ -183,12 +186,4 @@ export function mergeProjectClassesWithProfile(
       color: (override?.color ?? c.color) || "#f97316",
     };
   });
-
-  for (const p of profile) {
-    if (!merged.some((m) => m.id === p.id)) {
-      merged.push({ id: p.id, name: p.name, color: p.color });
-    }
-  }
-
-  return merged;
 }

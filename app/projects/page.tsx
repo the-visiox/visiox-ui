@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
+import { useConfirm } from "@/components/useConfirm";
 import { projects, datasets as datasetsApi, resolveMediaUrl, type Project, type Dataset } from "@/lib/api";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
@@ -64,6 +65,7 @@ function SkeletonCard() {
 ══════════════════════════════════════════════════════════════════ */
 export default function ProjectsPage() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [list, setList]               = useState<Project[]>([]);
   const [query, setQuery]             = useState("");
   const [search, setSearch]           = useState("");
@@ -112,18 +114,44 @@ export default function ProjectsPage() {
   };
 
   /* ── action handlers ─────────────────────────────────────────── */
-  function handleDeleteProject(id: number) {
-    if (!window.confirm("Delete this project? This cannot be undone.")) return;
-    projects.delete(id)
-      .then(() => setList((prev) => prev.filter((p) => p.id !== id)))
-      .catch((err) => window.alert(err instanceof Error ? err.message : "Delete failed"));
+  async function handleDeleteProject(id: number) {
+    if (!(await confirm({
+      title: "Delete project",
+      message: "Delete this project? This cannot be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    }))) return;
+    try {
+      await projects.delete(id);
+      setList((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      await confirm({
+        title: "Delete failed",
+        message: err instanceof Error ? err.message : "Delete failed",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    }
   }
 
-  function handleDeleteDataset(id: number) {
-    if (!window.confirm("Delete this dataset? This cannot be undone.")) return;
-    datasetsApi.delete(id)
-      .then(() => setDatasetList((prev) => prev.filter((d) => d.id !== id)))
-      .catch((err) => window.alert(err instanceof Error ? err.message : "Delete failed"));
+  async function handleDeleteDataset(id: number) {
+    if (!(await confirm({
+      title: "Delete dataset",
+      message: "Delete this dataset? This cannot be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    }))) return;
+    try {
+      await datasetsApi.delete(id);
+      setDatasetList((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      await confirm({
+        title: "Delete failed",
+        message: err instanceof Error ? err.message : "Delete failed",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    }
   }
 
   function triggerExport(id: number, format: "coco" | "yolo" | "voc") {
@@ -159,6 +187,7 @@ export default function ProjectsPage() {
   /* ── render ──────────────────────────────────────────────────── */
   return (
     <div className="relative flex-1 flex flex-col min-h-screen">
+      {confirmDialog}
       <BlueprintGrid />
 
       <main className="flex-grow p-6 z-10">

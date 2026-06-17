@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
+import { useConfirm } from "@/components/useConfirm";
 import { useAuth } from "@/lib/auth";
 import {
   annotationClasses,
@@ -177,7 +178,7 @@ function hsvToRgb({ h, s, v }: HsvColor): RgbColor {
   return { r: clampColorChannel((red + m) * 255), g: clampColorChannel((green + m) * 255), b: clampColorChannel((blue + m) * 255) };
 }
 
-function LabelColorPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function LabelColorPicker({ value, onChange, usedColors }: { value: string; onChange: (v: string) => void; usedColors?: Set<string> }) {
   const [open, setOpen] = useState(false);
   const [draftColor, setDraftColor] = useState(normalizeHexColor(value));
   const initialColorRef = useRef(normalizeHexColor(value));
@@ -297,12 +298,20 @@ function LabelColorPicker({ value, onChange }: { value: string; onChange: (v: st
           </div>
 
           <div className="mt-3 grid grid-cols-8 gap-2">
-            {LABEL_COLOR_SWATCHES.map((swatch) => (
-              <button key={swatch} type="button" onClick={() => commitColor(swatch)}
-                className="h-5 w-5 rounded-md border border-stone-200 transition hover:scale-110 focus:outline-none focus:ring-2 focus:ring-orange-400/30"
-                style={{ backgroundColor: swatch }} aria-label={`Use ${swatch}`}
-              />
-            ))}
+            {LABEL_COLOR_SWATCHES.map((swatch) => {
+              const isUsed = usedColors?.has(swatch.toUpperCase()) ?? false;
+              return (
+                <button key={swatch} type="button" disabled={isUsed}
+                  onClick={() => commitColor(swatch)}
+                  className={`h-5 w-5 rounded-md border border-stone-200 transition focus:outline-none focus:ring-2 focus:ring-orange-400/30 ${
+                    isUsed ? "cursor-not-allowed opacity-30" : "hover:scale-110"
+                  }`}
+                  style={{ backgroundColor: swatch }}
+                  aria-label={isUsed ? `${swatch} already used` : `Use ${swatch}`}
+                  title={isUsed ? "Already used by another class" : undefined}
+                />
+              );
+            })}
           </div>
 
           <div className="mt-4 flex justify-end gap-2">
@@ -718,6 +727,9 @@ function ClassEditorInline({
   }, [editing, classList]);
 
   const peers = classList.filter((c) => c.id !== editing?.id);
+  const usedColors = new Set(
+    peers.map((c) => c.color?.toUpperCase()).filter((c): c is string => !!c),
+  );
 
   const dupeName = name.trim() !== "" && peers.some((c) => c.name.toLowerCase() === name.trim().toLowerCase());
   const dupeColor = peers.some((c) => c.color?.toUpperCase() === color.toUpperCase());
@@ -753,7 +765,7 @@ function ClassEditorInline({
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col gap-2">
       <div className="flex w-full items-center gap-2">
-        <LabelColorPicker value={color} onChange={setColor} />
+        <LabelColorPicker value={color} onChange={setColor} usedColors={usedColors} />
         <input
           type="text"
           required
@@ -765,7 +777,7 @@ function ClassEditorInline({
         />
         <button
           type="submit"
-          disabled={saving || !name.trim()}
+          disabled={saving || !name.trim() || !!dupeError}
           className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1"
         >
           {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : editing ? "Save" : "Add"}
@@ -788,6 +800,7 @@ function ClassEditorInline({
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const { user: currentUser } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [datasetList, setDatasetList] = useState<Dataset[]>([]);
@@ -939,19 +952,42 @@ export default function ProjectDetailPage() {
         license: "Community",
         is_public: true,
       });
-      window.alert("Project shared to Dataverse.");
+      await confirm({
+        title: "Shared to Dataverse",
+        message: "Project shared to Dataverse.",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
     } catch (err: unknown) {
-      window.alert(err instanceof Error ? err.message : "Could not share project.");
+      await confirm({
+        title: "Share failed",
+        message: err instanceof Error ? err.message : "Could not share project.",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
     } finally {
       setSharing(false);
     }
   }
 
-  function handleDeleteDataset(datasetId: number) {
-    if (!window.confirm("Delete this dataset? This cannot be undone.")) return;
-    datasets.delete(datasetId)
-      .then(() => setDatasetList((prev) => prev.filter((d) => d.id !== datasetId)))
-      .catch((err) => window.alert(err instanceof Error ? err.message : "Delete failed"));
+  async function handleDeleteDataset(datasetId: number) {
+    if (!(await confirm({
+      title: "Delete dataset",
+      message: "Delete this dataset? This cannot be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    }))) return;
+    try {
+      await datasets.delete(datasetId);
+      setDatasetList((prev) => prev.filter((d) => d.id !== datasetId));
+    } catch (err) {
+      await confirm({
+        title: "Delete failed",
+        message: err instanceof Error ? err.message : "Delete failed",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    }
   }
 
   function triggerExport(datasetId: number, format: "coco" | "yolo" | "voc") {
@@ -977,6 +1013,7 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="relative flex-1 flex flex-col min-h-screen">
+      {confirmDialog}
       <BlueprintGrid />
 
       <AnimatePresence>
@@ -1125,25 +1162,41 @@ export default function ProjectDetailPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={c.annotation_count > 0}
                       onClick={() => {
-                        const ok = window.confirm(
-                          `Delete class “${c.name}”? This removes the class and all annotations that use it.`,
-                        );
-                        if (!ok) return;
+                        if (c.annotation_count > 0) return;
                         void (async () => {
+                          const ok = await confirm({
+                            title: "Delete class",
+                            message: `Delete class “${c.name}”?`,
+                            confirmLabel: "Delete",
+                            danger: true,
+                          });
+                          if (!ok) return;
                           try {
                             await annotationClasses.delete(c.id);
                             broadcastClassChange(project!.id);
                             await loadClasses();
                           } catch (err) {
-                            window.alert(
-                              err instanceof Error ? err.message : "Could not delete class",
-                            );
+                            await confirm({
+                              title: "Delete failed",
+                              message: err instanceof Error ? err.message : "Could not delete class",
+                              confirmLabel: "OK",
+                              hideCancel: true,
+                            });
                           }
                         })();
                       }}
-                      className="rounded-md p-1 text-stone-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                      title="Delete"
+                      className={`rounded-md p-1 transition-colors ${
+                        c.annotation_count > 0
+                          ? "cursor-not-allowed text-stone-200"
+                          : "text-stone-400 hover:bg-red-50 hover:text-red-600"
+                      }`}
+                      title={
+                        c.annotation_count > 0
+                          ? "Cannot delete: this class is used by annotations"
+                          : "Delete"
+                      }
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
