@@ -677,9 +677,14 @@ export const datasets = {
     };
     multiplier: number;
   }) {
-    return request<{ generated: number; total: number }>(
+    return request<{ job_id: string; total: number }>(
       `/api/v1/datasets/${id}/augmentations/`,
       { method: 'POST', body: JSON.stringify(config) },
+    );
+  },
+  augmentStatus(id: number, jobId: string) {
+    return request<{ total: number; done: number; generated: number; status: 'running' | 'done' | 'error'; error: string | null }>(
+      `/api/v1/datasets/${id}/augmentations/status/?job=${encodeURIComponent(jobId)}`,
     );
   },
 };

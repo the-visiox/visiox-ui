@@ -183,6 +183,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [augLoading, setAugLoading] = useState(false);
   const [augApplying, setAugApplying] = useState(false);
   const [augConfirmOpen, setAugConfirmOpen] = useState(false);
+  const [augJob, setAugJob] = useState<{ jobId: string; total: number; done: number; status: 'running' | 'done' | 'error' } | null>(null);
   const [allClasses, setAllClasses] = useState<AnnotationClass[]>([]);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -420,25 +421,50 @@ export default function DatasetDetailClient({ id }: Props) {
     setAugApplying(true);
     setError('');
     try {
-      await datasets.augmentApply(numericId, {
+      // Kicks off a background job and returns immediately; we poll for progress.
+      const { job_id, total } = await datasets.augmentApply(numericId, {
         preprocess: preprocessConfig,
         augment: augConfig,
         multiplier,
       });
-      await refreshStatsAndBrowser();
       setAugPreviews([]);
       setAugConfirmOpen(false);
       setAugOpen(false);
-      // Jump to the Augmented browser so the new images are visible immediately.
-      setBrowserTab('augmented');
-      setCurrentPage(1);
-      setSelectedMediaIds([]);
+      setAugJob({ jobId: job_id, total, done: 0, status: 'running' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Apply failed');
     } finally {
       setAugApplying(false);
     }
   };
+
+  // Poll the background augmentation job for progress; refresh the gallery when done.
+  const augJobId = augJob?.jobId;
+  const augJobStatus = augJob?.status;
+  useEffect(() => {
+    if (!augJobId || augJobStatus !== 'running') return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const s = await datasets.augmentStatus(numericId, augJobId);
+        if (cancelled) return;
+        setAugJob((prev) => (prev ? { ...prev, done: s.done, total: s.total, status: s.status } : prev));
+        if (s.status === 'done') {
+          await refreshStatsAndBrowser();
+          setBrowserTab('augmented');
+          setCurrentPage(1);
+          setSelectedMediaIds([]);
+          setTimeout(() => setAugJob((p) => (p && p.status === 'done' ? null : p)), 1800);
+        } else if (s.status === 'error') {
+          setError(s.error || 'Augmentation failed');
+          setAugJob(null);
+        }
+      } catch {
+        // transient network/auth blip — keep polling
+      }
+    }, 800);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [augJobId, augJobStatus, numericId, refreshStatsAndBrowser]);
 
   const isAugEnabled = (key: string): boolean => {
     const val = augConfig[key as keyof typeof augConfig];
@@ -978,6 +1004,29 @@ export default function DatasetDetailClient({ id }: Props) {
         )}
 
         {confirmDialog}
+
+        {augJob && typeof document !== 'undefined' && createPortal(
+          <div className="fixed bottom-5 right-5 z-[150] w-72 rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-xl shadow-stone-300/40 backdrop-blur">
+            <div className="flex items-center gap-2">
+              {augJob.status === 'done'
+                ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                : <Loader2 className="h-4 w-4 shrink-0 animate-spin text-orange-500" />}
+              <p className="text-sm font-bold text-stone-800">
+                {augJob.status === 'done' ? 'Augmentation complete' : 'Generating dataset…'}
+              </p>
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-stone-100">
+              <div
+                className="h-full rounded-full bg-orange-500 transition-all duration-300"
+                style={{ width: `${augJob.total ? Math.round((augJob.done / augJob.total) * 100) : 0}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-xs font-medium text-stone-500">
+              {augJob.done}/{augJob.total} images · runs in background
+            </p>
+          </div>,
+          document.body
+        )}
 
         {augConfirmOpen && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
