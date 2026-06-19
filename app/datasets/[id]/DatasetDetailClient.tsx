@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Download, ChevronDown, Tag, RefreshCw, Upload,
-  Loader2, AlertTriangle, BarChart3, Layers, ExternalLink,
+  Loader2, AlertTriangle, BarChart3, Layers,
   Image as ImageIcon, Activity, Trash2,
   CheckCircle2, Circle, Users, Check, ChevronLeft, ChevronRight,
   Wand2, Eye, FlipHorizontal, FlipVertical, RotateCcw, RotateCw,
@@ -28,7 +28,6 @@ import {
   type AnnotationClass,
 } from '@/lib/api';
 
-const CVAT_URL = process.env.NEXT_PUBLIC_CVAT_URL || 'http://localhost:8080';
 const EXPORT_FORMATS = ['coco', 'yolo', 'voc'] as const;
 type ExportFormat = typeof EXPORT_FORMATS[number];
 
@@ -156,7 +155,6 @@ export default function DatasetDetailClient({ id }: Props) {
   const [mediaCountApi, setMediaCountApi] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [syncing, setSyncing] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
@@ -391,15 +389,6 @@ export default function DatasetDetailClient({ id }: Props) {
     }
   };
 
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      await datasets.syncCvat(numericId);
-      window.location.reload();
-    } catch { setError('Sync failed'); }
-    finally { setSyncing(false); }
-  };
-
   const handleAugPreview = async () => {
     setAugLoading(true);
     setAugPreviews([]);
@@ -502,7 +491,6 @@ export default function DatasetDetailClient({ id }: Props) {
   const totalAnnotations = cvat?.annotations?.total ?? browserData?.annotation_count ?? 0;
   const labels = browserData?.labels ?? [];
   const name = stats?.name ?? browserData?.dataset_name ?? `Dataset #${id}`;
-  const taskId = stats?.cvat_task_id ?? browserData?.task_id;
   const jobs = cvat?.jobs ?? [];
 
   const annotatedCount =
@@ -571,7 +559,7 @@ export default function DatasetDetailClient({ id }: Props) {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploading || syncing}
+              disabled={uploading}
               className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
             >
               {uploading ? (
@@ -580,16 +568,6 @@ export default function DatasetDetailClient({ id }: Props) {
                 <Upload className="w-4 h-4" />
               )}
               Upload
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSync}
-              disabled={syncing}
-              className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              Sync
             </button>
 
             <div className="relative">
@@ -614,14 +592,6 @@ export default function DatasetDetailClient({ id }: Props) {
                 </motion.div>
               )}
             </div>
-
-            {!!taskId && (
-              <a href={`${CVAT_URL}/tasks/${taskId}`} target="_blank" rel="noopener noreferrer"
-                className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all"
-              >
-                <ExternalLink className="w-4 h-4" /> CVAT
-              </a>
-            )}
 
             <button
               type="button"

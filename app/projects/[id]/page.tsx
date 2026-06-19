@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
   ArrowLeft,
-  Layout,
   Settings,
   Clock,
   Image as ImageIcon,
@@ -44,7 +43,6 @@ import {
   type TeamMember,
 } from "@/lib/api";
 
-const CVAT_PUBLIC_URL = process.env.NEXT_PUBLIC_CVAT_URL || "http://localhost:8080";
 
 const STATUS_DOT: Record<string, string> = {
   Ready: "bg-green-500",
@@ -1056,17 +1054,6 @@ export default function ProjectDetailPage() {
                 {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe2 className="w-4 h-4" />}
                 Share to Dataverse
               </button>
-              {project.cvat_project_id && (
-                <a
-                  href={`${CVAT_PUBLIC_URL}/projects/${project.cvat_project_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-5 text-sm font-bold text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105 active:scale-95"
-                >
-                  <Layout className="w-4 h-4" />
-                  CVAT Project
-                </a>
-              )}
               <button
                 type="button"
                 className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105 active:scale-95"
@@ -1398,19 +1385,6 @@ export default function ProjectDetailPage() {
                     <div className="flex items-center justify-between gap-1 mb-2">
                       <h3 className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors truncate text-base">{dataset.name}</h3>
                       <div className="flex shrink-0 items-center gap-1">
-                        {dataset.cvat_task_id && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(`${CVAT_PUBLIC_URL}/tasks/${dataset.cvat_task_id}`, "_blank", "noopener,noreferrer");
-                            }}
-                            className="p-1 bg-stone-50 text-stone-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                            title="Annotate in CVAT"
-                          >
-                            <Layout className="w-3.5 h-3.5" />
-                          </button>
-                        )}
                         <CardMenu items={datasetMenuItems(dataset)} />
                       </div>
                     </div>

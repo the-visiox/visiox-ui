@@ -640,12 +640,6 @@ export const datasets = {
   newVersion(id: number) {
     return request<Dataset>(`/api/v1/datasets/${id}/versions/`, { method: 'POST' });
   },
-  annotateUrl(id: string | number) {
-    return request<{ url?: string; error?: string }>(`/api/v1/datasets/${id}/annotate-url/`);
-  },
-  syncCvat(id: string | number) {
-    return request<{ status: string; version: number; cvat_status?: string; total_labels?: number }>(`/api/v1/datasets/${id}/cvat-sync/`, { method: 'POST' });
-  },
   augmentPreview(id: number, config: {
     preprocess: {
       auto_orient: boolean; resize: boolean;
