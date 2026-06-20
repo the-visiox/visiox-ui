@@ -28,8 +28,16 @@ import {
   type AnnotationClass,
 } from '@/lib/api';
 
-const EXPORT_FORMATS = ['coco', 'yolo', 'voc'] as const;
+const EXPORT_FORMATS = ['coco', 'yolo', 'voc', 'mask', 'coco_keypoints', 'imagenet'] as const;
 type ExportFormat = typeof EXPORT_FORMATS[number];
+const EXPORT_LABELS: Record<ExportFormat, string> = {
+  coco: 'COCO',
+  yolo: 'YOLO',
+  voc: 'Pascal VOC',
+  mask: 'Segmentation Mask',
+  coco_keypoints: 'COCO Keypoints',
+  imagenet: 'ImageNet',
+};
 
 interface Props { id: string; }
 
@@ -156,6 +164,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportSaveImages, setExportSaveImages] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -481,7 +490,7 @@ export default function DatasetDetailClient({ id }: Props) {
 
   const handleExport = (format: ExportFormat) => {
     setExportOpen(false);
-    const url = datasets.exportUrl(numericId, format);
+    const url = datasets.exportUrl(numericId, format, exportSaveImages);
     const a = document.createElement('a');
     a.href = url; a.download = `dataset-${id}-${format}.zip`; a.click();
   };
@@ -580,13 +589,22 @@ export default function DatasetDetailClient({ id }: Props) {
               </button>
               {exportOpen && (
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                  className="absolute right-0 mt-2 bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden z-50 min-w-[120px]"
+                  className="absolute right-0 mt-2 bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden z-50 min-w-[200px]"
                 >
+                  <label className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-stone-700 border-b border-stone-100 cursor-pointer hover:bg-stone-50">
+                    <input
+                      type="checkbox"
+                      checked={exportSaveImages}
+                      onChange={e => setExportSaveImages(e.target.checked)}
+                      className="h-4 w-4 rounded border-stone-300 accent-orange-500"
+                    />
+                    Include images
+                  </label>
                   {EXPORT_FORMATS.map(fmt => (
                     <button key={fmt} onClick={() => handleExport(fmt)}
-                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50 uppercase"
+                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50"
                     >
-                      {fmt === 'coco' ? 'COCO JSON' : fmt === 'yolo' ? 'YOLO txt' : 'Pascal VOC'}
+                      {EXPORT_LABELS[fmt]}
                     </button>
                   ))}
                 </motion.div>

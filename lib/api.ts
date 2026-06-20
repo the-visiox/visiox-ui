@@ -629,10 +629,17 @@ export const datasets = {
     const baseUrl = resolveBaseUrl();
     return `${baseUrl}/api/v1/datasets/${id}/frames/${frameNum}/?quality=${quality}${token ? `&token=${token}` : ''}`;
   },
-  exportUrl(id: number, format: 'coco' | 'yolo' | 'voc') {
+  exportUrl(
+    id: number,
+    format: 'coco' | 'yolo' | 'voc' | 'mask' | 'coco_keypoints' | 'imagenet',
+    saveImages = false,
+  ) {
     const token = getAccessToken();
     const baseUrl = resolveBaseUrl();
-    return `${baseUrl}/api/v1/datasets/${id}/export/?format=${format}${token ? `&token=${token}` : ''}`;
+    const params = new URLSearchParams({ format });
+    if (saveImages) params.set('save_images', '1');
+    if (token) params.set('token', token);
+    return `${baseUrl}/api/v1/datasets/${id}/export/?${params.toString()}`;
   },
   delete(id: number) {
     return request<void>(`/api/v1/datasets/${id}/`, { method: 'DELETE' });
