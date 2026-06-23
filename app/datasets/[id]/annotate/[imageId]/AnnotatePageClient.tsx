@@ -451,7 +451,7 @@ export default function AnnotatePageClient() {
           classes = loadedClasses;
           annotations = loadedAnnotations;
           profileItems = loadedProfile;
-          setMediaTotal(stats?.cvat?.size ?? ds.media_count ?? null);
+          setMediaTotal(ds.media_count ?? null);
         } else {
           let list = mediaListCache.get(datasetId) ?? null;
           if (!list) {

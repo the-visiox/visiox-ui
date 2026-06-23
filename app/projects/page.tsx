@@ -20,6 +20,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
+import DatasetExportDialog, {
+  type DatasetExportTarget,
+} from "@/components/datasets/DatasetExportDialog";
 import { useConfirm } from "@/components/useConfirm";
 import { projects, datasets as datasetsApi, resolveMediaUrl, type Project, type Dataset } from "@/lib/api";
 
@@ -45,6 +48,13 @@ const TASK_TYPE_LABEL: Record<string, string> = {
   keypoint_detection:    "Keypoints",
   video_annotation:      "Video",
 };
+
+interface ExportDialogState {
+  targets: DatasetExportTarget[];
+  exportName: string;
+  dialogTitle?: string;
+  subtitle?: string;
+}
 
 /* ── skeletons ───────────────────────────────────────────────────── */
 function SkeletonCard() {
@@ -74,6 +84,7 @@ export default function ProjectsPage() {
   const [selected, setSelected]       = useState<Project | null>(null);
   const [datasetList, setDatasetList] = useState<Dataset[]>([]);
   const [dsLoading, setDsLoading]     = useState(false);
+  const [exportDialog, setExportDialog] = useState<ExportDialogState | null>(null);
 
   /* load projects */
   useEffect(() => {
@@ -154,17 +165,50 @@ export default function ProjectsPage() {
     }
   }
 
-  function triggerExport(id: number, format: "coco" | "yolo" | "voc") {
-    const url = datasetsApi.exportUrl(id, format);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `dataset-${id}-${format}.zip`;
-    a.click();
+  function openDatasetExport(dataset: Dataset) {
+    setExportDialog({
+      targets: [{ id: dataset.id, name: dataset.name }],
+      exportName: dataset.name,
+      subtitle: dataset.name,
+    });
+  }
+
+  async function openProjectExport(project: Project) {
+    try {
+      const projectDatasets = await datasetsApi.listAll(project.id);
+
+      if (projectDatasets.length === 0) {
+        await confirm({
+          title: "No datasets to export",
+          message: `${project.name} does not have any datasets yet.`,
+          confirmLabel: "OK",
+          hideCancel: true,
+        });
+        return;
+      }
+
+      setExportDialog({
+        targets: projectDatasets.map((dataset) => ({
+          id: dataset.id,
+          name: dataset.name,
+        })),
+        exportName: project.name,
+        dialogTitle: "Download project datasets",
+        subtitle: `${project.name} - ${projectDatasets.length} dataset${projectDatasets.length === 1 ? "" : "s"}`,
+      });
+    } catch (err) {
+      await confirm({
+        title: "Export unavailable",
+        message: err instanceof Error ? err.message : "Could not load project datasets.",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    }
   }
 
   function projectMenuItems(p: Project): CardMenuItem[] {
     return [
-      { icon: Download,  label: "Export Dataset",  onClick: () => router.push(`/projects/${p.id}`) },
+      { icon: Download,  label: "Export",          onClick: () => void openProjectExport(p) },
       { icon: UserPlus,  label: "Assignee",         onClick: () => router.push(`/projects/${p.id}`) },
       { icon: BarChart2, label: "View Analytics",   onClick: () => router.push(`/projects/${p.id}`) },
       { icon: Trash2,    label: "Delete",            onClick: () => handleDeleteProject(p.id), danger: true, dividerBefore: true },
@@ -175,9 +219,7 @@ export default function ProjectsPage() {
     return [
       { icon: Upload,    label: "Upload Annotations", onClick: () => router.push(`/datasets/${ds.id}`) },
       { icon: Wand2,     label: "Auto Annotations",   onClick: () => router.push(`/datasets/${ds.id}`) },
-      { icon: Download,  label: "Export as COCO",     onClick: () => triggerExport(ds.id, "coco"), dividerBefore: true },
-      { icon: Download,  label: "Export as YOLO",     onClick: () => triggerExport(ds.id, "yolo") },
-      { icon: Download,  label: "Export as VOC",      onClick: () => triggerExport(ds.id, "voc") },
+      { icon: Download,  label: "Export",             onClick: () => openDatasetExport(ds), dividerBefore: true },
       { icon: UserPlus,  label: "Assignee",            onClick: () => router.push(`/datasets/${ds.id}`), dividerBefore: true },
       { icon: BarChart2, label: "View Analytics",      onClick: () => router.push(`/datasets/${ds.id}`) },
       { icon: Trash2,    label: "Delete",              onClick: () => handleDeleteDataset(ds.id), danger: true, dividerBefore: true },
@@ -188,6 +230,16 @@ export default function ProjectsPage() {
   return (
     <div className="relative flex-1 flex flex-col min-h-screen">
       {confirmDialog}
+      {exportDialog ? (
+        <DatasetExportDialog
+          targets={exportDialog.targets}
+          exportName={exportDialog.exportName}
+          dialogTitle={exportDialog.dialogTitle}
+          subtitle={exportDialog.subtitle}
+          open
+          onClose={() => setExportDialog(null)}
+        />
+      ) : null}
       <BlueprintGrid />
 
       <main className="flex-grow p-6 z-10">

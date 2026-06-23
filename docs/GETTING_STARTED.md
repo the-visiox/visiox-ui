@@ -8,7 +8,7 @@ Go from raw images to a deployed vision model — without writing a single line 
 
 VisioX is an end-to-end computer-vision platform built for teams that need to annotate, train, deploy, and monitor vision models at scale. Every step — data management, annotation, model training, and inference endpoints — lives in one workspace so your team stops context-switching between disconnected tools.
 
-> **Note:** VisioX consists of three services that work together. Make sure all three are running before you start: the Django backend (`visiox/`), the CVAT annotation engine (`cvat/`), and this frontend (`visiox-ui/`).
+> **Note:** VisioX consists of two services that work together: the Django backend (`visiox/`) and this frontend (`visiox-ui/`).
 
 ---
 
@@ -17,7 +17,7 @@ VisioX is an end-to-end computer-vision platform built for teams that need to an
 | Pillar | What it does |
 |---|---|
 | **Datasets** | Upload images, browse frames, manage versions, and sync annotations |
-| **Annotation** | Label data with the native Konva editor or the embedded CVAT workflow |
+| **Annotation** | Label data with the native Konva editor |
 | **Training** | Launch training jobs, track experiments, and compare metrics |
 | **Deployment** | Push models to inference endpoints and monitor production traffic |
 | **Workflows** | Chain vision tasks into multi-stage automated pipelines |
@@ -33,7 +33,7 @@ Get the platform running locally and annotate your first image in under 10 minut
 
 - **Node.js** ≥ 18 and **pnpm** ≥ 10
 - **Python** ≥ 3.10 (for the Django backend)
-- **Docker** (for CVAT)
+
 - Git
 
 ### Step 1 — Clone the repositories
@@ -41,7 +41,6 @@ Get the platform running locally and annotate your first image in under 10 minut
 ```bash
 git clone https://github.com/your-org/visiox-ui.git
 git clone https://github.com/your-org/visiox.git
-git clone https://github.com/your-org/cvat.git
 ```
 
 ### Step 2 — Start the Django backend
@@ -54,15 +53,7 @@ python manage.py runserver
 # API available at http://localhost:8000
 ```
 
-### Step 3 — Start CVAT (optional — required for CVAT annotation mode)
-
-```bash
-cd cvat
-docker compose up -d
-# CVAT available at http://localhost:8080
-```
-
-### Step 4 — Configure the frontend
+### Step 3 — Configure the frontend
 
 ```bash
 cd visiox-ui
@@ -73,10 +64,9 @@ Edit `.env.local`:
 
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_CVAT_URL=http://localhost:8080   # omit if not using CVAT
 ```
 
-### Step 5 — Run the frontend
+### Step 4 — Run the frontend
 
 ```bash
 pnpm install
@@ -84,7 +74,7 @@ pnpm dev
 # Frontend available at http://localhost:3000
 ```
 
-### Step 6 — Create your first project
+### Step 5 — Create your first project
 
 1. Open `http://localhost:3000` in your browser.
 2. Register an account at `/register` or log in at `/login`.
@@ -275,27 +265,6 @@ Content-Type: application/json
   ]
 }
 ```
-
-### CVAT Annotation (embedded)
-
-For teams already familiar with CVAT, VisioX embeds the CVAT task editor inside the platform via an iframe.
-
-**Navigate to:**
-
-```
-/datasets/{id}/annotate/cvat
-```
-
-The backend issues a short-lived SSO URL via:
-
-```http
-GET /api/datasets/{id}/annotate_url/
-Authorization: Bearer <access_token>
-```
-
-The response contains a CVAT URL with an embedded auth token. The frontend renders it as a full-screen `<iframe>` — no separate CVAT login required.
-
-> **Requirement:** `NEXT_PUBLIC_CVAT_URL` must be set and CVAT must be running at that address.
 
 ---
 
@@ -511,7 +480,6 @@ https://api.visiox.ai   (production)
 | Delete dataset | DELETE | `/api/datasets/{id}/` |
 | Browse frames | GET | `/api/datasets/{id}/browser/` |
 | Get frame image | GET | `/api/datasets/{id}/frames/{n}/` |
-| CVAT SSO URL | GET | `/api/datasets/{id}/annotate_url/` |
 | Upload media | POST | `/api/datasets/{id}/media/` |
 | Get job annotations | GET | `/api/jobs/{id}/annotations/` |
 | Save job annotations | PATCH | `/api/jobs/{id}/annotations/` |
@@ -559,7 +527,6 @@ All API errors return a JSON body with a `detail` or `message` field.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `NEXT_PUBLIC_API_URL` | Yes | `http://localhost:8000` | VisioX Django backend URL |
-| `NEXT_PUBLIC_CVAT_URL` | No | `http://localhost:8080` | CVAT web app URL (iframe embed) |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | No | — | Google OAuth client ID |
 | `NEXT_PUBLIC_GITHUB_CLIENT_ID` | No | — | GitHub OAuth client ID |
 | `GITHUB_REPOSITORY` | No | — | Sets `basePath` for GitHub Pages deployment (`org/repo`) |
@@ -585,14 +552,6 @@ pnpm exec next dev -p 3000
 ```
 
 Stop any other process listening on port 3000 first.
-
-### CVAT iframe is blank or shows a login screen
-
-The CVAT SSO handoff requires CVAT to be running and accessible at `NEXT_PUBLIC_CVAT_URL`. Steps to debug:
-
-1. Open `NEXT_PUBLIC_CVAT_URL` directly in your browser — it should load the CVAT UI.
-2. Confirm the backend can reach CVAT (it generates the SSO token server-side).
-3. Check that your browser does not block `<iframe>` content from `localhost` origins.
 
 ### Annotations are not saving
 

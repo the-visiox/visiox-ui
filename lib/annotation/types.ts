@@ -1,5 +1,5 @@
 /**
- * Canvas / editor types aligned with the VisioX annotation platform (CVAT-style).
+ * Canvas / editor types aligned with the VisioX annotation platform.
  */
 
 export type Tool =

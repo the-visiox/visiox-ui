@@ -26,6 +26,9 @@ import {
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
+import DatasetExportDialog, {
+  type DatasetExportTarget,
+} from "@/components/datasets/DatasetExportDialog";
 import { useConfirm } from "@/components/useConfirm";
 import { useAuth } from "@/lib/auth";
 import {
@@ -49,6 +52,11 @@ const STATUS_DOT: Record<string, string> = {
   Annotating: "bg-[#6735E0] animate-pulse",
   Draft: "bg-stone-300",
 };
+
+interface ExportDialogState {
+  targets: DatasetExportTarget[];
+  exportName: string;
+}
 
 function datasetStatus(d: Dataset): "Ready" | "Annotating" | "Draft" {
   if (d.media_count === 0) return "Draft";
@@ -802,6 +810,7 @@ export default function ProjectDetailPage() {
   const { user: currentUser } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [datasetList, setDatasetList] = useState<Dataset[]>([]);
+  const [exportDialog, setExportDialog] = useState<ExportDialogState | null>(null);
   const [classList, setClassList] = useState<AnnotationClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -988,21 +997,19 @@ export default function ProjectDetailPage() {
     }
   }
 
-  function triggerExport(datasetId: number, format: "coco" | "yolo" | "voc") {
-    const url = datasets.exportUrl(datasetId, format);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `dataset-${datasetId}-${format}.zip`;
-    a.click();
-  }
-
   function datasetMenuItems(dataset: Dataset): CardMenuItem[] {
     return [
       { icon: Upload,    label: "Upload Annotations", onClick: () => router.push(`/datasets/${dataset.id}`) },
       { icon: Wand2,     label: "Auto Annotations",   onClick: () => router.push(`/datasets/${dataset.id}`) },
-      { icon: Download,  label: "Export as COCO",     onClick: () => triggerExport(dataset.id, "coco"), dividerBefore: true },
-      { icon: Download,  label: "Export as YOLO",     onClick: () => triggerExport(dataset.id, "yolo") },
-      { icon: Download,  label: "Export as VOC",      onClick: () => triggerExport(dataset.id, "voc") },
+      {
+        icon: Download,
+        label: "Export",
+        onClick: () => setExportDialog({
+          targets: [{ id: dataset.id, name: dataset.name }],
+          exportName: dataset.name,
+        }),
+        dividerBefore: true,
+      },
       { icon: UserPlus,  label: "Assignee",            onClick: () => router.push(`/datasets/${dataset.id}`), dividerBefore: true },
       { icon: BarChart2, label: "View Analytics",      onClick: () => router.push(`/datasets/${dataset.id}`) },
       { icon: Trash2,    label: "Delete",              onClick: () => handleDeleteDataset(dataset.id), danger: true, dividerBefore: true },
@@ -1012,6 +1019,14 @@ export default function ProjectDetailPage() {
   return (
     <div className="relative flex-1 flex flex-col min-h-screen">
       {confirmDialog}
+      {exportDialog ? (
+        <DatasetExportDialog
+          targets={exportDialog.targets}
+          exportName={exportDialog.exportName}
+          open
+          onClose={() => setExportDialog(null)}
+        />
+      ) : null}
       <BlueprintGrid />
 
       <AnimatePresence>

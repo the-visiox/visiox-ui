@@ -9,7 +9,7 @@ import {
   ArrowLeft, Download, ChevronDown, Tag, RefreshCw, Upload,
   Loader2, AlertTriangle, BarChart3, Layers,
   Image as ImageIcon, Activity, Trash2,
-  CheckCircle2, Circle, Users, Check, ChevronLeft, ChevronRight,
+  CheckCircle2, Circle, Check, ChevronLeft, ChevronRight,
   Wand2, Eye, FlipHorizontal, FlipVertical, RotateCcw, RotateCw,
   Sun, Aperture, Zap, Scissors, Sliders, Palette, Droplets,
   Wind, Square, Maximize2, X,
@@ -17,6 +17,7 @@ import {
 
 const BATCH_SIZE = 50;
 import BlueprintGrid from '@/components/BlueprintGrid';
+import DatasetExportDialog from '@/components/datasets/DatasetExportDialog';
 import { useConfirm } from '@/components/useConfirm';
 import {
   datasets,
@@ -27,17 +28,6 @@ import {
   type Media,
   type AnnotationClass,
 } from '@/lib/api';
-
-const EXPORT_FORMATS = ['coco', 'yolo', 'voc', 'mask', 'coco_keypoints', 'imagenet'] as const;
-type ExportFormat = typeof EXPORT_FORMATS[number];
-const EXPORT_LABELS: Record<ExportFormat, string> = {
-  coco: 'COCO',
-  yolo: 'YOLO',
-  voc: 'Pascal VOC',
-  mask: 'Segmentation Mask',
-  coco_keypoints: 'COCO Keypoints',
-  imagenet: 'ImageNet',
-};
 
 interface Props { id: string; }
 
@@ -104,12 +94,6 @@ const CARD_COL1 = `flex h-full min-h-0 flex-col space-y-4 ${CARD_P}`;
 const CARD_COL2 = `flex h-full min-h-0 flex-col items-center justify-center border-dashed ${CARD} p-8 text-center`;
 // ──────────────────────────────────────────────────────────────────────────────
 
-const JOB_STATE_STYLE: Record<string, { icon: React.ElementType; color: string }> = {
-  new: { icon: Circle, color: 'text-stone-400' },
-  'in progress': { icon: Activity, color: 'text-blue-500' },
-  completed: { icon: CheckCircle2, color: 'text-emerald-500' },
-  rejected: { icon: AlertTriangle, color: 'text-red-500' },
-};
 
 interface AugCardDef {
   key: string;
@@ -164,7 +148,6 @@ export default function DatasetDetailClient({ id }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
-  const [exportSaveImages, setExportSaveImages] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -488,19 +471,10 @@ export default function DatasetDetailClient({ id }: Props) {
     c => !!preprocessConfig[c.key as keyof typeof preprocessConfig],
   ).length;
 
-  const handleExport = (format: ExportFormat) => {
-    setExportOpen(false);
-    const url = datasets.exportUrl(numericId, format, exportSaveImages);
-    const a = document.createElement('a');
-    a.href = url; a.download = `dataset-${id}-${format}.zip`; a.click();
-  };
-
-  const cvat = stats?.cvat;
-  const totalImages = Math.max(cvat?.size ?? 0, browserData?.frame_count ?? 0, mediaCountApi ?? 0);
-  const totalAnnotations = cvat?.annotations?.total ?? browserData?.annotation_count ?? 0;
+  const totalImages = Math.max(browserData?.frame_count ?? 0, mediaCountApi ?? 0);
+  const totalAnnotations = browserData?.annotation_count ?? 0;
   const labels = browserData?.labels ?? [];
   const name = stats?.name ?? browserData?.dataset_name ?? `Dataset #${id}`;
-  const jobs = cvat?.jobs ?? [];
 
   const annotatedCount =
     annotatedCountApi !== null
@@ -579,37 +553,15 @@ export default function DatasetDetailClient({ id }: Props) {
               Upload
             </button>
 
-            <div className="relative">
-              <button
-                onClick={() => setExportOpen(v => !v)}
-                className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all"
-              >
-                <Download className="w-4 h-4" /> Export
-                <ChevronDown className={`w-4 h-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {exportOpen && (
-                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                  className="absolute right-0 mt-2 bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden z-50 min-w-[200px]"
-                >
-                  <label className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-stone-700 border-b border-stone-100 cursor-pointer hover:bg-stone-50">
-                    <input
-                      type="checkbox"
-                      checked={exportSaveImages}
-                      onChange={e => setExportSaveImages(e.target.checked)}
-                      className="h-4 w-4 rounded border-stone-300 accent-orange-500"
-                    />
-                    Include images
-                  </label>
-                  {EXPORT_FORMATS.map(fmt => (
-                    <button key={fmt} onClick={() => handleExport(fmt)}
-                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50"
-                    >
-                      {EXPORT_LABELS[fmt]}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={exportOpen}
+              className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:bg-stone-50 hover:shadow-sm active:translate-y-0"
+            >
+              <Download className="w-4 h-4" /> Export
+            </button>
 
             <button
               type="button"
@@ -627,6 +579,13 @@ export default function DatasetDetailClient({ id }: Props) {
           <AlertTriangle className="w-4 h-4" /> {error}
         </div>
       )}
+
+      <DatasetExportDialog
+        targets={[{ id: numericId, name }]}
+        exportName={name}
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+      />
 
       {/* Main Content */}
       <div className="z-10 flex-1 overflow-auto p-6 space-y-4 max-w-8xl mx-auto w-full">
@@ -709,13 +668,13 @@ export default function DatasetDetailClient({ id }: Props) {
             </div>
 
             {(allClasses.length > 0 || labels.length > 0) && browserData && (() => {
-              // Build a name→count map from CVAT browser labels
-              const cvatCountByName = new Map<string, number>();
+              // Build a name→count map from browser labels
+              const labelCountByName = new Map<string, number>();
               labels.forEach(label => {
                 const count = browserData.frames.reduce(
                   (sum, f) => sum + f.annotations.filter(a => a.label_id === label.id).length, 0
                 );
-                cvatCountByName.set(label.name.toLowerCase(), count);
+                labelCountByName.set(label.name.toLowerCase(), count);
               });
 
               // Use project classes (all labels) if available, else fall back to browserData labels
@@ -724,7 +683,7 @@ export default function DatasetDetailClient({ id }: Props) {
                 id: label.id,
                 name: label.name,
                 color: label.color,
-                count: cvatCountByName.get(label.name.toLowerCase()) ?? 0,
+                count: labelCountByName.get(label.name.toLowerCase()) ?? 0,
               }));
               const maxCount = Math.max(...counts.map(c => c.count), 1);
               const totalCount = counts.reduce((s, c) => s + c.count, 0);
@@ -1056,56 +1015,6 @@ export default function DatasetDetailClient({ id }: Props) {
             </div>
           </div>,
           document.body
-        )}
-
-        {jobs.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.28 }}
-            className={CARD_P}
-          >
-            <h3 className="text-base font-bold text-stone-900 mb-3">Jobs</h3>
-            <div className="border border-stone-100 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-stone-50 text-stone-500 font-bold uppercase text-xs tracking-wider">
-                    <th className="text-left px-3 py-2">Job</th>
-                    <th className="text-left px-3 py-2">Stage</th>
-                    <th className="text-left px-3 py-2">State</th>
-                    <th className="text-right px-3 py-2">Frames</th>
-                    <th className="text-left px-3 py-2">Assignee</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobs.map(job => {
-                    const style = JOB_STATE_STYLE[job.state] ?? JOB_STATE_STYLE['new'];
-                    const StateIcon = style.icon;
-                    return (
-                      <tr key={job.id} className="border-t border-stone-100 hover:bg-stone-50 transition-colors">
-                        <td className="px-3 py-2.5 font-bold text-stone-700">#{job.id}</td>
-                        <td className="px-3 py-2.5 text-stone-600 capitalize">{job.stage}</td>
-                        <td className="px-3 py-2.5">
-                          <span className={`inline-flex items-center gap-1 ${style.color}`}>
-                            <StateIcon className="w-3 h-3" />
-                            <span className="capitalize">{job.state}</span>
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-right font-medium text-stone-700">{job.frame_count}</td>
-                        <td className="px-3 py-2.5 text-stone-500">
-                          {job.assignee ? (
-                            <span className="inline-flex items-center gap-1">
-                              <Users className="w-3 h-3" />
-                              {job.assignee}
-                            </span>
-                          ) : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </motion.div>
         )}
 
         {totalImages === 0 && (

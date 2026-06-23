@@ -106,7 +106,6 @@ export interface Project {
   is_public: boolean;
   created_at: string;
   updated_at: string;
-  cvat_project_id: number | null;
 }
 
 export interface Dataset {
@@ -118,7 +117,6 @@ export interface Dataset {
   media_count: number;
   annotated_count?: number;
   thumbnail: string | null;
-  cvat_task_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -310,6 +308,13 @@ export async function request<T>(
   if (contentType && contentType.includes('application/json')) {
     return res.json() as Promise<T>;
   }
+  if (
+    contentType &&
+    (contentType.includes('application/zip') ||
+      contentType.includes('application/octet-stream'))
+  ) {
+    return res.blob() as Promise<T>;
+  }
   
   return undefined as unknown as T;
 }
@@ -498,48 +503,14 @@ export const annotationClasses = {
 
 // ── Datasets ───────────────────────────────────────────────────────────────
 
-export interface CvatJobStats {
-  id: number;
-  stage: string;
-  state: string;
-  frame_count: number;
-  assignee: string | null;
-}
-
-export interface CvatAnnotationStats {
-  shapes: number;
-  tags: number;
-  tracks: number;
-  total: number;
-}
-
-export interface CvatTaskStats {
-  exists: boolean;
-  task_id?: number;
-  name?: string;
-  status?: string;
-  size?: number;
-  mode?: string;
-  dimension?: string;
-  created_date?: string;
-  updated_date?: string;
-  image_quality?: number;
-  jobs?: CvatJobStats[];
-  annotations?: CvatAnnotationStats;
-  url?: string;
-  error?: string;
-}
-
 export interface DatasetStats {
   id: number;
   name: string;
   version: number;
   project_id: number;
   project_name: string | null;
-  cvat_task_id: number | null;
   created_at: string;
   updated_at: string;
-  cvat: CvatTaskStats | null;
 }
 
 // ── Data Browser types ──────────────────────────────────────────────────────
@@ -558,7 +529,7 @@ export interface BrowserFrame {
   frame: number;
   /** Present when backend can map this frame to a VisioX Media row (standalone or aligned uploads). */
   media_id?: number;
-  /** Direct media URL used when CVAT has no frame data but VisioX media rows exist. */
+  /** Direct media URL. */
   image_url?: string | null;
   name: string;
   width: number;
@@ -586,11 +557,41 @@ export interface BrowserData {
   annotation_count: number;
 }
 
+export type DatasetExportFormat =
+  | 'coco'
+  | 'yolo'
+  | 'voc'
+  | 'mask'
+  | 'coco_keypoints'
+  | 'imagenet';
+
+function datasetListPath(projectId?: number, page?: number): string {
+  const params = new URLSearchParams();
+  if (projectId) params.set('project', String(projectId));
+  if (page) params.set('page', String(page));
+  const query = params.toString();
+  return `/api/v1/datasets/${query ? `?${query}` : ''}`;
+}
+
+async function listAllDatasets(projectId?: number): Promise<Dataset[]> {
+  const allDatasets: Dataset[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await request<PaginatedResponse<Dataset>>(
+      datasetListPath(projectId, page),
+    );
+    allDatasets.push(...(response.results ?? []));
+    if (!response.next) return allDatasets;
+    page += 1;
+  }
+}
+
 export const datasets = {
-  list(projectId?: number) {
-    const qs = projectId ? `?project=${projectId}` : '';
-    return request<PaginatedResponse<Dataset>>(`/api/v1/datasets/${qs}`);
+  list(projectId?: number, page?: number) {
+    return request<PaginatedResponse<Dataset>>(datasetListPath(projectId, page));
   },
+  listAll: listAllDatasets,
   get(id: number) {
     return request<Dataset>(`/api/v1/datasets/${id}/`);
   },
@@ -631,15 +632,26 @@ export const datasets = {
   },
   exportUrl(
     id: number,
-    format: 'coco' | 'yolo' | 'voc' | 'mask' | 'coco_keypoints' | 'imagenet',
+    format: DatasetExportFormat,
     saveImages = false,
   ) {
     const token = getAccessToken();
     const baseUrl = resolveBaseUrl();
-    const params = new URLSearchParams({ format });
+    const params = new URLSearchParams({ export_format: format });
     if (saveImages) params.set('save_images', '1');
     if (token) params.set('token', token);
     return `${baseUrl}/api/v1/datasets/${id}/export/?${params.toString()}`;
+  },
+  exportArchive(
+    id: number,
+    format: DatasetExportFormat,
+    saveImages = false,
+  ) {
+    const params = new URLSearchParams({
+      export_format: format,
+      save_images: saveImages ? '1' : '0',
+    });
+    return request<Blob>(`/api/v1/datasets/${id}/export/?${params.toString()}`);
   },
   delete(id: number) {
     return request<void>(`/api/v1/datasets/${id}/`, { method: 'DELETE' });

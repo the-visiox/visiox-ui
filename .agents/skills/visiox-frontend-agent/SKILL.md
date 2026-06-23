@@ -5,7 +5,7 @@ description: Enforces the premium, light-themed, animated design system of the V
 
 # VisioX Frontend Engineering Guidelines
 
-When acting as an AI coding assistant on the VisioX UI repository, follow these design, architectural, and API-integration rules. The product uses a **light**, workspace-first aesthetic and talks to the **Visiox Django API** via `lib/api.ts`. Some flows may embed or proxy **CVAT** (see optional route `/datasets/[id]/annotate/cvat` if present in the repo).
+When acting as an AI coding assistant on the VisioX UI repository, follow these design, architectural, and API-integration rules. The product uses a **light**, workspace-first aesthetic and talks to the **Visiox Django API** via `lib/api.ts`.
 
 ## 1. Core tech stack
 
@@ -40,7 +40,7 @@ When acting as an AI coding assistant on the VisioX UI repository, follow these 
 ## 4. Configuration and deployment
 
 - **Config**: `next.config.mjs` (not `.ts`). Typically includes `images.unoptimized: true` and optional `basePath` for GitHub Actions / Pages. If `output: "export"` is enabled, every route must stay statically compatible.
-- **Env**: `NEXT_PUBLIC_API_URL` in `.env.local` for the Django API (see `.env.local.example`). A separate `NEXT_PUBLIC_CVAT_URL` may exist when CVAT iframe flows are enabled.
+- **Env**: `NEXT_PUBLIC_API_URL` in `.env.local` for the Django API (see `.env.local.example`).
 - **CI**: Check `.github/workflows` for deploy targets.
 
 ## 5. API integration
@@ -67,7 +67,7 @@ When acting as an AI coding assistant on the VisioX UI repository, follow these 
 | `ImageGrid` | Dataset thumbnails (virtualized where used). |
 | `BlueprintGrid` | Background grid on workspace pages. |
 | `SolutionPageTemplate` | Industry solution pages. |
-| Dataset detail / CVAT | If present: data browser, frame proxy URLs, optional CVAT iframe — follow existing `lib/api.ts` helpers and `*Client.tsx` patterns in-repo. |
+| Dataset detail | Data browser, frame proxy URLs — follow existing `lib/api.ts` helpers and `*Client.tsx` patterns in-repo. |
 
 ## 8. File naming
 

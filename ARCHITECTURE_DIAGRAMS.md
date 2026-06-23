@@ -11,7 +11,7 @@ Source files referenced:
 - `components/annotate/AnnotationEditor.tsx`
 - `app/datasets/[id]/DatasetDetailClient.tsx`
 - `app/datasets/[id]/annotate/[imageId]/AnnotatePageClient.tsx`
-- `app/datasets/[id]/annotate/cvat/page.tsx`
+
 
 Render these blocks in GitHub Markdown or [Mermaid Live](https://mermaid.live).
 
@@ -19,7 +19,7 @@ Render these blocks in GitHub Markdown or [Mermaid Live](https://mermaid.live).
 
 ## 1. System Architecture
 
-High-level view of the three-repo platform and how the Next.js frontend fits in.
+High-level view of the platform and how the Next.js frontend fits in.
 
 ```mermaid
 flowchart LR
@@ -35,7 +35,6 @@ flowchart LR
             Marketing["Marketing\n/products/* /solutions/* /about/*"]
             Platform["Platform workspace\n/overview /projects /datasets\n/teams /train /deploy /workflows /dataverse"]
             Annotate["Annotation workspace\n/datasets/{id}/annotate/{imageId}"]
-            CvatEmbed["CVAT embed\n/datasets/{id}/annotate/cvat"]
             Auth["Auth\n/login /register /auth/callback"]
         end
 
@@ -48,7 +47,6 @@ flowchart LR
 
     subgraph Backends[External Backends]
         VisioXAPI["VisioX Django API\nNEXT_PUBLIC_API_URL\n(default :8000)"]
-        CVAT["CVAT Web App\nNEXT_PUBLIC_CVAT_URL\n(default :8080)"]
     end
 
     User --> Next
@@ -59,7 +57,6 @@ flowchart LR
     Platform --> ApiClient
     Annotate --> ModularApi
     Annotate --> AnnotationLib
-    CvatEmbed --> CVAT
     AuthProvider --> ApiClient
 
     ApiClient --> VisioXAPI
@@ -68,34 +65,7 @@ flowchart LR
 
 ---
 
-## 2. Three-Repo Integration
-
-```mermaid
-flowchart TB
-    subgraph UI["visiox-ui (this repo)"]
-        Frontend["Next.js 16\nApp Router frontend"]
-    end
-
-    subgraph Backend["visiox (Django)"]
-        DjangoAPI["REST API\nJWT auth · projects · datasets\ntraining · deployment · CVAT proxy"]
-        CVATSdk["cvat-sdk\nCVAT task management"]
-    end
-
-    subgraph CVATRepo["cvat (customized fork)"]
-        CVATWeb["CVAT Web App\nannotation engine"]
-        CVATBackend["CVAT Django backend"]
-    end
-
-    Frontend -->|"REST + JWT\nNEXT_PUBLIC_API_URL"| DjangoAPI
-    DjangoAPI --> CVATSdk
-    CVATSdk --> CVATBackend
-    Frontend -->|"iframe embed\nSSO handoff"| CVATWeb
-    CVATBackend --- CVATWeb
-```
-
----
-
-## 3. Route Structure & Shell Logic
+## 2. Route Structure & Shell Logic
 
 ```mermaid
 flowchart TB
@@ -130,11 +100,10 @@ flowchart TB
 | **Marketing — About** | `/about` `/about/company` `/about/blog` `/about/contact` | Header + Footer |
 | **Platform** | `/home` `/overview` `/projects` `/projects/new` `/projects/[id]` `/datasets/[id]` `/teams` `/teams/new` `/train` `/deploy` `/workflows` `/dataverse` | Sidebar + TopBar |
 | **Annotation (native)** | `/datasets/[id]/annotate/[imageId]` | Full-screen annotation shell |
-| **Annotation (CVAT)** | `/datasets/[id]/annotate/cvat` | CVAT iframe (bare) |
 
 ---
 
-## 4. Component Tree
+## 3. Component Tree
 
 ```mermaid
 flowchart LR
@@ -182,7 +151,7 @@ flowchart LR
 
 ---
 
-## 5. Client / API Layer
+## 4. Client / API Layer
 
 ```mermaid
 flowchart LR
@@ -228,7 +197,7 @@ flowchart LR
 
 ---
 
-## 6. Annotation System Architecture
+## 5. Annotation System Architecture
 
 ```mermaid
 flowchart TB
@@ -284,7 +253,7 @@ flowchart TB
 
 ---
 
-## 7. Authentication & Token Flow
+## 6. Authentication & Token Flow
 
 ```mermaid
 sequenceDiagram
@@ -318,7 +287,7 @@ sequenceDiagram
 
 ---
 
-## 8. Annotation Workflow (native editor)
+## 7. Annotation Workflow
 
 ```mermaid
 sequenceDiagram
@@ -356,16 +325,11 @@ sequenceDiagram
     Page->>API: PATCH /api/jobs/{id}/annotations/ or PUT /api/media/{id}/annotations/
     API-->>Page: Saved
 
-    Note over User,API: CVAT annotation route
-    User->>Page: Open /datasets/{id}/annotate/cvat
-    Page->>API: GET /api/datasets/{id}/annotate_url/
-    API-->>Page: CVAT iframe URL (SSO token in ?next=)
-    Page->>Page: Render <iframe src=cvat_url>
 ```
 
 ---
 
-## 9. Data Flow Diagram
+## 8. Data Flow Diagram
 
 ```mermaid
 flowchart TD
@@ -378,16 +342,14 @@ flowchart TD
         P4["Upload · delete · version · sync"]
         P5["Data browser + frame overlay"]
         P6["Native annotation editor"]
-        P7["CVAT annotation handoff"]
-        P8["Training & deployment dashboards"]
-        P9["Team management & invitations"]
+        P7["Training & deployment dashboards"]
+        P8["Team management & invitations"]
     end
 
     D1[("localStorage\nJWT + user")]
     D2[("React component state")]
 
     API["VisioX Django API"]
-    CVAT["CVAT Web App"]
 
     User --> UI
 
@@ -407,12 +369,9 @@ flowchart TD
     P6 -->|"GET·PATCH /api/jobs/{id}/annotations/"| API
     P6 -->|"GET·PUT /api/media/{id}/annotations/"| API
 
-    P7 -->|"GET /api/datasets/{id}/annotate_url/"| API
-    P7 -->|"iframe src → CVAT SSO"| CVAT
+    P7 -->|"training-jobs · experiments · metrics\nregistry · endpoints"| API
 
-    P8 -->|"training-jobs · experiments · metrics\nregistry · endpoints"| API
-
-    P9 -->|"teams · invitations"| API
+    P8 -->|"teams · invitations"| API
 ```
 
 ---
@@ -422,5 +381,4 @@ flowchart TD
 - **LayoutShell** (`components/LayoutShell.tsx`) is the single composition point for all page chrome. It inspects `pathname` at render time and injects the appropriate shell (bare, annotation, platform, or marketing).
 - **`lib/api.ts`** owns JWT storage, auto-refresh-on-401, and LAN hostname normalization (replaces `localhost` with `window.location.hostname` so the browser can reach the API when accessed from another device on the same network).
 - **`lib/annotation/`** is the unified annotation runtime. It exposes a clean public API via `index.ts` and keeps all canvas-independent logic (geometry, label utilities, API mapping, session management, undo/redo) separate from the Konva component.
-- **Native vs CVAT annotation**: The Konva-based `AnnotationEditor` is the primary annotation surface. CVAT is available as an optional embedded workflow via an iframe at the `/annotate/cvat` sub-route; it uses a backend-issued SSO token to authenticate the user inside the CVAT app.
-- **Static export**: `next.config.mjs` sets `output: "export"`. Dynamic App Router routes use client wrappers and static params. Base path is set dynamically via the `GITHUB_REPOSITORY` environment variable for GitHub Pages deployment.
+- **Static export**: Dynamic App Router routes use client wrappers and static params. Base path is set dynamically via the `GITHUB_REPOSITORY` environment variable for GitHub Pages deployment.

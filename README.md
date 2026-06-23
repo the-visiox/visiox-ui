@@ -117,7 +117,7 @@ Tất cả requests đến backend đi qua `lib/api.ts`. Backend dùng prefix `/
 | `auth` | Login, register, OAuth, logout, token refresh |
 | `projects` | CRUD project |
 | `teams` | Team, thành viên, invitation |
-| `datasets` | CRUD dataset, upload, augmentation, export, sync CVAT |
+| `datasets` | CRUD dataset, upload, augmentation, export |
 | `annotationClasses` | Labels của project |
 | `training` | Training jobs (`startJob` → PATCH `{"status":"queued"}`), experiments, metrics |
 | `deployments` | Model registry, inference endpoints (`startEndpoint` → PATCH `{"status":"active"}`) |
