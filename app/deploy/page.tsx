@@ -222,7 +222,7 @@ export default function DeployPage() {
             </div>
             <button
               onClick={() => setShowModal(true)}
-              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:bg-orange-200"
             >
               <Plus className="w-4 h-4" />
               <span>New Endpoint</span>

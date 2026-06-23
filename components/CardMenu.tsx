@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { MoreHorizontal, MoreVertical } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 
 export interface CardMenuItem {
   icon: React.ElementType;

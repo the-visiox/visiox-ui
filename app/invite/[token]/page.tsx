@@ -12,7 +12,6 @@ export default function AcceptInvitePage() {
   const router = useRouter();
   const [state, setState] = useState<State>("loading");
   const [message, setMessage] = useState("");
-  const [teamName, setTeamName] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -20,7 +19,6 @@ export default function AcceptInvitePage() {
       .acceptInvitation(token as string)
       .then((res) => {
         setMessage(res.detail);
-        setTeamName(res.member?.user_username ?? "");
         setState("success");
       })
       .catch((err: unknown) => {
@@ -47,7 +45,9 @@ export default function AcceptInvitePage() {
 
         {state === "success" && (
           <>
-            <h1 className="text-lg font-bold text-stone-900">You're in!</h1>
+            <h1 className="text-lg font-bold text-stone-900">
+              You&apos;re in!
+            </h1>
             <p className="mt-1 text-sm text-stone-500">{message}</p>
             <button
               type="button"

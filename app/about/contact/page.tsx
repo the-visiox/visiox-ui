@@ -12,11 +12,13 @@ export default function ContactPage() {
             <span className="text-stone-700 text-sm font-bold uppercase tracking-widest">Connect With Us</span>
           </div>
           <h1 className="text-5xl lg:text-7xl font-bold text-stone-900 mb-6 tracking-tight">
-            Let's build your <br />
+            Let&apos;s build your <br />
             <span className="bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent">Vision Pipeline</span>
           </h1>
           <p className="text-xl text-stone-500 max-w-2xl leading-relaxed mb-16">
-            Whether you need a custom enterprise solution, deep technical support, or a quick demo of our platform, our vision engineers are ready to chat.
+            Whether you need a custom enterprise solution, deep technical
+            support, or a quick demo of our platform, our vision engineers are
+            ready to chat.
           </p>
           
           <div className="grid lg:grid-cols-2 gap-12">

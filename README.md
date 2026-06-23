@@ -93,7 +93,7 @@ Restart `pnpm dev` after changing env vars.
 pnpm install
 pnpm dev          # http://localhost:3000
 pnpm build
-pnpm lint
+pnpm lint         # Includes the 120-character code-line limit
 ```
 
 ## Project structure (high level)

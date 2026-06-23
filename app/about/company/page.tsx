@@ -46,7 +46,8 @@ export default function Page() {
             <span className="bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent">Accessible to Real World</span>
           </h1>
           <p className="text-xl text-stone-500 max-w-3xl mx-auto leading-relaxed mb-4">
-            Industrial AI and 3D Vision Systems redefining automation technology solutions for diverse industries globally.
+            Industrial AI and 3D Vision Systems redefining automation
+            technology solutions for diverse industries globally.
           </p>
         </motion.div>
       </section>
@@ -91,7 +92,8 @@ export default function Page() {
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-4xl font-bold text-stone-900 mb-6">Have any questions?</h2>
           <p className="text-xl text-stone-500 mb-10 leading-relaxed">
-            Get in touch to find out how VisioX can support your project. Our experts are ready to assist with feasibility studies and POCs.
+            Get in touch to find out how VisioX can support your project. Our
+            experts are ready to assist with feasibility studies and POCs.
           </p>
           <Link href="/about/contact" className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-orange-600 to-orange-400 hover:from-orange-400 hover:to-orange-300  transition-colors text-white font-bold rounded-2xl shadow-xl shadow-orange-600/20 group">
             Get in Touch

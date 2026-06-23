@@ -51,8 +51,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
   // ── Authenticated platform workspace ───────────────────────────
   if (isPlatformRoute(pathname)) {
-    const isHomeWorkspace = pathname === "/home" || pathname === "/overview";
-
     return (
       <div className="flex min-h-screen bg-[#fcfaf7]">
         <Sidebar />

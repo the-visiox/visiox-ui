@@ -80,7 +80,7 @@ export default function WorkflowsPage() {
           </div>
           <button 
             onClick={handleSave}
-            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
+            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:bg-orange-200"
           >
             <Play className="w-4 h-4 text-orange-500 fill-orange-500" />
             <span>Deploy Workflow</span>

@@ -162,7 +162,8 @@ export default function Home() {
               </h1>
 
               <p className="text-lg lg:text-2xl text-stone-600 leading-relaxed max-w-xl">
-                Transform your visual data into actionable insights with our cutting-edge AI-powered annotation and analysis tools.
+                Transform your visual data into actionable insights with our
+                cutting-edge AI-powered annotation and analysis tools.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
@@ -543,7 +544,9 @@ export default function Home() {
               >
                 {/* Repeated list for seamless loop */}
                 {[...ALL_PARTNERS, ...ALL_PARTNERS].map((logo, idx) => {
-                  const isActive = hoveredPartner ? hoveredPartner === logo : ALL_PARTNERS[autoHoveredPartnerIndex] === logo;
+                  const isActive = hoveredPartner
+                    ? hoveredPartner === logo
+                    : ALL_PARTNERS[autoHoveredPartnerIndex] === logo;
 
                   return (
                     <div

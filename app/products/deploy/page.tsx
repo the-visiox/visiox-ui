@@ -23,7 +23,9 @@ export default function DeployPage() {
             <span className="bg-gradient-to-r from-purple-600 to-fuchsia-500 bg-clip-text text-transparent">Deployment</span>
           </h1>
           <p className="text-xl text-stone-500 max-w-2xl leading-relaxed mb-10">
-            A model is useless if it's stuck in a notebook. VisioX bridges the gap between data science and production, allowing you to deploy world-class APIs without Devops overhead.
+            A model is useless if it&apos;s stuck in a notebook. VisioX bridges
+            the gap between data science and production, allowing you to deploy
+            world-class APIs without DevOps overhead.
           </p>
           <div className="flex gap-4">
             <button className="px-8 py-4 bg-purple-600 hover:bg-purple-700 transition-colors text-white font-bold rounded-2xl shadow-xl shadow-purple-600/20">View Deployment Options</button>
@@ -36,7 +38,11 @@ export default function DeployPage() {
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-2 gap-8">
             {features.map((f, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
                 className="group p-8 rounded-3xl bg-stone-50 border border-stone-100 hover:border-purple-200 hover:shadow-xl transition-all">
                 <div className="w-14 h-14 bg-white border border-stone-200 rounded-2xl flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform">
                   {f.icon}

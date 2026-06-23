@@ -23,7 +23,12 @@ interface GenerateVersionSlideoverProps {
   onGenerate: (name: string, config: VersionConfig) => void;
 }
 
-export default function GenerateVersionSlideover({ isOpen, onClose, datasetId, onGenerate }: GenerateVersionSlideoverProps) {
+export default function GenerateVersionSlideover({
+  isOpen,
+  onClose,
+  datasetId,
+  onGenerate,
+}: GenerateVersionSlideoverProps) {
   const [versionName, setVersionName] = useState('v1');
   const [trainSplit, setTrainSplit] = useState(70);
   const [valSplit, setValSplit] = useState(20);

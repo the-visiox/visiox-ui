@@ -8,7 +8,6 @@ import {
   Plus,
   ArrowLeft,
   Settings,
-  Clock,
   Image as ImageIcon,
   Loader2,
   X,
@@ -181,10 +180,24 @@ function hsvToRgb({ h, s, v }: HsvColor): RgbColor {
   else if (h < 240) [red, green, blue] = [0, x, c];
   else if (h < 300) [red, green, blue] = [x, 0, c];
   else [red, green, blue] = [c, 0, x];
-  return { r: clampColorChannel((red + m) * 255), g: clampColorChannel((green + m) * 255), b: clampColorChannel((blue + m) * 255) };
+  return {
+    r: clampColorChannel((red + m) * 255),
+    g: clampColorChannel((green + m) * 255),
+    b: clampColorChannel((blue + m) * 255),
+  };
 }
 
-function LabelColorPicker({ value, onChange, usedColors }: { value: string; onChange: (v: string) => void; usedColors?: Set<string> }) {
+interface LabelColorPickerProps {
+  value: string;
+  onChange: (value: string) => void;
+  usedColors?: Set<string>;
+}
+
+function LabelColorPicker({
+  value,
+  onChange,
+  usedColors,
+}: LabelColorPickerProps) {
   const [open, setOpen] = useState(false);
   const [draftColor, setDraftColor] = useState(normalizeHexColor(value));
   const initialColorRef = useRef(normalizeHexColor(value));
@@ -192,8 +205,6 @@ function LabelColorPicker({ value, onChange, usedColors }: { value: string; onCh
   const colorAreaRef = useRef<HTMLDivElement | null>(null);
   const hsv = rgbToHsv(hexToRgb(draftColor));
   const rgb = hexToRgb(draftColor);
-
-  useEffect(() => { if (!open) setDraftColor(normalizeHexColor(value)); }, [open, value]);
 
   useEffect(() => {
     if (!open) return;
@@ -227,7 +238,11 @@ function LabelColorPicker({ value, onChange, usedColors }: { value: string; onCh
     <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
-        onClick={() => { initialColorRef.current = normalizeHexColor(value); setDraftColor(normalizeHexColor(value)); setOpen((c) => !c); }}
+        onClick={() => {
+          initialColorRef.current = normalizeHexColor(value);
+          setDraftColor(normalizeHexColor(value));
+          setOpen((current) => !current);
+        }}
         className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-stone-200 bg-white p-1 shadow-sm shadow-stone-200/40 transition hover:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-400/20"
         title="Pick color"
         aria-label="Pick color"
@@ -292,7 +307,16 @@ function LabelColorPicker({ value, onChange, usedColors }: { value: string; onCh
                 <span className="sr-only">{channel.toUpperCase()}</span>
                 <input
                   type="number" min={0} max={255} value={rgb[channel]}
-                  onChange={(e) => commitColor(rgbToHex({ ...rgb, [channel]: clampColorChannel(Number(e.target.value)) }))}
+                  onChange={(event) =>
+                    commitColor(
+                      rgbToHex({
+                        ...rgb,
+                        [channel]: clampColorChannel(
+                          Number(event.target.value),
+                        ),
+                      }),
+                    )
+                  }
                   className="no-number-spinner h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-1 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
                 />
               </label>
@@ -1078,7 +1102,7 @@ export default function ProjectDetailPage() {
               <button
                 type="button"
                 onClick={() => setShowModal(true)}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:bg-orange-200"
               >
                 <Plus className="w-4 h-4" />
                 New Dataset
@@ -1345,7 +1369,13 @@ export default function ProjectDetailPage() {
                             <button
                               type="button"
                               title="Cancel invitation"
-                              onClick={() => { if (project.team == null) return; const t = project.team; void teams.cancelInvitation(t, inv.id).then(() => loadInvitations(t)); }}
+                              onClick={() => {
+                                if (project.team == null) return;
+                                const teamId = project.team;
+                                void teams
+                                  .cancelInvitation(teamId, inv.id)
+                                  .then(() => loadInvitations(teamId));
+                              }}
                               className="shrink-0 rounded-md p-1 text-stone-400 hover:bg-red-50 hover:text-red-500 transition-colors"
                             >
                               <X className="w-3 h-3" />
@@ -1384,7 +1414,7 @@ export default function ProjectDetailPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
                   onClick={() => router.push(`/datasets/${dataset.id}`)}
-                  className="group flex aspect-[1:1] w-full cursor-pointer flex-col rounded-3xl border border-stone-200 bg-white p-2 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
+                  className="group flex aspect-square w-full cursor-pointer flex-col rounded-3xl border border-stone-200 bg-white p-2 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
                 >
                   <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden bg-stone-50">
                     {dataset.thumbnail ? (
@@ -1429,7 +1459,7 @@ export default function ProjectDetailPage() {
            
            <motion.div
               onClick={() => setShowModal(true)}
-              className="aspect-[1:1] rounded-3xl border-2 border-dashed border-stone-200 p-8 flex flex-col items-center justify-center text-center gap-4 hover:bg-stone-50 transition-all cursor-pointer group"
+              className="group flex aspect-square cursor-pointer flex-col items-center justify-center gap-4 rounded-3xl border-2 border-dashed border-stone-200 p-8 text-center transition-all hover:bg-stone-50"
             >
               <div className="w-14 h-14 bg-stone-100 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-orange-50 transition-all">
                 <Plus className="w-6 h-6 text-stone-300 group-hover:text-orange-500" />

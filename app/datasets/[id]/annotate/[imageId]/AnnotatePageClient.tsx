@@ -358,7 +358,16 @@ export default function AnnotatePageClient() {
     // state — drives which frames Save sends to the server.
     if (shapesDifferFromSaved()) markFrameDirty(frameIndex);
     else clearFrameDirty(frameIndex);
-  }, [currentDraftKey, persistDraft, shapes, isNativeMode, frameIndex, markFrameDirty, clearFrameDirty, shapesDifferFromSaved]);
+  }, [
+    clearFrameDirty,
+    currentDraftKey,
+    frameIndex,
+    isNativeMode,
+    markFrameDirty,
+    persistDraft,
+    shapes,
+    shapesDifferFromSaved,
+  ]);
 
   const undo = () => {
     const previous = sessionRef.current.undo();
@@ -410,7 +419,6 @@ export default function AnnotatePageClient() {
 
         const ds = await getDataset(datasetId);
         setProjectId(ds.project);
-        const statsPromise = visioxDatasets.stats(datasetId).catch(() => null);
         const classesPromise = getClassesForProject(ds.project).catch((): ClassDto[] => []);
         const annotationsPromise: Promise<Awaited<ReturnType<typeof getJobAnnotations>>> = !Number.isNaN(jobId)
           ? getJobAnnotations(jobId)
@@ -442,8 +450,7 @@ export default function AnnotatePageClient() {
           if (!cancelled) {
             setLoading(false);
           }
-          const [stats, loadedClasses, loadedAnnotations, loadedProfile] = await Promise.all([
-            statsPromise,
+          const [loadedClasses, loadedAnnotations, loadedProfile] = await Promise.all([
             classesPromise,
             annotationsPromise,
             profilePromise,
@@ -533,7 +540,18 @@ export default function AnnotatePageClient() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, mediaId, persistDraft, rawImageId, readDraft]);
+  }, [
+    authReady,
+    currentDraftKey,
+    datasetId,
+    frameIndex,
+    isNativeMode,
+    jobId,
+    mediaId,
+    persistDraft,
+    rawImageId,
+    readDraft,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !imageUrl) return;
@@ -599,7 +617,9 @@ export default function AnnotatePageClient() {
   const isLoggedIn = !!accessToken;
   const canSaveToApi =
     isLoggedIn &&
-    (!Number.isNaN(jobId) || (!isNativeMode && Number.isFinite(mediaId)) || (isNativeMode && Number.isFinite(datasetId)));
+    (!Number.isNaN(jobId) ||
+      (!isNativeMode && Number.isFinite(mediaId)) ||
+      (isNativeMode && Number.isFinite(datasetId)));
 
   useEffect(() => {
     if (pendingIndex !== null && pendingIndex === current) {
@@ -789,7 +809,22 @@ export default function AnnotatePageClient() {
     } finally {
       setSaving(false);
     }
-  }, [canSaveToApi, clearFrameDirty, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, labels, mediaId, mediaTotal, persistDraft, readDirtyFrames, readDraft, shapes]);
+  }, [
+    canSaveToApi,
+    clearFrameDirty,
+    currentDraftKey,
+    datasetId,
+    frameIndex,
+    isNativeMode,
+    jobId,
+    labels,
+    mediaId,
+    mediaTotal,
+    persistDraft,
+    readDirtyFrames,
+    readDraft,
+    shapes,
+  ]);
 
   const handleDiscard = useCallback(() => {
     // Drop every unsaved draft for this dataset so nothing is restored on return.

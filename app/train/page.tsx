@@ -188,19 +188,22 @@ export default function TrainPage() {
   }, []);
 
   // Poll metrics every 2 s for the selected running job
+  const selectedJobId = selectedJob?.id;
+  const selectedJobStatus = selectedJob?.status;
+
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
-    if (!selectedJob || selectedJob.status !== 'running') return;
+    if (!selectedJobId || selectedJobStatus !== 'running') return;
 
     const fetchMetrics = async () => {
       try {
-        const exps = await training.getExperiments(selectedJob.id);
+        const exps = await training.getExperiments(selectedJobId);
         if (exps.length > 0) {
           const m = await training.getMetrics(exps[0].id);
           setMetrics(m);
         }
         // Refresh job status
-        const updated = await training.getJob(selectedJob.id);
+        const updated = await training.getJob(selectedJobId);
         setSelectedJob(updated);
         setJobs(prev => prev.map(j => j.id === updated.id ? updated : j));
       } catch {}
@@ -209,7 +212,7 @@ export default function TrainPage() {
     fetchMetrics();
     pollRef.current = setInterval(fetchMetrics, 2000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [selectedJob?.id, selectedJob?.status]);
+  }, [selectedJobId, selectedJobStatus]);
 
   const handleStop = async (jobId: number) => {
     setStoppingId(jobId);
@@ -267,7 +270,7 @@ export default function TrainPage() {
             </div>
             <button
               onClick={() => setShowModal(true)}
-              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:bg-orange-200"
             >
               <FlaskConical className="w-4 h-4 text-orange-500" />
               <span>New Experiment</span>

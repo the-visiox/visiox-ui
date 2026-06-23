@@ -107,7 +107,8 @@ export default function DataversePage() {
               Explore dataset
             </h1>
             <p className="max-w-xl text-base leading-6 text-stone-500">
-              Search community-shared projects, inspect their dataset shape, and fork useful work into your own workspace.
+              Search community-shared projects, inspect their dataset shape,
+              and fork useful work into your own workspace.
             </p>
           </div>
 

@@ -21,12 +21,17 @@ export default function BlogPage() {
             The VisioX <span className="bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent">Blog</span>
           </h1>
           <p className="text-xl text-stone-500 max-w-2xl leading-relaxed mb-16">
-            Dive deep into computer vision engineering, product updates, and how AI is rapidly transforming physical industries.
+            Dive deep into computer vision engineering, product updates, and
+            how AI is rapidly transforming physical industries.
           </p>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {posts.map((post, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
                 className="group bg-white rounded-3xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-xl hover:border-orange-200 transition-all flex flex-col cursor-pointer">
                 <div className="h-48 overflow-hidden relative">
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors z-10" />

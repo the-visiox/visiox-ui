@@ -288,7 +288,7 @@ export default function ProjectsPage() {
                   </form>
                   <Link
                     href="/projects/new"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:bg-orange-200"
                   >
                     <Plus className="w-4 h-4" />
                     New project
@@ -315,7 +315,7 @@ export default function ProjectsPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04 }}
                       onClick={() => router.push(`/projects/${p.id}`)}
-                      className="group flex aspect-[1:1] w-full cursor-pointer flex-col rounded-3xl border border-stone-200 bg-white p-3 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
+                      className="group flex aspect-square w-full cursor-pointer flex-col rounded-3xl border border-stone-200 bg-white p-3 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
                     >
                       {/* Thumbnail */}
                       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-stone-100">
@@ -398,7 +398,7 @@ export default function ProjectsPage() {
                   </Link>
                   <Link
                     href={`/projects/${selected.id}`}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:bg-orange-200"
                   >
                     <Plus className="w-4 h-4" />
                     New dataset

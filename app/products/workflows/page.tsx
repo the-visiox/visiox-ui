@@ -23,7 +23,9 @@ export default function WorkflowsPage() {
             <span className="bg-gradient-to-r from-rose-600 to-pink-500 bg-clip-text text-transparent">Workflows</span>
           </h1>
           <p className="text-xl text-stone-500 max-w-2xl leading-relaxed mb-10">
-            Chain models, logic, and integrations together in a powerful visual editor. Turn raw AI predictions into business-critical actions without writing custom middleware.
+            Chain models, logic, and integrations together in a powerful
+            visual editor. Turn raw AI predictions into business-critical
+            actions without writing custom middleware.
           </p>
           <div className="flex gap-4">
             <button className="px-8 py-4 bg-rose-600 hover:bg-rose-700 transition-colors text-white font-bold rounded-2xl shadow-xl shadow-rose-600/20">Build a Workflow</button>
@@ -36,7 +38,11 @@ export default function WorkflowsPage() {
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-2 gap-8">
             {features.map((f, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
                 className="group p-8 rounded-3xl bg-stone-50 border border-stone-100 hover:border-rose-200 hover:shadow-xl transition-all">
                 <div className="w-14 h-14 bg-white border border-stone-200 rounded-2xl flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform">
                   {f.icon}

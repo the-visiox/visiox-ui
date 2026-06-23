@@ -23,7 +23,9 @@ export default function DatahubPage() {
             <span className="bg-gradient-to-r from-blue-600 to-indigo-500 bg-clip-text text-transparent">Data Hub</span>
           </h1>
           <p className="text-xl text-stone-500 max-w-2xl leading-relaxed mb-10">
-            A single source of truth for all your visual data. The VisioX Data Hub allows you to aggregate, search, and curate datasets before they ever hit the training pipeline.
+            A single source of truth for all your visual data. The VisioX Data
+            Hub allows you to aggregate, search, and curate datasets before
+            they ever hit the training pipeline.
           </p>
           <div className="flex gap-4">
             <button className="px-8 py-4 bg-blue-600 hover:bg-blue-700 transition-colors text-white font-bold rounded-2xl shadow-xl shadow-blue-600/20">Upload Dataset</button>
@@ -36,7 +38,11 @@ export default function DatahubPage() {
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-2 gap-8">
             {features.map((f, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
                 className="group p-8 rounded-3xl bg-stone-50 border border-stone-100 hover:border-blue-200 hover:shadow-xl transition-all">
                 <div className="w-14 h-14 bg-white border border-stone-200 rounded-2xl flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform">
                   {f.icon}

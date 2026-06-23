@@ -106,7 +106,8 @@ export default function SolutionsPage() {
                             </span>
                         </h1>
                         <p className="text-xl text-stone-600 max-w-3xl mx-auto leading-relaxed">
-                            Explore how VisioX's cutting-edge computer vision platform transforms industries,
+                            Explore how VisioX&apos;s cutting-edge computer
+                            vision platform transforms industries,
                             automates complex tasks, and unlocks unprecedented visual insights.
                         </p>
                     </motion.div>
@@ -178,9 +179,12 @@ export default function SolutionsPage() {
                 <div className="max-max-w-7xl mx-auto rounded-3xl bg-gradient-to-r from-orange-600 to-orange-400 p-12 lg:p-20 text-center text-white relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                     <div className="relative z-10 max-w-2xl mx-auto">
-                        <h2 className="text-4xl lg:text-5xl font-bold mb-6">Didn't find what you're looking for?</h2>
+                        <h2 className="text-4xl lg:text-5xl font-bold mb-6">
+                            Didn&apos;t find what you&apos;re looking for?
+                        </h2>
                         <p className="text-xl mb-10 text-white/90">
-                            Our platform is highly customizable. Contact our team to discuss your specific industry needs.
+                            Our platform is highly customizable. Contact our
+                            team to discuss your specific industry needs.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center">
                             <Link href="/contact" className="px-8 py-4 bg-white text-orange-600 rounded-xl font-bold hover:bg-stone-50 transition-colors shadow-xl">

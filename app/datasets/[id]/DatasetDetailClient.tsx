@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft, Download, ChevronDown, Tag, RefreshCw, Upload,
   Loader2, AlertTriangle, BarChart3, Layers,
-  Image as ImageIcon, Activity, Trash2,
+  Image as ImageIcon, Trash2,
   CheckCircle2, Circle, Check, ChevronLeft, ChevronRight,
   Wand2, Eye, FlipHorizontal, FlipVertical, RotateCcw, RotateCw,
   Sun, Aperture, Zap, Scissors, Sliders, Palette, Droplets,
@@ -558,7 +558,7 @@ export default function DatasetDetailClient({ id }: Props) {
               onClick={() => setExportOpen(true)}
               aria-haspopup="dialog"
               aria-expanded={exportOpen}
-              className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:bg-stone-50 hover:shadow-sm active:translate-y-0"
+              className="flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50"
             >
               <Download className="w-4 h-4" /> Export
             </button>
@@ -566,7 +566,7 @@ export default function DatasetDetailClient({ id }: Props) {
             <button
               type="button"
               onClick={() => router.push(`/datasets/${id}/annotate/native?mode=simple`)}
-              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:bg-orange-200"
             >
               <Layers className="w-4 h-4" /> Annotate Native
             </button>
@@ -822,14 +822,26 @@ export default function DatasetDetailClient({ id }: Props) {
                                 <input
                                   type="number" min={32} max={4096} step={32}
                                   value={preprocessConfig.resize_width}
-                                  onChange={e => setPreprocessConfig(c => ({ ...c, resize_width: parseInt(e.target.value) || 640 }))}
+                                  onChange={(event) =>
+                                    setPreprocessConfig((current) => ({
+                                      ...current,
+                                      resize_width:
+                                        parseInt(event.target.value) || 640,
+                                    }))
+                                  }
                                   className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
                                 />
                                 <span className="text-xs text-stone-400">×</span>
                                 <input
                                   type="number" min={32} max={4096} step={32}
                                   value={preprocessConfig.resize_height}
-                                  onChange={e => setPreprocessConfig(c => ({ ...c, resize_height: parseInt(e.target.value) || 640 }))}
+                                  onChange={(event) =>
+                                    setPreprocessConfig((current) => ({
+                                      ...current,
+                                      resize_height:
+                                        parseInt(event.target.value) || 640,
+                                    }))
+                                  }
                                   className="w-20 text-xs border border-orange-200 rounded-lg px-2 py-1.5 text-stone-700 text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-400/40"
                                 />
                                 <span className="text-[10px] text-stone-400">px</span>
@@ -1056,7 +1068,9 @@ export default function DatasetDetailClient({ id }: Props) {
               <div>
                 <h3 className="text-base font-bold text-stone-900">Image Browser</h3>
                 <p className="text-sm text-stone-500 mt-1">
-                  Select images to delete, or click an image to open the annotation view. Hold Shift and click another checkbox to select a range.
+                  Select images to delete, or click an image to open the
+                  annotation view. Hold Shift and click another checkbox to
+                  select a range.
                 </p>
               </div>
               {(selectableMediaIds.length > 0 || selectedMediaIds.length > 0) && (
@@ -1244,7 +1258,11 @@ export default function DatasetDetailClient({ id }: Props) {
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); setSelectedMediaIds([]); anchorFrameIndexRef.current = null; }}
+                    onClick={() => {
+                      setCurrentPage((page) => Math.max(1, page - 1));
+                      setSelectedMediaIds([]);
+                      anchorFrameIndexRef.current = null;
+                    }}
                     disabled={safePage <= 1}
                     className="flex h-8 w-8 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-stone-300 hover:bg-stone-50 disabled:pointer-events-none disabled:opacity-40"
                     aria-label="Previous page"
@@ -1259,7 +1277,13 @@ export default function DatasetDetailClient({ id }: Props) {
                     } else {
                       pages.push(1);
                       if (safePage > 3) pages.push('ellipsis');
-                      for (let i = Math.max(2, safePage - 1); i <= Math.min(totalPages - 1, safePage + 1); i++) pages.push(i);
+                      for (
+                        let page = Math.max(2, safePage - 1);
+                        page <= Math.min(totalPages - 1, safePage + 1);
+                        page += 1
+                      ) {
+                        pages.push(page);
+                      }
                       if (safePage < totalPages - 2) pages.push('ellipsis');
                       pages.push(totalPages);
                     }
@@ -1270,7 +1294,11 @@ export default function DatasetDetailClient({ id }: Props) {
                         <button
                           key={p}
                           type="button"
-                          onClick={() => { setCurrentPage(p as number); setSelectedMediaIds([]); anchorFrameIndexRef.current = null; }}
+                          onClick={() => {
+                            setCurrentPage(p as number);
+                            setSelectedMediaIds([]);
+                            anchorFrameIndexRef.current = null;
+                          }}
                           className={`flex h-8 min-w-[2rem] items-center justify-center rounded-xl border px-2 text-xs font-bold transition ${safePage === p
                               ? 'border-orange-400/40 bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
                               : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:bg-stone-50'
@@ -1284,7 +1312,13 @@ export default function DatasetDetailClient({ id }: Props) {
 
                   <button
                     type="button"
-                    onClick={() => { setCurrentPage((p) => Math.min(totalPages, p + 1)); setSelectedMediaIds([]); anchorFrameIndexRef.current = null; }}
+                    onClick={() => {
+                      setCurrentPage((page) =>
+                        Math.min(totalPages, page + 1),
+                      );
+                      setSelectedMediaIds([]);
+                      anchorFrameIndexRef.current = null;
+                    }}
                     disabled={safePage >= totalPages}
                     className="flex h-8 w-8 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:border-stone-300 hover:bg-stone-50 disabled:pointer-events-none disabled:opacity-40"
                     aria-label="Next page"

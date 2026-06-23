@@ -111,7 +111,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const onSelectedIdChangeRef = useRef(onSelectedIdChange);
   onSelectedIdChangeRef.current = onSelectedIdChange;
   useEffect(() => { onSelectedIdChangeRef.current?.(selectedId); }, [selectedId]);
-  useEffect(() => { if (externalSelectedId !== undefined) setSelectedId(externalSelectedId ?? null); }, [externalSelectedId]);
+  useEffect(() => {
+    if (externalSelectedId !== undefined) {
+      setSelectedId(externalSelectedId ?? null);
+    }
+  }, [externalSelectedId]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [newBox, setNewBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [pathDraft, setPathDraft] = useState<number[]>([]);
@@ -340,7 +344,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const labelMetaMap = useMemo(() => buildLabelMetaMap(labels), [labels]);
   const getShapeColor = useCallback((classLabelId: number) => colorFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
-  const getShapeLabel = useCallback((classLabelId: number) => labelNameFromMap(labelMetaMap, classLabelId), [labelMetaMap]);
+  const getShapeLabel = useCallback(
+    (classLabelId: number) => labelNameFromMap(labelMetaMap, classLabelId),
+    [labelMetaMap],
+  );
 
   const transformTargetId = useMemo(
     () => selectedId ?? (activeTool === "select" ? hoveredId : null),
@@ -541,7 +548,20 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       onShapesChange((prev) => [...prev, shape]);
       onToolChange("select");
     },
-    [image, imageW, imageH, layerX, layerY, layerScale, vertexCount, labels, activeClassId, activeTool, onShapesChange, onToolChange]
+    [
+      activeClassId,
+      activeTool,
+      image,
+      imageH,
+      imageW,
+      labels,
+      layerScale,
+      layerX,
+      layerY,
+      onShapesChange,
+      onToolChange,
+      vertexCount,
+    ],
   );
 
   const placeSingleShape = useCallback(
@@ -574,7 +594,19 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       onShapesChange((prev) => [...prev, shape]);
       onToolChange("select");
     },
-    [image, imageW, imageH, layerX, layerY, layerScale, labels, activeClassId, canPlaceTag, onShapesChange, onToolChange]
+    [
+      activeClassId,
+      canPlaceTag,
+      image,
+      imageH,
+      imageW,
+      labels,
+      layerScale,
+      layerX,
+      layerY,
+      onShapesChange,
+      onToolChange,
+    ],
   );
 
   const handleStageMouseDown = () => {
@@ -659,7 +691,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   };
 
   const visibleDraft = activeTool === "polygon" || activeTool === "polyline" ? pathDraft : [];
-  const previewPoints = visibleDraft.length > 0 && pathHover ? [...visibleDraft, pathHover.x, pathHover.y] : visibleDraft;
+  const previewPoints =
+    visibleDraft.length > 0 && pathHover
+      ? [...visibleDraft, pathHover.x, pathHover.y]
+      : visibleDraft;
   const hoverEnabled = activeTool === "select";
   const safeLayerScale = Math.max(layerScale, 0.001);
   const transformerAnchorPx = CORNER_HANDLE_DIAMETER_PX;
@@ -779,7 +814,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             const floatingLabelPosition = topmostVertexIdx >= 0
               ? getPolygonFloatingLabelPosition(shapeX - shape.x, shapeY - shape.y)
               : getFloatingLabelPosition(shapeX, shapeY, shape.height);
-            const syncFloatingLabelPosition = (nextShapeX: number, nextShapeY: number, nextShapeHeight = shape.height) => {
+            const syncFloatingLabelPosition = (
+              nextShapeX: number,
+              nextShapeY: number,
+              nextShapeHeight = shape.height,
+            ) => {
               const labelNode = layerRef.current?.findOne(`#${shape.clientId}-floating-label`);
               if (!labelNode) return;
               labelNode.position(
@@ -940,16 +979,29 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       }}
                     />
                   )}
-                  {(isPointsShape || isSelected || (pathVertexEditingEnabled && hoveredId === shape.clientId)) && Array.from({ length: shape.points.length / 2 }, (_, vertexIndex) => {
+                  {(isPointsShape ||
+                    isSelected ||
+                    (pathVertexEditingEnabled &&
+                      hoveredId === shape.clientId)) &&
+                    Array.from(
+                      { length: shape.points.length / 2 },
+                      (_, vertexIndex) => {
                     const vx = shape.points![vertexIndex * 2] + (shapeX - shape.x);
                     const vy = shape.points![vertexIndex * 2 + 1] + (shapeY - shape.y);
-                    const isCornerHovered = pathVertexEditingEnabled && hoveredCorner?.shapeId === shape.clientId && hoveredCorner.vertexIndex === vertexIndex;
+                    const isCornerHovered =
+                      pathVertexEditingEnabled &&
+                      hoveredCorner?.shapeId === shape.clientId &&
+                      hoveredCorner.vertexIndex === vertexIndex;
                     return (
                       <Circle
                         key={`${shape.clientId}-v-${vertexIndex}`}
                         x={vx}
                         y={vy}
-                        radius={(isCornerHovered || isPointsShape ? CORNER_HANDLE_HOVER_RADIUS_PX : CORNER_HANDLE_RADIUS_PX) / layerScale}
+                        radius={
+                          (isCornerHovered || isPointsShape
+                            ? CORNER_HANDLE_HOVER_RADIUS_PX
+                            : CORNER_HANDLE_RADIUS_PX) / layerScale
+                        }
                         fill={isPointsShape ? stroke : isCornerHovered ? "#ffedd5" : "#ffffff"}
                         stroke={stroke}
                         strokeWidth={(isCornerHovered ? 2 : 1.5) / layerScale}
@@ -982,7 +1034,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                         onDragEnd={(e) => updatePointGeometry(shape.clientId, vertexIndex, e.target.x(), e.target.y())}
                       />
                     );
-                  })}
+                      },
+                    )}
                   {floatingLabel}
                 </React.Fragment>
               );
@@ -1108,7 +1161,16 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               perfectDrawEnabled={false}
             />
           )}
-          {newBox && <Rect {...newBox} stroke={getShapeColor(activeClassId)} strokeWidth={2 / layerScale} dash={[6, 6]} listening={false} perfectDrawEnabled={false} />}
+          {newBox ? (
+            <Rect
+              {...newBox}
+              stroke={getShapeColor(activeClassId)}
+              strokeWidth={2 / layerScale}
+              dash={[6, 6]}
+              listening={false}
+              perfectDrawEnabled={false}
+            />
+          ) : null}
           <Transformer
             ref={trRef}
             flipEnabled={false}

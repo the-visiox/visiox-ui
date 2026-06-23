@@ -71,19 +71,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    const stored = localStorage.getItem(TOKEN_KEYS.user);
-    const token = localStorage.getItem(TOKEN_KEYS.access);
-    if (stored && token && isTokenValid(token)) {
-      try {
-        setUser(JSON.parse(stored));
-        setIsLoggedIn(true);
-      } catch {
-        /* ignore */
+    const initializeTimer = window.setTimeout(() => {
+      const stored = localStorage.getItem(TOKEN_KEYS.user);
+      const token = localStorage.getItem(TOKEN_KEYS.access);
+      if (stored && token && isTokenValid(token)) {
+        try {
+          setUser(JSON.parse(stored));
+          setIsLoggedIn(true);
+        } catch {
+          /* ignore */
+        }
+      } else if (token && !isTokenValid(token)) {
+        clearTokens();
       }
-    } else if (token && !isTokenValid(token)) {
-      clearTokens();
-    }
-    setAuthReady(true);
+      setAuthReady(true);
+    }, 0);
+
+    return () => window.clearTimeout(initializeTimer);
   }, []);
 
   const login = async (email: string, password: string) => {
