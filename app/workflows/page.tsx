@@ -2,19 +2,19 @@
 
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { 
-  Camera, 
-  Cpu, 
-  Play, 
-  Plus, 
-  Settings, 
+import {
+  Camera,
+  Cpu,
+  Play,
+  Plus,
+  Settings,
   ArrowRight,
   Monitor,
   Bell,
   HardDrive,
   Trash2,
   Save,
-  Zap
+  Zap,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 
@@ -46,62 +46,86 @@ export default function WorkflowsPage() {
 
   const updateNodePos = (id: string, x: number, y: number) => {
     // Functional update to avoid stale closures
-    setNodes(prev => prev.map(n => n.id === id ? { ...n, x, y } : n));
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, x, y } : n)));
   };
 
   return (
     <div className="relative flex-1 flex flex-col min-h-screen overflow-hidden bg-[#fcfaf7]">
       <BlueprintGrid />
-      
+
       {/* Header */}
       <div className="absolute left-0 right-0 top-0 z-30 p-8">
-        <div className="flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+        <div
+          className={[
+            "flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm",
+            "shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between",
+          ].join(" ")}
+        >
           <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">Active Pipeline Builder</h1>
-            <div className={`flex items-center gap-2 px-2 py-1 rounded-full text-[10px] font-bold transition-all ${isSaving ? 'bg-orange-100 text-orange-600' : 'bg-stone-100 text-stone-400'}`}>
-               <Save className={`w-3 h-3 ${isSaving ? 'animate-bounce' : ''}`} />
-               <span>{isSaving ? 'Saving Changes...' : 'All Changes Saved'}</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">Active Pipeline Builder</h1>
+              <div
+                className={`flex items-center gap-2 px-2 py-1 rounded-full text-[10px] font-bold
+                  transition-all ${isSaving ? "bg-orange-100 text-orange-600" : "bg-stone-100 text-stone-400"}`}
+              >
+                <Save className={`w-3 h-3 ${isSaving ? "animate-bounce" : ""}`} />
+                <span>{isSaving ? "Saving Changes..." : "All Changes Saved"}</span>
+              </div>
             </div>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-stone-500">
+              Build, monitor, and deploy visual automation pipelines from one canvas.
+            </p>
           </div>
-          <p className="mt-1 max-w-xl text-sm leading-6 text-stone-500">
-            Build, monitor, and deploy visual automation pipelines from one canvas.
-          </p>
-        </div>
 
-        <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
-          <div className="hidden h-11 items-center gap-4 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold shadow-sm md:flex">
-             <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+            <div
+              className={[
+                "hidden h-11 items-center gap-4 rounded-xl border border-stone-200 bg-white px-4 text-sm",
+                "font-bold shadow-sm md:flex",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                 <span className="text-stone-600">Pipeline Online</span>
-             </div>
-             <div className="w-[1px] h-4 bg-stone-200" />
-             <div className="text-stone-400">Throughput: <span className="text-stone-900">1.2 GB/s</span></div>
+              </div>
+              <div className="w-[1px] h-4 bg-stone-200" />
+              <div className="text-stone-400">
+                Throughput: <span className="text-stone-900">1.2 GB/s</span>
+              </div>
+            </div>
+            <button
+              onClick={handleSave}
+              className={[
+                "flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
+                "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
+                "transition-all hover:bg-orange-200",
+              ].join(" ")}
+            >
+              <Play className="w-4 h-4 text-orange-500 fill-orange-500" />
+              <span>Deploy Workflow</span>
+            </button>
           </div>
-          <button 
-            onClick={handleSave}
-            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:bg-orange-200"
-          >
-            <Play className="w-4 h-4 text-orange-500 fill-orange-500" />
-            <span>Deploy Workflow</span>
-          </button>
-        </div>
         </div>
       </div>
 
       {/* Builder Canvas */}
       <div className="flex-grow relative mt-40 md:mt-36" ref={containerRef}>
         {/* SVG Connections Layer */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 transition-opacity duration-300">
+        <svg
+          className={[
+            "absolute inset-0 w-full h-full pointer-events-none z-10",
+            "transition-opacity duration-300",
+          ].join(" ")}
+        >
           <defs>
             <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
               <polygon points="0 0, 10 3.5, 0 7" fill="#cbd5e1" />
             </marker>
           </defs>
-          
+
           {connections.map((conn, idx) => {
-            const fromNode = nodes.find(n => n.id === conn.from);
-            const toNode = nodes.find(n => n.id === conn.to);
+            const fromNode = nodes.find((n) => n.id === conn.from);
+            const toNode = nodes.find((n) => n.id === conn.to);
             if (!fromNode || !toNode) return null;
 
             // Updated Connection Points based on actual width
@@ -117,33 +141,20 @@ export default function WorkflowsPage() {
             return (
               <g key={`${conn.from}-${conn.to}`}>
                 {/* Visual link body */}
-                <path 
-                  d={path} 
-                  stroke="rgba(0,0,0,0.03)" 
-                  strokeWidth="8" 
-                  fill="none" 
-                />
-                <motion.path 
-                  d={path} 
-                  stroke={fromNode.color} 
-                  strokeWidth="2" 
+                <path d={path} stroke="rgba(0,0,0,0.03)" strokeWidth="8" fill="none" />
+                <motion.path
+                  d={path}
+                  stroke={fromNode.color}
+                  strokeWidth="2"
                   fill="none"
                   initial={{ pathLength: 0, opacity: 0 }}
                   animate={{ pathLength: 1, opacity: 1 }}
                   transition={{ duration: 0.5, delay: idx * 0.1 }}
                 />
-                
+
                 {/* Data Pips */}
-                <motion.circle 
-                  r="3" 
-                  fill={fromNode.color}
-                  filter="blur(1px)"
-                >
-                  <animateMotion 
-                    path={path} 
-                    dur={`${2 + (idx % 3) * 0.5}s`}
-                    repeatCount="indefinite" 
-                  />
+                <motion.circle r="3" fill={fromNode.color} filter="blur(1px)">
+                  <animateMotion path={path} dur={`${2 + (idx % 3) * 0.5}s`} repeatCount="indefinite" />
                 </motion.circle>
               </g>
             );
@@ -166,79 +177,127 @@ export default function WorkflowsPage() {
                 updateNodePos(node.id, node.x + info.delta.x, node.y + info.delta.y);
               }}
               style={{ x: node.x, y: node.y }}
-              className="absolute w-[224px] bg-white border border-stone-200 rounded-3xl shadow-xl pointer-events-auto cursor-grab active:cursor-grabbing group hover:border-orange-500/50 hover:shadow-2xl transition-all duration-300"
+              className={[
+                "absolute w-[224px] bg-white border border-stone-200 rounded-3xl shadow-xl",
+                "pointer-events-auto cursor-grab active:cursor-grabbing group hover:border-orange-500/50",
+                "hover:shadow-2xl transition-all duration-300",
+              ].join(" ")}
             >
               {/* Node Header */}
               <div className="p-4 border-b border-stone-50 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                   <div 
-                    className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-110"
+                  <div
+                    className={[
+                      "w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-lg",
+                      "transition-transform group-hover:scale-110",
+                    ].join(" ")}
                     style={{ backgroundColor: node.color }}
-                   >
-                     <node.icon className="w-5 h-5" />
-                   </div>
-                   <div>
-                     <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">{node.type}</p>
-                     <h3 className="text-xs font-bold text-stone-900 leading-tight">{node.title}</h3>
-                   </div>
+                  >
+                    <node.icon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">{node.type}</p>
+                    <h3 className="text-xs font-bold text-stone-900 leading-tight">{node.title}</h3>
+                  </div>
                 </div>
                 <div className="flex opacity-0 group-hover:opacity-100 transition-opacity gap-1">
-                   <button className="p-1 text-stone-300 hover:text-stone-600"><Settings className="w-3 h-3" /></button>
-                   <button className="p-1 text-stone-300 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
+                  <button className="p-1 text-stone-300 hover:text-stone-600">
+                    <Settings className="w-3 h-3" />
+                  </button>
+                  <button className="p-1 text-stone-300 hover:text-red-500">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
 
               {/* Node Body */}
               <div className="p-4">
-                {node.type === 'model' && (
+                {node.type === "model" && (
                   <div className="space-y-3">
                     <div className="flex justify-between text-[10px] font-bold text-stone-500">
-                      <span className="flex items-center gap-1"><Zap className="w-2.5 h-2.5 text-orange-500" /> Confidence</span>
+                      <span className="flex items-center gap-1">
+                        <Zap className="w-2.5 h-2.5 text-orange-500" /> Confidence
+                      </span>
                       <span className="text-stone-900">94%</span>
                     </div>
                     <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
-                      <motion.div 
+                      <motion.div
                         className="h-full bg-orange-500"
                         initial={{ width: 0 }}
                         animate={{ width: "94%" }}
                         transition={{ duration: 1.5, ease: "easeOut" }}
                       />
                     </div>
-                    <p className="text-[10px] text-stone-400 font-medium">Latency: <span className="text-stone-900">12ms</span></p>
+                    <p className="text-[10px] text-stone-400 font-medium">
+                      Latency: <span className="text-stone-900">12ms</span>
+                    </p>
                   </div>
                 )}
 
-                {node.type === 'source' && (
+                {node.type === "source" && (
                   <div className="relative rounded-2xl overflow-hidden h-24 bg-orange-50 group/video">
-                     <img src="https://images.unsplash.com/photo-1541888941255-0816962f28fb?q=80&w=400" className="w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform duration-700" alt="stream" />
-                     <div className="absolute inset-0 bg-gradient-to-t from-orange-950/25 to-transparent" />
-                     <div className="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-red-500 text-[8px] font-bold text-white rounded-full uppercase shadow-lg shadow-red-500/20">
-                        <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
-                        Live Feed
-                     </div>
+                    <img
+                      src="https://images.unsplash.com/photo-1541888941255-0816962f28fb?q=80&w=400"
+                      className={[
+                        "w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform",
+                        "duration-700",
+                      ].join(" ")}
+                      alt="stream"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-orange-950/25 to-transparent" />
+                    <div
+                      className={[
+                        "absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-red-500 text-[8px]",
+                        "font-bold text-white rounded-full uppercase shadow-lg shadow-red-500/20",
+                      ].join(" ")}
+                    >
+                      <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
+                      Live Feed
+                    </div>
                   </div>
                 )}
 
-                {node.type === 'action' && (
-                  <div className="flex items-center gap-3 p-3 bg-stone-50 rounded-2xl border border-stone-100">
-                     <div className={`w-2 h-2 rounded-full ${node.color === '#6735E0' ? 'bg-[#6735E0]' : 'bg-blue-500'}`} />
-                     <span className="text-[10px] font-bold text-stone-600 truncate">{node.title} initialized</span>
+                {node.type === "action" && (
+                  <div
+                    className={["flex items-center gap-3 p-3 bg-stone-50 rounded-2xl border", "border-stone-100"].join(
+                      " ",
+                    )}
+                  >
+                    <div
+                      className={`w-2 h-2 rounded-full ${node.color === "#6735E0" ? "bg-[#6735E0]" : "bg-blue-500"}`}
+                    />
+                    <span className="text-[10px] font-bold text-stone-600 truncate">{node.title} initialized</span>
                   </div>
                 )}
               </div>
 
               {/* Port Markers */}
-              {node.type !== 'action' && (
-                <div className="absolute top-10 -right-2 w-4 h-4 bg-white border-2 border-orange-500 rounded-full z-30 shadow-sm" />
+              {node.type !== "action" && (
+                <div
+                  className={[
+                    "absolute top-10 -right-2 w-4 h-4 bg-white border-2 border-orange-500 rounded-full z-30",
+                    "shadow-sm",
+                  ].join(" ")}
+                />
               )}
-              {node.type !== 'source' && (
-                <div className="absolute top-10 -left-2 w-4 h-4 bg-white border-2 border-stone-300 rounded-full z-30 shadow-sm" />
+              {node.type !== "source" && (
+                <div
+                  className={[
+                    "absolute top-10 -left-2 w-4 h-4 bg-white border-2 border-stone-300 rounded-full z-30",
+                    "shadow-sm",
+                  ].join(" ")}
+                />
               )}
 
               {/* Node Footer */}
-              <div className="px-4 pb-4 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                 <button className="text-[9px] font-bold text-orange-500 hover:underline">Config Params</button>
-                 <ArrowRight className="w-3 h-3 text-stone-400" />
+              <div
+                className={[
+                  "px-4 pb-4 flex justify-between items-center opacity-0 group-hover:opacity-100",
+                  "transition-opacity",
+                ].join(" ")}
+              >
+                <button className="text-[9px] font-bold text-orange-500 hover:underline">Config Params</button>
+                <ArrowRight className="w-3 h-3 text-stone-400" />
               </div>
             </motion.div>
           ))}
@@ -246,13 +305,39 @@ export default function WorkflowsPage() {
 
         {/* Toolbar */}
         <div className="absolute right-8 bottom-8 z-30 flex flex-col gap-3">
-          <button className="p-4 bg-white border border-stone-200 rounded-2xl shadow-2xl text-stone-600 hover:text-orange-500 hover:scale-110 active:scale-95 transition-all group relative">
-             <Plus className="w-6 h-6" />
-             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-orange-100 text-orange-700 border border-orange-200 text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl">Add Pipeline Node</div>
+          <button
+            className={[
+              "p-4 bg-white border border-stone-200 rounded-2xl shadow-2xl text-stone-600",
+              "hover:text-orange-500 hover:scale-110 active:scale-95 transition-all group relative",
+            ].join(" ")}
+          >
+            <Plus className="w-6 h-6" />
+            <div
+              className={[
+                "absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-orange-100",
+                "text-orange-700 border border-orange-200 text-[10px] rounded-xl opacity-0",
+                "group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl",
+              ].join(" ")}
+            >
+              Add Pipeline Node
+            </div>
           </button>
-          <button className="p-4 bg-white border border-stone-200 rounded-2xl shadow-2xl text-stone-600 hover:text-[#6735E0] hover:scale-110 transition-all group relative">
-             <Monitor className="w-6 h-6" />
-             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-orange-100 text-orange-700 border border-orange-200 text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl">Open Cloud Monitor</div>
+          <button
+            className={[
+              "p-4 bg-white border border-stone-200 rounded-2xl shadow-2xl text-stone-600",
+              "hover:text-[#6735E0] hover:scale-110 transition-all group relative",
+            ].join(" ")}
+          >
+            <Monitor className="w-6 h-6" />
+            <div
+              className={[
+                "absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-orange-100",
+                "text-orange-700 border border-orange-200 text-[10px] rounded-xl opacity-0",
+                "group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl",
+              ].join(" ")}
+            >
+              Open Cloud Monitor
+            </div>
           </button>
         </div>
       </div>

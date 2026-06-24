@@ -39,7 +39,7 @@ export default function LoginClient() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = searchParams.get('next') || '/home';
+  const nextPath = searchParams.get("next") || "/home";
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -106,10 +106,18 @@ export default function LoginClient() {
   };
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-orange-100 via-amber-100 to-orange-300 px-6 py-12">
+    <main
+      className={[
+        "relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br",
+        "from-orange-100 via-amber-100 to-orange-300 px-6 py-12",
+      ].join(" ")}
+    >
       <Link
         href="/"
-        className="absolute left-6 top-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-black backdrop-blur transition hover:bg-white/60"
+        className={[
+          "absolute left-6 top-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm",
+          "font-bold text-black backdrop-blur transition hover:bg-white/60",
+        ].join(" ")}
       >
         <ArrowLeft className="h-4 w-4" />
         Back
@@ -119,20 +127,31 @@ export default function LoginClient() {
         initial={{ opacity: 0, y: 18, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.35 }}
-        className="w-full max-w-[450px] rounded-md bg-white px-7 py-12 shadow-2xl shadow-slate-900/10"
+        className={["w-full max-w-[450px] rounded-md bg-white px-7 py-12 shadow-2xl", "shadow-slate-900/10"].join(" ")}
       >
         <div className="text-center">
           <h1 className="text-4xl font-black tracking-tight text-orange-600">VisioX</h1>
           <p className="mt-2 text-sm font-medium text-slate-500">Sign In or Sign Up</p>
         </div>
 
-        <div className="mt-8 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-center text-xs font-medium text-slate-700">
+        <div
+          className={[
+            "mt-8 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-center text-xs",
+            "font-medium text-slate-700",
+          ].join(" ")}
+        >
           <Gift className="mr-2 inline h-4 w-4 text-orange-500" />
-          Get <span className="font-bold text-orange-600">$20 extra credits</span> in your first month with company email
+          Get <span className="font-bold text-orange-600">$20 extra credits</span> in your first month with company
+          email
         </div>
 
         {error && (
-          <div className="mt-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          <div
+            className={[
+              "mt-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm",
+              "font-medium text-red-600",
+            ].join(" ")}
+          >
             {error}
           </div>
         )}
@@ -142,9 +161,18 @@ export default function LoginClient() {
             <button
               type="button"
               onClick={() => handleSocialLogin("google")}
-              className="relative flex h-11 w-full items-center justify-center gap-3 rounded-md border border-slate-300 bg-white text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+              className={[
+                "relative flex h-11 w-full items-center justify-center gap-3 rounded-md border",
+                "border-slate-300 bg-white text-sm font-medium text-slate-600 transition",
+                "hover:bg-slate-50",
+              ].join(" ")}
             >
-              <span className="absolute -top-3 right-[-8px] rounded-md bg-orange-500 px-2 py-1 text-[10px] font-bold text-white">
+              <span
+                className={[
+                  "absolute -top-3 right-[-8px] rounded-md bg-orange-500 px-2 py-1 text-[10px] font-bold",
+                  "text-white",
+                ].join(" ")}
+              >
                 Last Used
               </span>
               <Image
@@ -160,7 +188,10 @@ export default function LoginClient() {
             <button
               type="button"
               onClick={() => handleSocialLogin("github")}
-              className="flex h-11 w-full items-center justify-center gap-3 rounded-md bg-[#333333] text-sm font-bold text-white transition hover:bg-[#242424]"
+              className={[
+                "flex h-11 w-full items-center justify-center gap-3 rounded-md bg-[#333333] text-sm",
+                "font-bold text-white transition hover:bg-[#242424]",
+              ].join(" ")}
             >
               <Github className="h-5 w-5" />
               Continue with Github
@@ -172,7 +203,10 @@ export default function LoginClient() {
                 setMode("email");
                 setError("");
               }}
-              className="flex h-11 w-full items-center justify-center gap-3 rounded-md bg-orange-500 text-sm font-bold text-white transition hover:bg-orange-600"
+              className={[
+                "flex h-11 w-full items-center justify-center gap-3 rounded-md bg-orange-500 text-sm",
+                "font-bold text-white transition hover:bg-orange-600",
+              ].join(" ")}
             >
               <Mail className="h-4 w-4" />
               Continue with Email
@@ -186,7 +220,10 @@ export default function LoginClient() {
                 setMode("choices");
                 setError("");
               }}
-              className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 transition hover:text-orange-600"
+              className={[
+                "inline-flex items-center gap-2 text-xs font-bold text-slate-500 transition",
+                "hover:text-orange-600",
+              ].join(" ")}
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Login options
@@ -197,7 +234,10 @@ export default function LoginClient() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="h-11 w-full rounded-md border border-slate-300 px-4 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15"
+              className={[
+                "h-11 w-full rounded-md border border-slate-300 px-4 text-sm outline-none transition",
+                "focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15",
+              ].join(" ")}
               placeholder="you@company.com"
             />
             <input
@@ -205,14 +245,20 @@ export default function LoginClient() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-11 w-full rounded-md border border-slate-300 px-4 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15"
+              className={[
+                "h-11 w-full rounded-md border border-slate-300 px-4 text-sm outline-none transition",
+                "focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15",
+              ].join(" ")}
               placeholder="Password"
             />
 
             <button
               type="submit"
               disabled={loading || cooldown > 0}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-orange-500 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-60"
+              className={[
+                "flex h-11 w-full items-center justify-center gap-2 rounded-md bg-orange-500 text-sm",
+                "font-bold text-white transition hover:bg-orange-600 disabled:opacity-60",
+              ].join(" ")}
             >
               {loading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -235,7 +281,8 @@ export default function LoginClient() {
           and{" "}
           <a href="#" className="font-medium text-orange-600 hover:underline">
             Privacy Policy
-          </a>.
+          </a>
+          .
         </p>
       </motion.section>
     </main>

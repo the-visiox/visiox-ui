@@ -27,7 +27,7 @@ export async function getJobAnnotations(jobId: number): Promise<ApiAnnotation[]>
 
 export async function patchJobAnnotations(
   jobId: number,
-  annotations: AnnotationPayloadItem[]
+  annotations: AnnotationPayloadItem[],
 ): Promise<ApiAnnotation[]> {
   return apiFetch<ApiAnnotation[]>(`/api/v1/jobs/${jobId}/annotations/`, {
     method: "PATCH",
@@ -50,7 +50,7 @@ export async function getMediaAnnotations(mediaId: number): Promise<ApiAnnotatio
 
 export async function putMediaAnnotations(
   mediaId: number,
-  annotations: AnnotationPayloadItem[]
+  annotations: AnnotationPayloadItem[],
 ): Promise<ApiAnnotation[]> {
   return apiFetch<ApiAnnotation[]>(`/api/v1/media/${mediaId}/annotations/`, {
     method: "PUT",
@@ -60,17 +60,14 @@ export async function putMediaAnnotations(
 
 // ── Frame-based endpoints (native mode: dataset + frame index) ──
 
-export async function getFrameAnnotations(
-  datasetId: number,
-  frameNum: number
-): Promise<ApiAnnotation[]> {
+export async function getFrameAnnotations(datasetId: number, frameNum: number): Promise<ApiAnnotation[]> {
   return apiFetch<ApiAnnotation[]>(`/api/v1/datasets/${datasetId}/frames/${frameNum}/annotations/`);
 }
 
 export async function putFrameAnnotations(
   datasetId: number,
   frameNum: number,
-  annotations: AnnotationPayloadItem[]
+  annotations: AnnotationPayloadItem[],
 ): Promise<ApiAnnotation[]> {
   return apiFetch<ApiAnnotation[]>(`/api/v1/datasets/${datasetId}/frames/${frameNum}/annotations/`, {
     method: "PUT",

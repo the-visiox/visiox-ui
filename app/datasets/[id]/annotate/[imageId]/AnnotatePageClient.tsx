@@ -4,14 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { AnimatePresence, motion } from "framer-motion";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
-import {
-  CanvasStage,
-  ErrorBanner,
-  RightPane,
-  TimelineBar,
-  ToolPane,
-  WorkspaceHeader,
-} from "./AnnotateWorkspaceLayout";
+import { CanvasStage, ErrorBanner, RightPane, TimelineBar, ToolPane, WorkspaceHeader } from "./AnnotateWorkspaceLayout";
 import { useAuth } from "@/lib/auth";
 import { datasets as visioxDatasets, resolveMediaUrl } from "@/lib/api";
 import type { ClassDto } from "@/lib/api/classes";
@@ -45,7 +38,7 @@ function draftStorageKey(
   imageId: string,
   isNativeMode: boolean,
   frameIndex: number,
-  mediaId: number
+  mediaId: number,
 ) {
   if (isNativeMode) return `visiox-annotate-draft:dataset:${datasetId}:frame:${frameIndex}`;
   return `visiox-annotate-draft:dataset:${datasetId}:media:${mediaId}:image:${imageId}`;
@@ -99,18 +92,27 @@ function hslToHex(hue: number, saturation: number, lightness: number): string {
   const s = saturation / 100;
   const l = lightness / 100;
   const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
   const m = l - c / 2;
   const [r, g, b] =
-    hue < 60 ? [c, x, 0] :
-    hue < 120 ? [x, c, 0] :
-    hue < 180 ? [0, c, x] :
-    hue < 240 ? [0, x, c] :
-    hue < 300 ? [x, 0, c] :
-    [c, 0, x];
+    hue < 60
+      ? [c, x, 0]
+      : hue < 120
+        ? [x, c, 0]
+        : hue < 180
+          ? [0, c, x]
+          : hue < 240
+            ? [0, x, c]
+            : hue < 300
+              ? [x, 0, c]
+              : [c, 0, x];
 
   return [r, g, b]
-    .map((channel) => Math.round((channel + m) * 255).toString(16).padStart(2, "0"))
+    .map((channel) =>
+      Math.round((channel + m) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
     .join("")
     .replace(/^/, "#");
 }
@@ -129,7 +131,7 @@ function nextLabelColor(labels: LabelDefinition[]): string {
 }
 function wrapIndex(oneBasedIdx: number, total: number): number {
   if (total <= 0) return 1;
-  const wrapped = ((oneBasedIdx - 1) % total + total) % total;
+  const wrapped = (((oneBasedIdx - 1) % total) + total) % total;
   return wrapped + 1;
 }
 
@@ -175,8 +177,7 @@ export default function AnnotatePageClient() {
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#E66700");
   const [labelBusyId, setLabelBusyId] = useState<number | "new" | null>(null);
-  const cachedMediaList =
-    !isNativeMode && Number.isFinite(datasetId) ? mediaListCache.get(datasetId) ?? null : null;
+  const cachedMediaList = !isNativeMode && Number.isFinite(datasetId) ? (mediaListCache.get(datasetId) ?? null) : null;
   const cachedMediaIndex =
     cachedMediaList && !isNativeMode && Number.isFinite(mediaId)
       ? (() => {
@@ -216,7 +217,7 @@ export default function AnnotatePageClient() {
 
   const currentDraftKey = useMemo(
     () => draftStorageKey(datasetId, rawImageId, isNativeMode, frameIndex, mediaId),
-    [datasetId, rawImageId, isNativeMode, frameIndex, mediaId]
+    [datasetId, rawImageId, isNativeMode, frameIndex, mediaId],
   );
 
   const canUndo = sessionRef.current.canUndo;
@@ -236,27 +237,24 @@ export default function AnnotatePageClient() {
     }
   }, []);
 
-  const readDraft = useCallback(
-    (draftKey: string): { exists: boolean; shapes: EditorShape[] } => {
-      const cached = draftCacheRef.current[draftKey];
-      if (cached) {
-        return { exists: true, shapes: cached };
-      }
-      if (typeof window === "undefined") {
-        return { exists: false, shapes: [] };
-      }
-      try {
-        const rawDraft = sessionStorage.getItem(draftKey);
-        if (rawDraft === null) return { exists: false, shapes: [] };
-        const parsed = JSON.parse(rawDraft) as EditorShape[];
-        draftCacheRef.current[draftKey] = parsed;
-        return { exists: true, shapes: parsed };
-      } catch {
-        return { exists: false, shapes: [] };
-      }
-    },
-    []
-  );
+  const readDraft = useCallback((draftKey: string): { exists: boolean; shapes: EditorShape[] } => {
+    const cached = draftCacheRef.current[draftKey];
+    if (cached) {
+      return { exists: true, shapes: cached };
+    }
+    if (typeof window === "undefined") {
+      return { exists: false, shapes: [] };
+    }
+    try {
+      const rawDraft = sessionStorage.getItem(draftKey);
+      if (rawDraft === null) return { exists: false, shapes: [] };
+      const parsed = JSON.parse(rawDraft) as EditorShape[];
+      draftCacheRef.current[draftKey] = parsed;
+      return { exists: true, shapes: parsed };
+    } catch {
+      return { exists: false, shapes: [] };
+    }
+  }, []);
 
   // Frames the user actually edited this session. Kept in sessionStorage so it
   // survives remounts (re-entering the workspace) — unlike navigation drafts,
@@ -270,26 +268,32 @@ export default function AnnotatePageClient() {
       return [];
     }
   }, [dirtyFramesKey]);
-  const markFrameDirty = useCallback((fi: number) => {
-    if (typeof window === "undefined") return;
-    try {
-      const set = new Set<number>(readDirtyFrames());
-      set.add(fi);
-      sessionStorage.setItem(dirtyFramesKey, JSON.stringify([...set]));
-    } catch {
-      // ignore storage failures
-    }
-  }, [dirtyFramesKey, readDirtyFrames]);
-  const clearFrameDirty = useCallback((fi: number) => {
-    if (typeof window === "undefined") return;
-    try {
-      const set = new Set<number>(readDirtyFrames());
-      set.delete(fi);
-      sessionStorage.setItem(dirtyFramesKey, JSON.stringify([...set]));
-    } catch {
-      // ignore storage failures
-    }
-  }, [dirtyFramesKey, readDirtyFrames]);
+  const markFrameDirty = useCallback(
+    (fi: number) => {
+      if (typeof window === "undefined") return;
+      try {
+        const set = new Set<number>(readDirtyFrames());
+        set.add(fi);
+        sessionStorage.setItem(dirtyFramesKey, JSON.stringify([...set]));
+      } catch {
+        // ignore storage failures
+      }
+    },
+    [dirtyFramesKey, readDirtyFrames],
+  );
+  const clearFrameDirty = useCallback(
+    (fi: number) => {
+      if (typeof window === "undefined") return;
+      try {
+        const set = new Set<number>(readDirtyFrames());
+        set.delete(fi);
+        sessionStorage.setItem(dirtyFramesKey, JSON.stringify([...set]));
+      } catch {
+        // ignore storage failures
+      }
+    },
+    [dirtyFramesKey, readDirtyFrames],
+  );
 
   useLayoutEffect(() => {
     const previousDraftKey = previousDraftKeyRef.current;
@@ -327,10 +331,7 @@ export default function AnnotatePageClient() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      localStorage.setItem(
-        PANE_WIDTH_STORAGE_KEY,
-        JSON.stringify({ tools: toolPaneWidth, objects: objectsPaneWidth })
-      );
+      localStorage.setItem(PANE_WIDTH_STORAGE_KEY, JSON.stringify({ tools: toolPaneWidth, objects: objectsPaneWidth }));
     } catch {
       // Ignore preference persistence failures.
     }
@@ -402,7 +403,8 @@ export default function AnnotatePageClient() {
       }
 
       const token = getAccessToken();
-      const demoUrl = `https://picsum.photos/seed/${isNativeMode ? `native-${datasetId}-f${frameIndex}` : rawImageId}/1200/800`;
+      const demoSeed = isNativeMode ? `native-${datasetId}-f${frameIndex}` : rawImageId;
+      const demoUrl = `https://picsum.photos/seed/${demoSeed}/1200/800`;
 
       if (!token) {
         setImageUrl(demoUrl);
@@ -473,7 +475,7 @@ export default function AnnotatePageClient() {
           setMediaIndex(idx >= 0 ? idx + 1 : null);
           setFrameInput(idx >= 0 ? String(idx + 1) : "1");
           setCurrentFilename(
-            (media as { filename?: string })?.filename ?? media?.file_url?.split("/").pop() ?? `media-${mediaId}`
+            (media as { filename?: string })?.filename ?? media?.file_url?.split("/").pop() ?? `media-${mediaId}`,
           );
           if (media?.file_url) resolvedImageUrl = resolveMediaUrl(media.file_url);
           setImageUrl(resolvedImageUrl);
@@ -518,7 +520,9 @@ export default function AnnotatePageClient() {
         }
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Failed to load dataset.");
+        setError(
+          e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Failed to load dataset.",
+        );
         setImageUrl(demoUrl);
         setLabels([...DEMO_LABELS]);
         savedLabelsJsonRef.current = JSON.stringify(DEMO_LABELS);
@@ -596,7 +600,9 @@ export default function AnnotatePageClient() {
       for (let offset = 1; offset <= ROUTE_PREFETCH_AHEAD; offset += 1) {
         const idx = frameIndex + offset;
         if (idx >= totalFrames) break;
-        routeUrls.push(`/datasets/${params.id}/annotate/native?frame=${idx}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
+        routeUrls.push(
+          `/datasets/${params.id}/annotate/native?frame=${idx}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`,
+        );
       }
     } else if (mediaList.length && mediaIndex) {
       for (let offset = 1; offset <= ROUTE_PREFETCH_AHEAD; offset += 1) {
@@ -608,10 +614,9 @@ export default function AnnotatePageClient() {
     routeUrls.forEach((url) => router.prefetch(url));
   }, [imageUrl, isNativeMode, datasetId, frameIndex, mediaList, mediaIndex, mediaTotal, params.id, router, jobIdParam]);
 
-  const current = isNativeMode ? frameIndex + 1 : mediaIndex ?? 1;
+  const current = isNativeMode ? frameIndex + 1 : (mediaIndex ?? 1);
   const total = mediaTotal ?? 0;
-  const displayedValue =
-    scrubValue !== null ? scrubValue : pendingIndex !== null ? pendingIndex : current;
+  const displayedValue = scrubValue !== null ? scrubValue : pendingIndex !== null ? pendingIndex : current;
   const sliderMax = Math.max(1, total, current, pendingIndex ?? 0, scrubValue ?? 0, displayedValue);
   const sliderProgress = sliderMax <= 1 ? 0 : ((displayedValue - 1) / (sliderMax - 1)) * 100;
   const isLoggedIn = !!accessToken;
@@ -633,7 +638,7 @@ export default function AnnotatePageClient() {
     if (!isNativeMode || mediaTotal == null || mediaTotal <= 0) return;
     if (frameIndex > mediaTotal - 1) {
       router.replace(
-        `/datasets/${params.id}/annotate/native?frame=${mediaTotal - 1}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`
+        `/datasets/${params.id}/annotate/native?frame=${mediaTotal - 1}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`,
       );
     }
   }, [isNativeMode, mediaTotal, frameIndex, params.id, jobIdParam, router]);
@@ -651,14 +656,16 @@ export default function AnnotatePageClient() {
       setLoading(true);
       if (isNativeMode) {
         const clamped = Math.max(0, nextIndex - 1);
-        router.push(`/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
+        router.push(
+          `/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`,
+        );
         return;
       }
       const target = mediaList[nextIndex - 1];
       if (!target) return;
       router.push(`/datasets/${params.id}/annotate/${target.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
     },
-    [currentDraftKey, isNativeMode, mediaList, params.id, persistDraft, router, total, jobIdParam]
+    [currentDraftKey, isNativeMode, mediaList, params.id, persistDraft, router, total, jobIdParam],
   );
 
   const handleFrameInputCommit = () => {
@@ -771,13 +778,16 @@ export default function AnnotatePageClient() {
                 ? firstError.message
                 : "";
           throw new Error(
-            `Save failed for frame(s) ${failedFrames.map((f) => f + 1).join(", ")}${detail ? `: ${detail}` : ""}`
+            `Save failed for frame(s) ${failedFrames.map((f) => f + 1).join(", ")}${detail ? `: ${detail}` : ""}`,
           );
         }
         if (profileFailed) {
           setError((prev) => prev || "Annotations saved, but label profile sync failed for some frames.");
         } else if (droppedInvalid > 0) {
-          setError((prev) => prev || `Saved. Skipped ${droppedInvalid} object(s) that used a deleted label — reassign them to keep.`);
+          setError(
+            (prev) =>
+              prev || `Saved. Skipped ${droppedInvalid} object(s) that used a deleted label — reassign them to keep.`,
+          );
         }
       } else {
         await putMediaAnnotations(mediaId, editorToApiPayload(shapes));
@@ -798,7 +808,9 @@ export default function AnnotatePageClient() {
           const ch = new BroadcastChannel("visiox-annotations");
           ch.postMessage({ type: "annotations-saved", datasetId });
           ch.close();
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2500);
       }
@@ -883,79 +895,81 @@ export default function AnnotatePageClient() {
   }, [shapes]);
 
   const toggleShapeHidden = useCallback((shapeId: string) => {
-    setHiddenShapeIds((prev) =>
-      prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]
-    );
+    setHiddenShapeIds((prev) => (prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]));
   }, []);
 
   const toggleShapePinned = useCallback((shapeId: string) => {
-    setPinnedShapeIds((prev) =>
-      prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]
-    );
+    setPinnedShapeIds((prev) => (prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]));
   }, []);
 
-  const handleCreateLabel = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newLabelName.trim();
-    if (!name) return;
+  const handleCreateLabel = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      const name = newLabelName.trim();
+      if (!name) return;
 
-    if (!projectId || !isLoggedIn) {
-      const localId = Math.min(0, ...labels.map((label) => label.id)) - 1;
-      const localLabel = { id: localId, name, color: newLabelColor };
-      setLabels((prev) => [...prev, localLabel]);
-      setActiveClassId(localLabel.id);
-      setNewLabelName("");
-      setNewLabelColor(nextLabelColor([...labels, localLabel]));
-      return;
-    }
+      if (!projectId || !isLoggedIn) {
+        const localId = Math.min(0, ...labels.map((label) => label.id)) - 1;
+        const localLabel = { id: localId, name, color: newLabelColor };
+        setLabels((prev) => [...prev, localLabel]);
+        setActiveClassId(localLabel.id);
+        setNewLabelName("");
+        setNewLabelColor(nextLabelColor([...labels, localLabel]));
+        return;
+      }
 
-    setLabelBusyId("new");
-    setError(null);
-    try {
-      const created = await createClassForProject(projectId, { name, color: newLabelColor });
-      setLabels((prev) => [...prev.filter((label) => label.id !== created.id), created]);
-      setActiveClassId(created.id);
-      setNewLabelName("");
-      setNewLabelColor(nextLabelColor([...labels.filter((label) => label.id !== created.id), created]));
-      broadcastClassesUpdated(projectId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create label.");
-    } finally {
-      setLabelBusyId(null);
-    }
-  }, [isLoggedIn, labels, newLabelColor, newLabelName, projectId]);
+      setLabelBusyId("new");
+      setError(null);
+      try {
+        const created = await createClassForProject(projectId, { name, color: newLabelColor });
+        setLabels((prev) => [...prev.filter((label) => label.id !== created.id), created]);
+        setActiveClassId(created.id);
+        setNewLabelName("");
+        setNewLabelColor(nextLabelColor([...labels.filter((label) => label.id !== created.id), created]));
+        broadcastClassesUpdated(projectId);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not create label.");
+      } finally {
+        setLabelBusyId(null);
+      }
+    },
+    [isLoggedIn, labels, newLabelColor, newLabelName, projectId],
+  );
 
-  const handleDeleteLabel = useCallback(async (label: LabelDefinition) => {
-    if (shapes.some((shape) => shape.classLabelId === label.id)) {
-      setError("Remove or reassign objects using this label before deleting it.");
-      return;
-    }
+  const handleDeleteLabel = useCallback(
+    async (label: LabelDefinition) => {
+      if (shapes.some((shape) => shape.classLabelId === label.id)) {
+        setError("Remove or reassign objects using this label before deleting it.");
+        return;
+      }
 
-    if (!projectId || !isLoggedIn || label.id <= 0) {
-      setLabels((prev) => prev.filter((item) => item.id !== label.id));
-      if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
-      return;
-    }
+      if (!projectId || !isLoggedIn || label.id <= 0) {
+        setLabels((prev) => prev.filter((item) => item.id !== label.id));
+        if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+        return;
+      }
 
-    setLabelBusyId(label.id);
-    setError(null);
-    try {
-      await deleteClass(label.id);
-      setLabels((prev) => prev.filter((item) => item.id !== label.id));
-      if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
-      broadcastClassesUpdated(projectId);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
+      setLabelBusyId(label.id);
+      setError(null);
+      try {
+        await deleteClass(label.id);
         setLabels((prev) => prev.filter((item) => item.id !== label.id));
         if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
         broadcastClassesUpdated(projectId);
-      } else {
-        setError(err instanceof Error ? err.message : "Could not delete label.");
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          setLabels((prev) => prev.filter((item) => item.id !== label.id));
+          if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+          broadcastClassesUpdated(projectId);
+        } else {
+          setError(err instanceof Error ? err.message : "Could not delete label.");
+        }
+      } finally {
+        setLabelBusyId(null);
       }
-    } finally {
-      setLabelBusyId(null);
-    }
-  }, [activeClassId, isLoggedIn, labels, projectId, shapes]);
+    },
+    [activeClassId, isLoggedIn, labels, projectId, shapes],
+  );
 
   const handleSyncLabels = useCallback(async () => {
     if (!projectId) return;
@@ -972,7 +986,7 @@ export default function AnnotatePageClient() {
       savedLabelsJsonRef.current = JSON.stringify(synced);
       setNewLabelColor(nextLabelColor(synced));
       if (synced.length > 0) {
-        setActiveClassId((prev) => synced.some((l) => l.id === prev) ? prev : synced[0].id);
+        setActiveClassId((prev) => (synced.some((l) => l.id === prev) ? prev : synced[0].id));
       }
     } catch {
       // silent — don't show error on background sync
@@ -993,7 +1007,11 @@ export default function AnnotatePageClient() {
       // BroadcastChannel not supported
     }
     return () => {
-      try { channel?.close(); } catch { /* ignore */ }
+      try {
+        channel?.close();
+      } catch {
+        /* ignore */
+      }
     };
   }, [projectId, handleSyncLabels]);
 
@@ -1037,21 +1055,26 @@ export default function AnnotatePageClient() {
   }, [current, navigateTo, handleSave]);
 
   const changeShapeClass = useCallback((shapeId: string, classId: number) => {
-    setShapes((prev) =>
-      prev.map((item) => (item.clientId === shapeId ? { ...item, classLabelId: classId } : item))
-    );
+    setShapes((prev) => prev.map((item) => (item.clientId === shapeId ? { ...item, classLabelId: classId } : item)));
   }, []);
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
       {showExitConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div
+          className={["fixed inset-0 z-[200] flex items-center justify-center bg-black/40", "backdrop-blur-sm"].join(
+            " ",
+          )}
+        >
           <div className="relative w-96 rounded-2xl bg-white p-6 shadow-2xl">
             {/* Close button */}
             <button
               type="button"
               onClick={() => setShowExitConfirm(false)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+              className={[
+                "absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100",
+                "hover:text-stone-600",
+              ].join(" ")}
               aria-label="Close"
             >
               <svg
@@ -1068,20 +1091,19 @@ export default function AnnotatePageClient() {
               </svg>
             </button>
 
-            <h2 className="text-base font-bold text-stone-900">
-              Unsaved changes
-            </h2>
+            <h2 className="text-base font-bold text-stone-900">Unsaved changes</h2>
 
-            <p className="mt-1.5 text-sm text-stone-500">
-              You have unsaved annotations. Save before leaving?
-            </p>
+            <p className="mt-1.5 text-sm text-stone-500">You have unsaved annotations. Save before leaving?</p>
 
             <div className="mt-6 flex gap-3">
               {/* Discard */}
               <button
                 type="button"
                 onClick={handleDiscard}
-                className="flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-100"
+                className={[
+                  "flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold",
+                  "text-stone-600 transition hover:bg-stone-100",
+                ].join(" ")}
               >
                 Discard changes
               </button>
@@ -1094,27 +1116,15 @@ export default function AnnotatePageClient() {
                   const ok = await handleSave();
                   if (ok) router.push(`/datasets/${params.id}`);
                 }}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                className={[
+                  "flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5",
+                  "text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50",
+                ].join(" ")}
               >
                 {saving ? (
-                  <svg
-                    className="h-4 w-4 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v8z"
-                    />
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                   </svg>
                 ) : (
                   <svg
@@ -1145,10 +1155,20 @@ export default function AnnotatePageClient() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
-            className="fixed left-1/2 top-6 z-[100] -translate-x-1/2 flex items-center gap-2.5 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-xl shadow-emerald-500/30"
+            className={[
+              "fixed left-1/2 top-6 z-[100] -translate-x-1/2 flex items-center gap-2.5 rounded-2xl",
+              "bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-xl",
+              "shadow-emerald-500/30",
+            ].join(" ")}
           >
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none">
-              <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M3 8l3.5 3.5L13 4.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
             Saved successfully
           </motion.div>
@@ -1260,4 +1280,3 @@ export default function AnnotatePageClient() {
     </div>
   );
 }
-

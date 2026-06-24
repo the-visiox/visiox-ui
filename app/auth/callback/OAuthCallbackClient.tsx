@@ -34,12 +34,7 @@ export default function OAuthCallbackClient() {
         setError("OAuth callback is missing provider or code.");
         return;
       }
-      if (
-        !state ||
-        !storedState ||
-        state !== storedState ||
-        provider !== storedProvider
-      ) {
+      if (!state || !storedState || state !== storedState || provider !== storedProvider) {
         setError("OAuth state check failed. Please try signing in again.");
         return;
       }
@@ -58,9 +53,7 @@ export default function OAuthCallbackClient() {
         );
         localStorage.removeItem("visiox_oauth_state");
         localStorage.removeItem("visiox_oauth_provider");
-        window.location.assign(
-          `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/home`,
-        );
+        window.location.assign(`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/home`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "OAuth login failed.");
       }
@@ -70,19 +63,25 @@ export default function OAuthCallbackClient() {
   }, [searchParams]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-orange-100 via-amber-100 to-orange-300 px-6">
-      <div className="w-full max-w-md rounded-xl bg-white p-8 text-center shadow-2xl shadow-orange-200/60">
+    <main
+      className={[
+        "flex min-h-screen items-center justify-center bg-gradient-to-br from-orange-100",
+        "via-amber-100 to-orange-300 px-6",
+      ].join(" ")}
+    >
+      <div
+        className={["w-full max-w-md rounded-xl bg-white p-8 text-center shadow-2xl", "shadow-orange-200/60"].join(" ")}
+      >
         {error ? (
           <>
-            <h1 className="text-xl font-bold text-stone-900">
-              Sign in failed
-            </h1>
-            <p className="mt-3 text-sm leading-relaxed text-red-600">
-              {error}
-            </p>
+            <h1 className="text-xl font-bold text-stone-900">Sign in failed</h1>
+            <p className="mt-3 text-sm leading-relaxed text-red-600">{error}</p>
             <button
               onClick={() => router.replace("/login")}
-              className="mt-6 h-11 rounded-md bg-orange-500 px-6 text-sm font-bold text-white transition hover:bg-orange-600"
+              className={[
+                "mt-6 h-11 rounded-md bg-orange-500 px-6 text-sm font-bold text-white transition",
+                "hover:bg-orange-600",
+              ].join(" ")}
             >
               Back to login
             </button>
@@ -90,12 +89,8 @@ export default function OAuthCallbackClient() {
         ) : (
           <>
             <Loader2 className="mx-auto h-8 w-8 animate-spin text-orange-500" />
-            <h1 className="mt-4 text-xl font-bold text-stone-900">
-              Signing you in...
-            </h1>
-            <p className="mt-2 text-sm text-stone-500">
-              Finishing OAuth with VisioX.
-            </p>
+            <h1 className="mt-4 text-xl font-bold text-stone-900">Signing you in...</h1>
+            <p className="mt-2 text-sm text-stone-500">Finishing OAuth with VisioX.</p>
           </>
         )}
       </div>

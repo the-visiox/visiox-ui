@@ -171,7 +171,7 @@ export function editorToApiPayload(shapes: EditorShape[]) {
 
 export function mergeProjectClassesWithProfile(
   classes: ClassDto[],
-  profile: { id: number; name: string; color: string }[]
+  profile: { id: number; name: string; color: string }[],
 ): LabelDefinition[] {
   const byId = new Map(profile.map((p) => [p.id, p]));
 

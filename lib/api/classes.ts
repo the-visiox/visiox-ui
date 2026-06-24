@@ -17,15 +17,13 @@ type PaginatedResponse<T> = {
 };
 
 export async function getClassesForProject(projectId: number): Promise<ClassDto[]> {
-  const data = await apiFetch<ClassDto[] | PaginatedResponse<ClassDto>>(
-    `/api/v1/classes/?project=${projectId}`
-  );
+  const data = await apiFetch<ClassDto[] | PaginatedResponse<ClassDto>>(`/api/v1/classes/?project=${projectId}`);
   return Array.isArray(data) ? data : data.results;
 }
 
 export async function createClassForProject(
   projectId: number,
-  data: { name: string; color: string }
+  data: { name: string; color: string },
 ): Promise<ClassDto> {
   return apiFetch<ClassDto>("/api/v1/classes/", {
     method: "POST",

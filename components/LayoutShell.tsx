@@ -9,7 +9,16 @@ import { useAuth } from "@/lib/auth";
 import { getAccessToken } from "@/lib/api";
 
 // Routes that belong to the authenticated platform workspace hubs.
-const PLATFORM_ROUTES = ["/home", "/overview", "/projects", "/datasets", "/dataverse", "/workflows", "/train", "/deploy"];
+const PLATFORM_ROUTES = [
+  "/home",
+  "/overview",
+  "/projects",
+  "/datasets",
+  "/dataverse",
+  "/workflows",
+  "/train",
+  "/deploy",
+];
 // Routes that show no shell at all (auth pages).
 const BARE_ROUTES = ["/login", "/register", "/auth/callback"];
 
@@ -44,9 +53,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
   // ── Annotation terminal (datasets … / annotate / …) ──────────
   if (isAnnotateWorkspace(pathname)) {
-    return (
-      <div className="flex h-screen flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">{children}</div>
-    );
+    return <div className="flex h-screen flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">{children}</div>;
   }
 
   // ── Authenticated platform workspace ───────────────────────────

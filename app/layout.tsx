@@ -32,14 +32,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        suppressHydrationWarning
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
         <AuthProvider>
-          <LayoutShell>
-            {children}
-          </LayoutShell>
+          <LayoutShell>{children}</LayoutShell>
         </AuthProvider>
       </body>
     </html>

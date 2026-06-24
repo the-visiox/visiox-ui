@@ -3,22 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import {
-  ArrowUpRight,
-  Database,
-  GitFork,
-  Loader2,
-  Search,
-  Tag,
-} from "lucide-react";
+import { ArrowUpRight, Database, GitFork, Loader2, Search, Tag } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
-import {
-  dataverse,
-  resolveMediaUrl,
-  teams,
-  type DataverseProject,
-  type Team,
-} from "@/lib/api";
+import { dataverse, resolveMediaUrl, teams, type DataverseProject, type Team } from "@/lib/api";
 
 const TASK_TYPE_LABEL: Record<string, string> = {
   image_classification: "Classification",
@@ -101,14 +88,17 @@ export default function DataversePage() {
     <div className="relative flex-1 flex flex-col min-h-screen">
       <BlueprintGrid />
       <main className="flex-grow p-8 z-10">
-        <div className="mb- flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+        <div
+          className={[
+            "mb- flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm",
+            "shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between",
+          ].join(" ")}
+        >
           <div>
-            <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">
-              Explore dataset
-            </h1>
+            <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">Explore dataset</h1>
             <p className="max-w-xl text-base leading-6 text-stone-500">
-              Search community-shared projects, inspect their dataset shape,
-              and fork useful work into your own workspace.
+              Search community-shared projects, inspect their dataset shape, and fork useful work into your own
+              workspace.
             </p>
           </div>
 
@@ -117,7 +107,7 @@ export default function DataversePage() {
               e.preventDefault();
               void load(query);
             }}
-            className="flex w-full flex-wrap items-center gap-3 md:w-auto md:max-w-xl md:flex-nowrap"
+            className={["flex w-full flex-wrap items-center gap-3 md:w-auto md:max-w-xl", "md:flex-nowrap"].join(" ")}
           >
             <div className="relative min-w-0 flex-1 md:w-80 md:flex-none">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
@@ -125,10 +115,20 @@ export default function DataversePage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search defects, PPE, traffic, agriculture..."
-                className="h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                className={[
+                  "h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-10 pr-4 text-sm",
+                  "outline-none transition-all focus:border-orange-500 focus:ring-2",
+                  "focus:ring-orange-500/20",
+                ].join(" ")}
               />
             </div>
-            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-4 text-sm font-bold text-orange-700 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95">
+            <button
+              className={[
+                "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
+                "bg-orange-100 px-4 text-sm font-bold text-orange-700 transition-all hover:scale-105",
+                "hover:bg-orange-200 active:scale-95",
+              ].join(" ")}
+            >
               <Search className="w-4 h-4 text-orange-500" />
               Search
             </button>
@@ -136,16 +136,31 @@ export default function DataversePage() {
         </div>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          <div
+            className={[
+              "mb-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm",
+              "font-medium text-red-600",
+            ].join(" ")}
+          >
             {error}
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(18rem,20rem))] sm:justify-between">
+        <div
+          className={[
+            "grid grid-cols-1 gap-6",
+            "sm:grid-cols-[repeat(auto-fill,minmax(18rem,20rem))] sm:justify-between",
+          ].join(" ")}
+        >
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
           ) : items.length === 0 ? (
-            <div className="col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16 text-center">
+            <div
+              className={[
+                "col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16",
+                "text-center",
+              ].join(" ")}
+            >
               <p className="font-bold text-stone-900 mb-2">No shared projects found</p>
               <p className="text-sm text-stone-500">Try another search term or share one of your projects.</p>
             </div>
@@ -156,21 +171,32 @@ export default function DataversePage() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.04 }}
-                className="group w-full rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50"
+                className={[
+                  "group w-full rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all",
+                  "hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50",
+                ].join(" ")}
               >
                 <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-stone-100">
                   {item.thumbnail ? (
                     <img
                       src={resolveMediaUrl(item.thumbnail)}
                       alt={item.title}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      className={[
+                        "h-full w-full object-cover transition-transform duration-500",
+                        "group-hover:scale-105",
+                      ].join(" ")}
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center">
                       <Database className="h-12 w-12 text-stone-300" />
                     </div>
                   )}
-                  <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-stone-900 shadow-sm backdrop-blur">
+                  <div
+                    className={[
+                      "absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold",
+                      "text-stone-900 shadow-sm backdrop-blur",
+                    ].join(" ")}
+                  >
                     {TASK_TYPE_LABEL[item.task_type] ?? item.task_type}
                   </div>
                 </div>
@@ -194,7 +220,13 @@ export default function DataversePage() {
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     {item.tags.slice(0, 3).map((tag) => (
-                      <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-stone-500">
+                      <span
+                        key={tag}
+                        className={[
+                          "inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold",
+                          "uppercase tracking-widest text-stone-500",
+                        ].join(" ")}
+                      >
                         <Tag className="h-3 w-3" />
                         {tag}
                       </span>
@@ -220,7 +252,11 @@ export default function DataversePage() {
                     type="button"
                     onClick={() => void handleFork(item)}
                     disabled={forkingId === item.id}
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-60"
+                    className={[
+                      "mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4",
+                      "py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition-all",
+                      "hover:scale-[1.02] active:scale-95 disabled:opacity-60",
+                    ].join(" ")}
                   >
                     {forkingId === item.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

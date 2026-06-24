@@ -33,17 +33,21 @@ export function CardMenu({ items }: { items: CardMenuItem[] }) {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all hover:bg-stone-100 hover:text-stone-700 ${
-          open
-            ? "bg-stone-100 text-stone-700 opacity-100"
-            : "text-stone-400 opacity-30 group-hover:opacity-100"
-        }`}
+        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all
+          hover:bg-stone-100 hover:text-stone-700 ${
+            open ? "bg-stone-100 text-stone-700 opacity-100" : "text-stone-400 opacity-30 group-hover:opacity-100"
+          }`}
       >
         <MoreHorizontal className="h-5 w-5" />
       </button>
 
       {open && (
-        <div className="absolute bottom-full right-0 mb-1.5 z-50 min-w-[190px] rounded-xl border border-stone-200 bg-white py-1 shadow-xl overflow-hidden">
+        <div
+          className={[
+            "absolute bottom-full right-0 mb-1.5 z-50 min-w-[190px] rounded-xl border",
+            "border-stone-200 bg-white py-1 shadow-xl overflow-hidden",
+          ].join(" ")}
+        >
           {items.map((item, idx) => (
             <React.Fragment key={idx}>
               {item.dividerBefore && <div className="my-1 h-px bg-stone-100" />}
@@ -56,9 +60,7 @@ export function CardMenu({ items }: { items: CardMenuItem[] }) {
                   item.onClick();
                 }}
                 className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold transition-colors ${
-                  item.danger
-                    ? "text-red-600 hover:bg-red-50"
-                    : "text-stone-700 hover:bg-stone-50"
+                  item.danger ? "text-red-600 hover:bg-red-50" : "text-stone-700 hover:bg-stone-50"
                 }`}
               >
                 <item.icon className="h-3.5 w-3.5 shrink-0" />

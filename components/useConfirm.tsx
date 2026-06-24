@@ -46,7 +46,9 @@ export function useConfirm() {
     options && typeof document !== "undefined"
       ? createPortal(
           <div
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+            className={["fixed inset-0 z-[200] flex items-center justify-center bg-black/40", "backdrop-blur-sm"].join(
+              " ",
+            )}
             onMouseDown={(e) => {
               if (e.target === e.currentTarget) settle(false);
             }}
@@ -55,7 +57,10 @@ export function useConfirm() {
               <button
                 type="button"
                 onClick={() => settle(false)}
-                className="absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+                className={[
+                  "absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100",
+                  "hover:text-stone-600",
+                ].join(" ")}
                 aria-label="Close"
               >
                 <X className="h-5 w-5" />
@@ -63,16 +68,17 @@ export function useConfirm() {
 
               <h2 className="text-base font-bold text-stone-900">{options.title}</h2>
 
-              {options.message != null && (
-                <p className="mt-1.5 text-sm text-stone-500">{options.message}</p>
-              )}
+              {options.message != null && <p className="mt-1.5 text-sm text-stone-500">{options.message}</p>}
 
               <div className="mt-6 flex gap-3">
                 {!options.hideCancel && (
                   <button
                     type="button"
                     onClick={() => settle(false)}
-                    className="flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-100"
+                    className={[
+                      "flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold",
+                      "text-stone-600 transition hover:bg-stone-100",
+                    ].join(" ")}
                   >
                     {options.cancelLabel ?? "Cancel"}
                   </button>
@@ -82,9 +88,7 @@ export function useConfirm() {
                   autoFocus
                   onClick={() => settle(true)}
                   className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition ${
-                    options.danger
-                      ? "bg-red-500 hover:bg-red-600"
-                      : "bg-orange-500 hover:bg-orange-600"
+                    options.danger ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"
                   }`}
                 >
                   {options.confirmLabel ?? "Confirm"}
@@ -92,7 +96,7 @@ export function useConfirm() {
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )
       : null;
 

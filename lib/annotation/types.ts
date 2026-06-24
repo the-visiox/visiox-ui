@@ -2,14 +2,7 @@
  * Canvas / editor types aligned with the VisioX annotation platform.
  */
 
-export type Tool =
-  | "select"
-  | "rectangle"
-  | "polygon"
-  | "polyline"
-  | "points"
-  | "cuboid"
-  | "tag";
+export type Tool = "select" | "rectangle" | "polygon" | "polyline" | "points" | "cuboid" | "tag";
 
 export const TOOL_SHORTCUTS: Record<string, Tool> = {
   n: "rectangle",
