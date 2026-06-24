@@ -443,7 +443,7 @@ export default function AnnotatePageClient() {
         let profileItems: { id: number; name: string; color: string }[] = [];
 
         if (isNativeMode) {
-          resolvedImageUrl = visioxDatasets.frameUrl(datasetId, frameIndex);
+          resolvedImageUrl = visioxDatasets.frameUrl(datasetId, frameIndex, "original");
           setImageUrl(resolvedImageUrl);
           setMediaIndex(null);
           setMediaList([]);
@@ -566,11 +566,11 @@ export default function AnnotatePageClient() {
       for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
         const idx = frameIndex + offset;
         if (idx >= totalFrames) break;
-        urls.push(visioxDatasets.frameUrl(datasetId, idx));
+        urls.push(visioxDatasets.frameUrl(datasetId, idx, "original"));
       }
       for (let offset = 1; offset <= PRELOAD_BEHIND; offset += 1) {
         if (frameIndex - offset >= 0) {
-          urls.push(visioxDatasets.frameUrl(datasetId, frameIndex - offset));
+          urls.push(visioxDatasets.frameUrl(datasetId, frameIndex - offset, "original"));
         }
       }
     } else if (mediaList.length && mediaIndex) {
@@ -649,6 +649,14 @@ export default function AnnotatePageClient() {
       const nextIndex = options?.wrap
         ? wrapIndex(oneBasedIdx, totalItems)
         : Math.max(1, Math.min(totalItems, oneBasedIdx));
+
+      if (nextIndex === current) {
+        setPendingIndex(null);
+        setScrubValue(null);
+        setFrameInput(String(current));
+        return;
+      }
+
       setPendingIndex(nextIndex);
       setScrubValue(null);
       setFrameInput(String(nextIndex));
@@ -665,7 +673,7 @@ export default function AnnotatePageClient() {
       if (!target) return;
       router.push(`/datasets/${params.id}/annotate/${target.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
     },
-    [currentDraftKey, isNativeMode, mediaList, params.id, persistDraft, router, total, jobIdParam],
+    [current, currentDraftKey, isNativeMode, mediaList, params.id, persistDraft, router, total, jobIdParam],
   );
 
   const handleFrameInputCommit = () => {

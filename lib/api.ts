@@ -612,7 +612,7 @@ export const datasets = {
   browser(id: number) {
     return request<BrowserData>(`/api/v1/datasets/${id}/browser/`);
   },
-  frameUrl(id: number, frameNum: number, quality: "compressed" | "original" | "thumb" = "compressed") {
+  frameUrl(id: number, frameNum: number, quality: "original" | "thumb" = "original") {
     const token = getAccessToken();
     const baseUrl = resolveBaseUrl();
     return `${baseUrl}/api/v1/datasets/${id}/frames/${frameNum}/?quality=${quality}${token ? `&token=${token}` : ""}`;
