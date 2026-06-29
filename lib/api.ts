@@ -114,10 +114,42 @@ export interface Dataset {
   description: string | null;
   version: number;
   media_count: number;
+  image_count?: number;
   annotated_count?: number;
+  unlabeled_count?: number;
+  labeling_progress?: number;
+  approved_count?: number;
+  review_progress?: number;
+  is_label_complete?: boolean;
+  verification_status?: "unverified" | "verified";
+  verification_is_current?: boolean;
+  verified_by?: number | null;
+  verified_by_username?: string | null;
+  verified_at?: string | null;
+  generation_is_complete?: boolean;
+  is_train_ready?: boolean;
+  split_config?: {
+    train: number;
+    val: number;
+    test: number;
+    seed: number;
+    strategy?: "class" | "random";
+    test_dataset_id?: number | null;
+    test_dataset_name?: string | null;
+    summary?: DatasetSplitSummary;
+  };
+  split_updated_at?: string | null;
   thumbnail: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface DatasetSplitSummary {
+  train: { raw: number; augmented: number };
+  val: { raw: number; augmented: number };
+  test: { raw: number; augmented: number };
+  excluded_augmented: number;
+  classes?: Array<{ name: string; train: number; val: number; test: number }>;
 }
 
 export interface DataverseProject {
@@ -174,6 +206,10 @@ export interface TrainingJob {
   status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled";
   hyperparams: Record<string, unknown>;
   error_message: string;
+  agent_job_id: string;
+  artifacts: Record<string, { storage_key?: string; size?: number }>;
+  artifact_urls: Record<string, string>;
+  last_heartbeat_at: string | null;
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
@@ -189,6 +225,8 @@ export interface RunMetric {
   val_loss: number | null;
   map50: number | null;
   f1: number | null;
+  accuracy?: number | null;
+  extra?: { precision?: number; recall?: number; total_epochs?: number };
   recorded_at: string;
 }
 
@@ -532,6 +570,7 @@ export interface BrowserFrame {
   annotations: FrameAnnotation[];
   /** True when this frame is an augmentation-generated image (separate browser tab). */
   augmented?: boolean;
+  split?: "train" | "val" | "test";
 }
 
 export interface BrowserLabel {
@@ -581,6 +620,28 @@ export const datasets = {
   listAll: listAllDatasets,
   get(id: number) {
     return request<Dataset>(`/api/v1/datasets/${id}/`);
+  },
+  verify(id: number, confirmBackgroundImages = false) {
+    return request<Dataset>(`/api/v1/datasets/${id}/verify/`, {
+      method: "POST",
+      body: JSON.stringify({ confirm_background_images: confirmBackgroundImages }),
+    });
+  },
+  unverify(id: number) {
+    return request<Dataset>(`/api/v1/datasets/${id}/verify/`, { method: "DELETE" });
+  },
+  configureSplit(id: number, data: {
+    train: number;
+    val: number;
+    test: number;
+    seed?: number;
+    strategy?: "class" | "random";
+    test_dataset_id?: number | null;
+  }) {
+    return request<{ dataset: Dataset; summary: DatasetSplitSummary }>(`/api/v1/datasets/${id}/split/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
   create(data: { project: number; name: string; description?: string }) {
     return request<Dataset>("/api/v1/datasets/", { method: "POST", body: JSON.stringify(data) });
@@ -778,6 +839,9 @@ export const training = {
       method: "PATCH",
       body: JSON.stringify({ status: "cancelled" }),
     });
+  },
+  deleteJob(id: number) {
+    return request<void>(`/api/v1/training-jobs/${id}/`, { method: "DELETE" });
   },
   getExperiments(jobId: number) {
     return request<Experiment[]>(`/api/v1/training-jobs/${jobId}/experiments/`);

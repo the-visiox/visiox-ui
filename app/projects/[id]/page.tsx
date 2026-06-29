@@ -22,6 +22,7 @@ import {
   Wand2,
   Check,
   ChevronDown,
+  BrainCircuit,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
@@ -45,7 +46,7 @@ import {
 
 const STATUS_DOT: Record<string, string> = {
   Ready: "bg-green-500",
-  Annotating: "bg-[#6735E0] animate-pulse",
+  "In Progress": "bg-[#6735E0] animate-pulse",
   Draft: "bg-stone-300",
 };
 
@@ -54,9 +55,10 @@ interface ExportDialogState {
   exportName: string;
 }
 
-function datasetStatus(d: Dataset): "Ready" | "Annotating" | "Draft" {
+function datasetStatus(d: Dataset): "Ready" | "In Progress" | "Draft" {
   if (d.media_count === 0) return "Draft";
-  return "Ready";
+  if (d.is_train_ready && d.generation_is_complete) return "Ready";
+  return "In Progress";
 }
 
 const ROLE_OPTIONS: { value: MemberRole; label: string; hint: string }[] = [
@@ -977,6 +979,8 @@ export default function ProjectDetailPage() {
   const { user: currentUser } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [datasetList, setDatasetList] = useState<Dataset[]>([]);
+  const [splitDrafts, setSplitDrafts] = useState<Record<number, { train: number; test: number }>>({});
+  const [splittingDatasetId, setSplittingDatasetId] = useState<number | null>(null);
   const [exportDialog, setExportDialog] = useState<ExportDialogState | null>(null);
   const [classList, setClassList] = useState<AnnotationClass[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1197,8 +1201,49 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleDatasetSplit(dataset: Dataset) {
+    const current = splitDrafts[dataset.id] ?? {
+      train: dataset.split_config?.train ?? 70,
+      test: dataset.split_config?.test ?? 10,
+    };
+    const train = current.test === 0 ? 80 : Math.max(70, Math.min(80, current.train));
+    const test = current.test === 0 ? 0 : 10;
+    const val = 100 - train - test;
+    setSplittingDatasetId(dataset.id);
+    try {
+      const result = await datasets.configureSplit(dataset.id, {
+        train,
+        val,
+        test,
+        seed: dataset.split_config?.seed ?? 42,
+        strategy: dataset.split_config?.strategy ?? "class",
+        test_dataset_id: test === 0 ? dataset.split_config?.test_dataset_id ?? null : null,
+      });
+      setDatasetList((currentList) =>
+        currentList.map((item) => (item.id === dataset.id ? result.dataset : item)),
+      );
+      setSplitDrafts((drafts) => ({ ...drafts, [dataset.id]: { train, test } }));
+    } catch (error) {
+      await confirm({
+        title: "Could not split dataset",
+        message: error instanceof Error ? error.message : "Please check the dataset and try again.",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    } finally {
+      setSplittingDatasetId(null);
+    }
+  }
+
   function datasetMenuItems(dataset: Dataset): CardMenuItem[] {
     return [
+      ...(dataset.is_train_ready
+        ? [{
+            icon: BrainCircuit,
+            label: "Train Model",
+            onClick: () => router.push("/train?project=" + dataset.project + "&dataset=" + dataset.id),
+          }]
+        : []),
       { icon: Upload, label: "Upload Annotations", onClick: () => router.push(`/datasets/${dataset.id}`) },
       { icon: Wand2, label: "Auto Annotations", onClick: () => router.push(`/datasets/${dataset.id}`) },
       {
@@ -1222,6 +1267,9 @@ export default function ProjectDetailPage() {
       },
     ];
   }
+
+  const readyDatasets = datasetList.filter((dataset) => dataset.is_train_ready);
+  const preferredTrainingDataset = readyDatasets.toSorted((a, b) => b.version - a.version)[0];
 
   return (
     <div className="relative flex-1 flex flex-col min-h-screen">
@@ -1284,6 +1332,26 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+            <button
+              type="button"
+              disabled={!preferredTrainingDataset}
+              onClick={() => {
+                if (!preferredTrainingDataset) return;
+                router.push("/train?project=" + project.id + "&dataset=" + preferredTrainingDataset.id);
+              }}
+              title={preferredTrainingDataset ? "Train the latest approved dataset" : "Approve a fully labeled dataset first"}
+              className={[
+                "inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold",
+                "bg-stone-900 text-white shadow-lg transition-colors hover:bg-stone-800",
+                "focus-visible:ring-2 focus-visible:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-40",
+              ].join(" ")}
+            >
+              <BrainCircuit aria-hidden="true" className="h-4 w-4" />
+              Train Model
+              {readyDatasets.length > 0 ? (
+                <span className="rounded-full bg-white/15 px-1.5 py-0.5 text-[10px]">{readyDatasets.length}</span>
+              ) : null}
+            </button>
             <button
               type="button"
               onClick={() => void handleShareToDataverse()}
@@ -1777,8 +1845,9 @@ export default function ProjectDetailPage() {
                   </div>
                   {(() => {
                     const annotated = dataset.annotated_count ?? 0;
-                    const total = dataset.media_count;
-                    const pct = total > 0 ? Math.round((annotated / total) * 100) : 0;
+                    const total = dataset.image_count ?? dataset.media_count;
+                    const completed = annotated;
+                    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
                     return (
                       <div className="mb-2">
                         <div
@@ -1788,16 +1857,86 @@ export default function ProjectDetailPage() {
                           ].join(" ")}
                         >
                           <span>
-                            <span className="text-stone-900">{annotated}</span> / {total} annotated
+                            <span className="text-stone-900">{completed}</span> / {total} labeled
                           </span>
                           <span>{pct}%</span>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
                           <div
-                            className="h-full rounded-full bg-orange-400 transition-all duration-500"
+                            className={[
+                              "h-full rounded-full transition-[width] duration-500",
+                              dataset.is_train_ready ? "bg-emerald-500" : "bg-orange-400",
+                            ].join(" ")}
                             style={{ width: `${pct}%` }}
                           />
                         </div>
+                      </div>
+                    );
+                  })()}
+                  {false && (() => {
+                    const draft = splitDrafts[dataset.id] ?? {
+                      train: dataset.split_config?.train ?? 70,
+                      test: dataset.split_config?.test ?? 10,
+                    };
+                    const train = draft.test === 0 ? 80 : draft.train;
+                    const valid = 100 - train - draft.test;
+                    return (
+                      <div
+                        className="mb-2 flex items-end gap-1.5 rounded-xl bg-stone-50 p-2"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <label className="min-w-0 flex-1 text-[9px] font-bold uppercase text-stone-400">
+                          Train
+                          <input
+                            type="number"
+                            min={70}
+                            max={80}
+                            disabled={draft.test === 0}
+                            value={train}
+                            onChange={(event) => setSplitDrafts((current) => ({
+                              ...current,
+                              [dataset.id]: { ...draft, train: Number(event.target.value) },
+                            }))}
+                            className="no-number-spinner mt-1 h-7 w-full rounded-lg border border-stone-200 bg-white px-2 text-xs font-bold text-stone-800 outline-none focus:border-orange-400 disabled:text-stone-400"
+                            aria-label={`${dataset.name} train percentage`}
+                          />
+                        </label>
+                        <div className="min-w-0 flex-1 text-[9px] font-bold uppercase text-stone-400">
+                          Valid
+                          <div className="mt-1 flex h-7 items-center rounded-lg border border-stone-200 bg-stone-100 px-2 text-xs font-bold text-stone-600">
+                            {valid}%
+                          </div>
+                        </div>
+                        <label className="min-w-0 flex-1 text-[9px] font-bold uppercase text-stone-400">
+                          Test
+                          <select
+                            value={draft.test}
+                            onChange={(event) => {
+                              const test = Number(event.target.value);
+                              setSplitDrafts((current) => ({
+                                ...current,
+                                [dataset.id]: { train: test === 0 ? 80 : train, test },
+                              }));
+                            }}
+                            className="mt-1 h-7 w-full rounded-lg border border-stone-200 bg-white px-1 text-xs font-bold text-stone-800 outline-none focus:border-orange-400"
+                            aria-label={`${dataset.name} test percentage`}
+                          >
+                            <option value={10}>10%</option>
+                            <option value={0}>{dataset.split_config?.test_dataset_id ? "Fixed" : "0%"}</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void handleDatasetSplit(dataset)}
+                          disabled={splittingDatasetId === dataset.id}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white transition hover:bg-orange-600 disabled:opacity-50"
+                          aria-label={`Apply split for ${dataset.name}`}
+                          title="Apply split"
+                        >
+                          {splittingDatasetId === dataset.id
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Check className="h-3.5 w-3.5" />}
+                        </button>
                       </div>
                     );
                   })()}

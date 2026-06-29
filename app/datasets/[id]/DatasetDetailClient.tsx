@@ -19,6 +19,7 @@ import {
   Image as ImageIcon,
   Trash2,
   CheckCircle2,
+  BadgeCheck,
   Circle,
   Check,
   ChevronLeft,
@@ -40,9 +41,14 @@ import {
   Square,
   Maximize2,
   X,
+  GraduationCap,
+  ScanSearch,
+  ShieldCheck,
+  GitBranch,
 } from "lucide-react";
 
 const BATCH_SIZE = 50;
+const INTEGER_FORMATTER = new Intl.NumberFormat();
 import BlueprintGrid from "@/components/BlueprintGrid";
 import DatasetExportDialog from "@/components/datasets/DatasetExportDialog";
 import { useConfirm } from "@/components/useConfirm";
@@ -51,6 +57,7 @@ import {
   annotationClasses,
   resolveMediaUrl,
   type DatasetStats,
+  type Dataset,
   type BrowserData,
   type Media,
   type AnnotationClass,
@@ -86,6 +93,7 @@ function mediaFallbackFrames(media: Media[]): BrowserData["frames"] {
       annotations: [],
       augmented:
         (item.metadata as { category?: string })?.category === "augmented" || (item.file ?? "").includes("/augmented/"),
+      split: (item.metadata as { split?: "train" | "val" | "test" })?.split,
     }));
 }
 
@@ -120,6 +128,145 @@ const CARD = "bg-white rounded-2xl border border-stone-200";
 const CARD_P = `${CARD} p-6`;
 const CARD_COL1 = `flex h-full min-h-0 flex-col space-y-4 ${CARD_P}`;
 const CARD_COL2 = `flex h-full min-h-0 flex-col items-center justify-center border-dashed ${CARD} p-8 text-center`;
+const ACCORDION_TRIGGER = [
+  "flex min-h-[4.5rem] items-center gap-3 bg-white p-5 text-left transition-colors",
+  "hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-70",
+].join(" ");
+const SPLIT_BADGES = {
+  train: { label: "Train", Icon: GraduationCap, className: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  val: { label: "Valid", Icon: ScanSearch, className: "bg-amber-50 text-amber-700 ring-amber-200" },
+  test: { label: "Test", Icon: ShieldCheck, className: "bg-violet-50 text-violet-700 ring-violet-200" },
+} as const;
+
+type SplitRatios = { train: number; val: number; test: number };
+
+function GenerationStepMarker({ step, current }: { step: 1 | 2 | 3; current: 1 | 2 | 3 }) {
+  const done = current > step;
+  const active = current === step;
+  return (
+    <span
+      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+        done
+          ? "bg-emerald-500 text-white"
+          : active ? "bg-orange-500 text-white" : "bg-stone-100 text-stone-500"
+      }`}
+      aria-label={done ? `Step ${step} completed` : `Step ${step}`}
+    >
+      {done ? <Check className="h-4 w-4" aria-hidden="true" /> : step}
+    </span>
+  );
+}
+
+function DatasetSectionMarker({ section, current }: { section: 1 | 2; current: 1 | 2 }) {
+  const done = current > section;
+  const active = current === section;
+  return (
+    <span
+      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+        done
+          ? "bg-emerald-500 text-white"
+          : active ? "bg-orange-500 text-white" : "bg-stone-100 text-stone-500"
+      }`}
+      aria-label={done ? `Section ${section} completed` : `Section ${section}`}
+    >
+      {done ? <Check className="h-4 w-4" aria-hidden="true" /> : section === 1 ? "A" : "B"}
+    </span>
+  );
+}
+
+function SplitAllocationSlider({ value, onChange }: { value: SplitRatios; onChange: (next: SplitRatios) => void }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ pointerId: number; offsetX: number } | null>(null);
+  const validEnd = value.train + value.val;
+
+  const updateFromPointer = (handle: "train" | "valid", clientX: number) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const requested = Math.round(((clientX - rect.left) / rect.width) * 100);
+    if (handle === "train") {
+      const train = Math.max(0, Math.min(requested, validEnd));
+      if (train === value.train) return;
+      onChange({ train, val: validEnd - train, test: 100 - validEnd });
+      return;
+    }
+    const nextEnd = Math.max(value.train, Math.min(requested, 100));
+    if (nextEnd === validEnd) return;
+    onChange({ train: value.train, val: nextEnd - value.train, test: 100 - nextEnd });
+  };
+
+  const adjustWithKeyboard = (handle: "train" | "valid", delta: number) => {
+    if (handle === "train") {
+      const train = Math.max(0, Math.min(value.train + delta, validEnd));
+      onChange({ train, val: validEnd - train, test: 100 - validEnd });
+      return;
+    }
+    const nextEnd = Math.max(value.train, Math.min(validEnd + delta, 100));
+    onChange({ train: value.train, val: nextEnd - value.train, test: 100 - nextEnd });
+  };
+
+  return (
+    <div className="w-full min-w-0">
+      <div className="mb-1.5 grid grid-cols-3 items-center px-3 text-[11px] font-bold tabular-nums">
+        <span className="whitespace-nowrap text-left text-emerald-600">Train {value.train}%</span>
+        <span className="whitespace-nowrap text-center text-amber-600">Valid {value.val}%</span>
+        <span className="whitespace-nowrap text-right text-violet-600">Test {value.test}%</span>
+      </div>
+      <div ref={trackRef} className="relative mx-3 h-7 touch-none select-none">
+        <div className="absolute inset-x-0 top-1/2 flex h-2.5 -translate-y-1/2 overflow-hidden rounded-full bg-stone-100 ring-1 ring-stone-200/70">
+          <span className="bg-emerald-400" style={{ width: `${value.train}%` }} />
+          <span className="bg-amber-400" style={{ width: `${value.val}%` }} />
+          <span className="bg-violet-500" style={{ width: `${value.test}%` }} />
+        </div>
+        {([
+          { handle: "train" as const, position: value.train, label: "Train end point" },
+          { handle: "valid" as const, position: validEnd, label: "Validation end point" },
+        ]).map(({ handle, position, label }) => (
+          <button
+            key={handle}
+            type="button"
+            role="slider"
+            aria-label={label}
+            aria-valuemin={handle === "train" ? 0 : value.train}
+            aria-valuemax={handle === "train" ? validEnd : 100}
+            aria-valuenow={position}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              const handleRect = event.currentTarget.getBoundingClientRect();
+              dragRef.current = {
+                pointerId: event.pointerId,
+                offsetX: event.clientX - (handleRect.left + handleRect.width / 2),
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const drag = dragRef.current;
+              if (!drag || drag.pointerId !== event.pointerId) return;
+              if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+              updateFromPointer(handle, event.clientX - drag.offsetX);
+            }}
+            onPointerUp={() => {
+              dragRef.current = null;
+            }}
+            onPointerCancel={() => {
+              dragRef.current = null;
+            }}
+            onLostPointerCapture={() => {
+              dragRef.current = null;
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+              event.preventDefault();
+              adjustWithKeyboard(handle, event.key === "ArrowRight" ? 1 : -1);
+            }}
+            className="absolute top-1/2 z-10 h-5 w-5 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-[3px] border-white bg-orange-500 shadow-md shadow-orange-200 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2"
+            style={{ left: `${position}%` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 // ──────────────────────────────────────────────────────────────────────────────
 
 interface AugCardDef {
@@ -275,6 +422,16 @@ export default function DatasetDetailClient({ id }: Props) {
   const numericId = parseInt(id, 10);
 
   const [stats, setStats] = useState<DatasetStats | null>(null);
+  const [datasetDetail, setDatasetDetail] = useState<Dataset | null>(null);
+  const [splitRatios, setSplitRatios] = useState({ train: 80, val: 15, test: 5 });
+  const [splitting, setSplitting] = useState(false);
+  const [verifyingLabels, setVerifyingLabels] = useState(false);
+  const [splitView, setSplitView] = useState<"class" | "split">("class");
+  const [splitStrategy, setSplitStrategy] = useState<"class" | "random">("random");
+  const splitStrategyTouchedRef = useRef(false);
+  const [testMode, setTestMode] = useState<"split" | "none" | "dataset">("split");
+  const [fixedTestDatasetId, setFixedTestDatasetId] = useState<number | null>(null);
+  const [projectDatasets, setProjectDatasets] = useState<Dataset[]>([]);
   const [browserData, setBrowserData] = useState<BrowserData | null>(null);
   const [annotatedCountApi, setAnnotatedCountApi] = useState<number | null>(null);
   const [mediaCountApi, setMediaCountApi] = useState<number | null>(null);
@@ -286,6 +443,9 @@ export default function DatasetDetailClient({ id }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [browserTab, setBrowserTab] = useState<"original" | "augmented">("original");
+  const [currentDatasetSection, setCurrentDatasetSection] = useState<1 | 2>(1);
+  const [browserOpen, setBrowserOpen] = useState(true);
+  const browserLayoutInitializedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Last frame row index for Shift+click range selection (in `browserData.frames` order). */
   const anchorFrameIndexRef = useRef<number | null>(null);
@@ -293,6 +453,10 @@ export default function DatasetDetailClient({ id }: Props) {
   const imageBrowserPanelRef = useRef<HTMLDivElement>(null);
 
   const [augOpen, setAugOpen] = useState(false);
+  const [currentGenerationStep, setCurrentGenerationStep] = useState<1 | 2 | 3>(1);
+  const [splitOpen, setSplitOpen] = useState(true);
+  const [prepareOpen, setPrepareOpen] = useState(true);
+  const [augmentOpen, setAugmentOpen] = useState(false);
   const [preprocessConfig, setPreprocessConfig] = useState({
     auto_orient: false,
     resize: false,
@@ -337,6 +501,22 @@ export default function DatasetDetailClient({ id }: Props) {
       datasets.media(numericId),
     ]);
     if (dsResult.status === "fulfilled") {
+      setDatasetDetail(dsResult.value);
+      if (dsResult.value.split_config) {
+        const saved = dsResult.value.split_config;
+        const savedIsUsable = saved.train > 0 && saved.val > 0 && saved.test >= 0
+          && saved.train + saved.val + saved.test === 100;
+        const train = savedIsUsable ? saved.train : 80;
+        const val = savedIsUsable ? saved.val : 15;
+        setSplitRatios({
+          train,
+          val,
+          test: savedIsUsable ? saved.test : 5,
+        });
+        setSplitStrategy(splitStrategyTouchedRef.current ? saved.strategy ?? "random" : "random");
+        setFixedTestDatasetId(null);
+        setTestMode("split");
+      }
       setAnnotatedCountApi(dsResult.value.annotated_count ?? null);
       setMediaCountApi(dsResult.value.media_count ?? null);
     }
@@ -344,6 +524,7 @@ export default function DatasetDetailClient({ id }: Props) {
       setStats(statsResult.value);
       const projectId = statsResult.value.project_id;
       if (projectId) {
+        datasets.listAll(projectId).then(setProjectDatasets).catch(() => {});
         annotationClasses
           .list(projectId)
           .then((res) => setAllClasses(res.results))
@@ -361,6 +542,86 @@ export default function DatasetDetailClient({ id }: Props) {
       setError("Failed to load dataset data");
     }
   }, [numericId]);
+
+  const handleConfigureSplit = async () => {
+    if (splitRatios.train + splitRatios.val + splitRatios.test !== 100) {
+      setError("Split ratios must total 100%.");
+      return;
+    }
+    setSplitting(true);
+    setError("");
+    try {
+      const result = await datasets.configureSplit(numericId, {
+        ...splitRatios,
+        seed: 42,
+        strategy: splitStrategy,
+        test_dataset_id: null,
+      });
+      setDatasetDetail(result.dataset);
+      await refreshStatsAndBrowser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to split dataset");
+    } finally {
+      setSplitting(false);
+    }
+  };
+
+  const handleVerifyLabels = async () => {
+    const labeled = datasetDetail?.annotated_count ?? 0;
+    const background = datasetDetail?.unlabeled_count ?? 0;
+    const accepted = await confirm({
+      title: "Verify Annotations for Generation?",
+      message: background > 0
+        ? `${labeled} images contain labels. Confirm ${background} unlabeled images as background.`
+        : `Confirm labels for ${labeled} images before generating the dataset.`,
+      confirmLabel: "Verify Annotations",
+    });
+    if (!accepted) return;
+    setVerifyingLabels(true);
+    setError("");
+    try {
+      const updated = await datasets.verify(numericId, background > 0);
+      setDatasetDetail(updated);
+      await refreshStatsAndBrowser();
+      setCurrentDatasetSection(2);
+      setBrowserOpen(false);
+      setAugOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify Annotations");
+    } finally {
+      setVerifyingLabels(false);
+    }
+  };
+
+  const handleUnverifyLabels = async () => {
+    const accepted = await confirm({
+      title: "Mark Annotations as Unverified?",
+      message: "Generate Dataset will be locked until these annotations are verified again.",
+      confirmLabel: "Mark Unverified",
+      danger: true,
+    });
+    if (!accepted) return;
+    setVerifyingLabels(true);
+    setError("");
+    try {
+      const updated = await datasets.unverify(numericId);
+      setDatasetDetail(updated);
+      setCurrentDatasetSection(1);
+      setBrowserOpen(true);
+      setAugOpen(false);
+      await refreshStatsAndBrowser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not mark Annotations as unverified");
+    } finally {
+      setVerifyingLabels(false);
+    }
+  };
+
+  const handleTestModeChange = (mode: "split" | "none" | "dataset") => {
+    setTestMode(mode);
+    setSplitRatios(mode === "split" ? { train: 70, val: 20, test: 10 } : { train: 80, val: 20, test: 0 });
+    if (mode !== "dataset") setFixedTestDatasetId(null);
+  };
 
   useEffect(() => {
     if (isNaN(numericId)) return;
@@ -395,6 +656,9 @@ export default function DatasetDetailClient({ id }: Props) {
       channel = new BroadcastChannel("visiox-annotations");
       channel.onmessage = (e: MessageEvent<{ type: string; datasetId: number }>) => {
         if (e.data?.type === "annotations-saved" && e.data?.datasetId === numericId) {
+          setCurrentDatasetSection(1);
+          setBrowserOpen(true);
+          setAugOpen(false);
           void refreshStatsAndBrowser();
         }
       };
@@ -433,6 +697,39 @@ export default function DatasetDetailClient({ id }: Props) {
   const allFrames = browserData?.frames ?? [];
   const originalCount = allFrames.filter((f) => !f.augmented).length;
   const augmentedCount = allFrames.filter((f) => f.augmented).length;
+  const trainImageCount = allFrames.filter((frame) => !frame.augmented && frame.split === "train").length;
+  const labelsAreVerified = Boolean(
+    datasetDetail?.verification_status === "verified" && datasetDetail.verification_is_current,
+  );
+  useEffect(() => {
+    if (!datasetDetail || browserLayoutInitializedRef.current) return;
+    browserLayoutInitializedRef.current = true;
+    const verified = Boolean(
+      datasetDetail.verification_status === "verified" && datasetDetail.verification_is_current,
+    );
+    setBrowserOpen(!verified);
+    setAugOpen(verified);
+    setCurrentDatasetSection(verified ? 2 : 1);
+    if (verified && datasetDetail.generation_is_complete) {
+      setCurrentGenerationStep(3);
+      setSplitOpen(false);
+      setPrepareOpen(false);
+      setAugmentOpen(true);
+    } else if (datasetDetail.split_updated_at) {
+      setCurrentGenerationStep(2);
+      setSplitOpen(false);
+    }
+  }, [datasetDetail]);
+  const savedSplit = datasetDetail?.split_config;
+  const splitIsConfigured = Boolean(datasetDetail?.split_updated_at && savedSplit);
+  const splitIsSaved = Boolean(
+    datasetDetail?.split_updated_at
+    && savedSplit
+    && savedSplit.train === splitRatios.train
+    && savedSplit.val === splitRatios.val
+    && savedSplit.test === splitRatios.test
+    && (savedSplit.strategy ?? "random") === splitStrategy,
+  );
   const activeFrames = allFrames.filter((f) => (browserTab === "augmented" ? f.augmented : !f.augmented));
   const totalPages = Math.max(1, Math.ceil(activeFrames.length / BATCH_SIZE));
   const safePage = Math.min(currentPage, totalPages);
@@ -633,6 +930,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const preprocessActiveCount = PREPROCESS_CARDS.filter(
     (c) => !!preprocessConfig[c.key as keyof typeof preprocessConfig],
   ).length;
+  const hasGenerationTransforms = preprocessActiveCount + augActiveCount > 0;
 
   const totalImages = Math.max(browserData?.frame_count ?? 0, mediaCountApi ?? 0);
   const totalAnnotations = browserData?.annotation_count ?? 0;
@@ -679,9 +977,8 @@ export default function DatasetDetailClient({ id }: Props) {
       <div className="sticky top-4 z-20 w-full max-w-8xl mx-auto px-6 mb-4">
         <nav
           className={[
-            "sticky top-0 z-50 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80",
-            "p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center",
-            "md:justify-between",
+            "sticky top-0 z-50 flex flex-col gap-4 rounded-3xl border border-stone-200 bg-white",
+            "p-5 md:flex-row md:items-center md:justify-between",
           ].join(" ")}
         >
           <div className="flex items-center gap-4">
@@ -781,7 +1078,7 @@ export default function DatasetDetailClient({ id }: Props) {
       />
 
       {/* Main Content */}
-      <div className="z-10 flex-1 overflow-auto p-6 space-y-4 max-w-8xl mx-auto w-full">
+      <div className="z-10 mx-auto flex w-full max-w-8xl flex-1 flex-col gap-4 overflow-auto p-6">
         {/* ── Augmented Images Preview ── */}
         {augPreviews.length > 0 && (
           <motion.div
@@ -991,30 +1288,27 @@ export default function DatasetDetailClient({ id }: Props) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.05 }}
-            className={`${CARD} overflow-hidden`}
+            className={`${CARD} order-2 overflow-hidden`}
           >
             <button
               type="button"
+              disabled={!labelsAreVerified}
               onClick={() => {
-                setAugOpen((v) => !v);
+                setBrowserOpen(false);
+                setAugOpen((open) => currentDatasetSection === 2 ? !open : true);
+                setCurrentDatasetSection(2);
               }}
-              className={[
-                "w-full flex items-center justify-between px-6 py-5 hover:bg-stone-50/60",
-                "transition-colors",
-              ].join(" ")}
+              className={`${ACCORDION_TRIGGER} w-full justify-between disabled:bg-stone-50/70`}
             >
               <div className="flex items-center gap-3">
-                <div
-                  className={[
-                    "w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center",
-                    "justify-center shadow-lg shadow-orange-500/25",
-                  ].join(" ")}
-                >
-                  <Wand2 className="w-4 h-4 text-white" />
-                </div>
+                <DatasetSectionMarker section={2} current={currentDatasetSection} />
                 <div className="text-left">
                   <h3 className="text-base font-bold text-stone-900">Generate Dataset</h3>
-                  <p className="text-xs text-stone-400 mt-0.5">Preprocessing · Augmentation · Apply to dataset</p>
+                  <p className="mt-0.5 text-xs text-stone-400">
+                    {labelsAreVerified
+                      ? "Preprocessing · Augmentation · Apply to dataset"
+                      : "Verify annotations in Image Browser to unlock"}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2.5">
@@ -1029,38 +1323,220 @@ export default function DatasetDetailClient({ id }: Props) {
                   </span>
                 )}
                 <ChevronDown
-                  className={`w-4 h-4 text-stone-400 transition-transform duration-200 ${augOpen ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-stone-400 transition-transform duration-200 ${augOpen ? "rotate-180" : ""}`}
                 />
               </div>
             </button>
 
-            {augOpen && (
-              <div className="border-t border-stone-100 px-6 pb-6 pt-5 space-y-5">
+            {augOpen && labelsAreVerified && (
+              <div className="space-y-4 border-t border-stone-100 bg-stone-50/40 px-6 pb-6 pt-5">
+                <div className="space-y-4">
+                <section className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${
+                  splitOpen && currentGenerationStep === 1 ? "border-orange-200" : "border-stone-200"
+                }`} aria-labelledby="split-step-title">
+                  <div className="flex items-center bg-white">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentGenerationStep(1);
+                        setPrepareOpen(false);
+                        setAugmentOpen(false);
+                        setSplitOpen((open) => !open);
+                      }}
+                      className={`${ACCORDION_TRIGGER} min-w-0 flex-1`}
+                      aria-expanded={splitOpen}
+                    >
+                      <GenerationStepMarker step={1} current={currentGenerationStep} />
+                      <div className="min-w-0 flex-1">
+                        <h3 id="split-step-title" className="text-base font-bold text-stone-900">Step 1. Split Dataset</h3>
+                        <span className="block text-xs text-stone-500">Split images into training, validation and test sets.</span>
+                      </div>
+                      <ChevronDown className={`h-4 w-4 text-stone-400 transition-transform ${splitOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  {splitOpen && <div className="border-t border-stone-200 p-5">
+                  <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-[minmax(22rem,2fr)_repeat(3,minmax(0,1fr))]">
+                    <div className="flex min-h-24 w-full items-center rounded-2xl border border-stone-200 bg-stone-50/70 px-5 py-4 sm:col-span-3 xl:col-span-1">
+                      <SplitAllocationSlider
+                        value={splitRatios}
+                        onChange={(next) => {
+                          setCurrentGenerationStep(1);
+                          setPrepareOpen(false);
+                          setAugmentOpen(false);
+                          setSplitRatios(next);
+                        }}
+                      />
+                    </div>
+
+                    {([
+                      { key: "train", label: "Train", color: "emerald", value: splitRatios.train },
+                      { key: "val", label: "Validation", color: "amber", value: splitRatios.val },
+                      { key: "test", label: "Test", color: "violet", value: splitRatios.test },
+                    ] as const).map((item) => (
+                      <div key={item.key} className={`flex min-h-24 flex-col justify-between rounded-2xl border p-3.5 ${
+                        item.color === "emerald"
+                          ? "border-emerald-100 bg-emerald-50/50"
+                          : item.color === "amber"
+                            ? "border-amber-100 bg-amber-50/50"
+                            : "border-violet-100 bg-violet-50/50"
+                      }`}>
+                        <div className="flex items-center justify-between text-xs font-bold text-stone-600">
+                          <span>{item.label}</span>
+                        </div>
+                        <p className="mt-3 text-2xl font-bold tabular-nums text-stone-900">
+                          {INTEGER_FORMATTER.format(Math.round(originalCount * item.value / 100))}
+                          <span className="ml-1 text-xs font-medium text-stone-400">images</span>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-stone-100 pt-4">
+                    <div className="flex items-end gap-2">
+                    <label className="grid gap-1 text-[10px] font-bold uppercase text-stone-400">
+                      Strategy
+                      <select
+                        value={splitStrategy}
+                        onChange={(event) => {
+                          splitStrategyTouchedRef.current = true;
+                          setSplitStrategy(event.target.value as "class" | "random");
+                        }}
+                        className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold normal-case text-stone-700 focus-visible:ring-2 focus-visible:ring-orange-400"
+                      >
+                        <option value="random">Random</option>
+                        <option value="class">By class</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentGenerationStep(1);
+                        setPrepareOpen(false);
+                        setAugmentOpen(false);
+                        setSplitRatios({ train: 80, val: 15, test: 5 });
+                        setSplitStrategy("random");
+                      }}
+                      className="flex h-10 shrink-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 transition-colors hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-orange-400"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Reset
+                    </button>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span aria-live="polite" className="text-xs font-medium text-stone-400">
+                        {splitIsSaved
+                          ? "Split saved"
+                          : splitIsConfigured ? "Unsaved changes" : "Split first, then continue"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleConfigureSplit()}
+                        disabled={splitting}
+                        className="flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 disabled:opacity-50"
+                      >
+                        {splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitBranch className="h-4 w-4" />}
+                        Split
+                      </button>
+                    </div>
+                  </div>
+                  </div>}
+                </section>
+
+                <div className="hidden rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm shadow-stone-200/40">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                    <div className="shrink-0 lg:w-64">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white">1</span>
+                        <p className="text-sm font-bold text-stone-900">Split Dataset</p>
+                        <span
+                          aria-live="polite"
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            splitIsSaved ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                          }`}
+                        >
+                          {splitIsSaved ? "Saved" : "Not saved"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-stone-500">Split first. Only Train images will be augmented.</p>
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+                      <SplitAllocationSlider value={splitRatios} onChange={setSplitRatios} />
+                      <label className="grid gap-1 text-[10px] font-bold uppercase text-stone-400">
+                        Strategy
+                        <select
+                          value={splitStrategy}
+                          onChange={(event) => {
+                            splitStrategyTouchedRef.current = true;
+                            setSplitStrategy(event.target.value as "class" | "random");
+                          }}
+                          className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-xs font-bold normal-case text-stone-700 outline-none focus:border-orange-400"
+                        >
+                          <option value="class">By class</option>
+                          <option value="random">Random</option>
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void handleConfigureSplit()}
+                        disabled={splitting}
+                        className="flex h-9 items-center gap-1.5 rounded-xl bg-orange-500 px-3 text-xs font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                      >
+                        {splitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                        Save Split
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <section className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${
+                  prepareOpen && splitIsConfigured ? "border-orange-200" : "border-stone-200"
+                }`}>
+                <button
+                  type="button"
+                  disabled={!splitIsConfigured}
+                  onClick={() => {
+                    setCurrentGenerationStep(2);
+                    setSplitOpen(false);
+                    setAugmentOpen(false);
+                    setPrepareOpen((open) => !open);
+                  }}
+                  className={`${ACCORDION_TRIGGER} w-full`}
+                >
+                  <GenerationStepMarker step={2} current={currentGenerationStep} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 text-base font-bold text-stone-900">
+                      Step 2. Prepare Images
+                      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">Optional</span>
+                    </span>
+                    <span className="block text-xs text-stone-400">Configure image size, orientation and padding.</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 text-stone-400 transition-transform ${prepareOpen && splitIsConfigured ? "rotate-180" : ""}`} aria-hidden="true" />
+                </button>
+
                 {/* ── Preprocessing ── */}
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Preprocessing</p>
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+                {splitIsConfigured && prepareOpen && <div className="space-y-4 border-t border-stone-200 bg-stone-50/30 p-5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-stone-500">Preprocessing</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {PREPROCESS_CARDS.map((card) => {
                       const enabled = !!preprocessConfig[card.key as keyof typeof preprocessConfig];
                       return (
                         <div
                           key={card.key}
-                          className={`rounded-xl border p-3.5 transition-all duration-200 ${
+                          className={`flex min-h-32 flex-col rounded-xl border p-4 transition-all duration-200 ${
                             enabled
                               ? "border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10"
                               : "border-stone-200 hover:border-stone-300 bg-white"
                           }`}
                         >
-                          <div className="flex items-start justify-between mb-2.5">
+                          <div className="mb-3 flex items-start justify-between">
                             <div
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                              className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all
                                 duration-200 ${
                                   enabled
                                     ? "bg-orange-500 text-white shadow-md shadow-orange-500/30"
                                     : "bg-stone-100 text-stone-400"
                                 }`}
                             >
-                              <card.Icon className="w-4 h-4" />
+                              <card.Icon className="h-4 w-4" />
                             </div>
                             <button
                               role="switch"
@@ -1081,8 +1557,8 @@ export default function DatasetDetailClient({ id }: Props) {
                               />
                             </button>
                           </div>
-                          <p className="text-xs font-bold text-stone-800">{card.label}</p>
-                          <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                          <p className="text-sm font-bold text-stone-800">{card.label}</p>
+                          <p className="mt-1 text-xs leading-relaxed text-stone-400">{card.desc}</p>
                           {enabled && card.key === "resize" && (
                             <div className="mt-3 pt-3 border-t border-orange-200/70">
                               <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">
@@ -1134,34 +1610,81 @@ export default function DatasetDetailClient({ id }: Props) {
                       );
                     })}
                   </div>
-                </div>
+                  <div className="flex flex-col gap-3 border-t border-stone-200/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-stone-400">This step is optional. Continue with or without preprocessing.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentGenerationStep(3);
+                        setSplitOpen(false);
+                        setPrepareOpen(false);
+                        setAugmentOpen(true);
+                      }}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-bold text-white shadow-sm shadow-orange-200 transition hover:bg-orange-600 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2"
+                    >
+                      Continue
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>}
+                </section>
 
                 {/* ── Augmentation ── */}
-                <div className="space-y-3 pt-2 border-t border-stone-100">
-                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Augmentation</p>
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+                <section className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${
+                  augmentOpen && splitIsConfigured ? "border-orange-200" : "border-stone-200"
+                }`}>
+                <button
+                  type="button"
+                  disabled={!splitIsConfigured}
+                  onClick={() => {
+                    setCurrentGenerationStep(3);
+                    setSplitOpen(false);
+                    setPrepareOpen(false);
+                    setAugmentOpen((open) => !open);
+                  }}
+                  className={`${ACCORDION_TRIGGER} w-full`}
+                >
+                  <GenerationStepMarker step={3} current={currentGenerationStep} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 text-base font-bold text-stone-900">
+                      Step 3. Augment Images
+                      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold text-stone-500">Optional</span>
+                    </span>
+                    <span className="block text-xs text-stone-400">Apply augmentation to improve Train data diversity.</span>
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 text-stone-400 transition-transform ${
+                      augmentOpen && splitIsConfigured ? "rotate-180" : ""
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
+                {splitIsConfigured && augmentOpen && <>
+                <div className="space-y-4 border-t border-stone-200 bg-stone-50/30 p-5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-stone-500">Augmentation</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                     {AUG_CARDS.map((card) => {
                       const enabled = isAugEnabled(card.key);
                       const numVal = augConfig[card.key as keyof typeof augConfig] as number;
                       return (
                         <div
                           key={card.key}
-                          className={`rounded-xl border p-3.5 transition-all duration-200 ${
+                          className={`flex min-h-32 flex-col rounded-xl border p-4 transition-all duration-200 ${
                             enabled
                               ? "border-orange-300 bg-orange-50/40 shadow-sm shadow-orange-500/10"
                               : "border-stone-200 hover:border-stone-300 bg-white"
                           }`}
                         >
-                          <div className="flex items-start justify-between mb-2.5">
+                          <div className="mb-3 flex items-start justify-between">
                             <div
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                              className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all
                                 duration-200 ${
                                   enabled
                                     ? "bg-orange-500 text-white shadow-md shadow-orange-500/30"
                                     : "bg-stone-100 text-stone-400"
                                 }`}
                             >
-                              <card.Icon className="w-4 h-4" />
+                              <card.Icon className="h-4 w-4" />
                             </div>
                             <button
                               role="switch"
@@ -1182,8 +1705,8 @@ export default function DatasetDetailClient({ id }: Props) {
                               />
                             </button>
                           </div>
-                          <p className="text-xs font-bold text-stone-800">{card.label}</p>
-                          <p className="text-[10px] text-stone-400 mt-0.5 leading-relaxed">{card.desc}</p>
+                          <p className="text-sm font-bold text-stone-800">{card.label}</p>
+                          <p className="mt-1 text-xs leading-relaxed text-stone-400">{card.desc}</p>
                           {enabled && card.type === "slider" && card.format && (
                             <div className="mt-3 pt-2.5 border-t border-orange-200/70">
                               <div className="flex items-center gap-2">
@@ -1216,14 +1739,14 @@ export default function DatasetDetailClient({ id }: Props) {
                 </div>
 
                 {/* Multiplier */}
-                <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4">
+                <div className="border-t border-stone-200 bg-white p-5">
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="text-sm font-bold text-stone-800">Dataset Multiplier</p>
                       <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
                     </div>
                     <span className="text-xs font-bold text-orange-600 tabular-nums">
-                      {originalCount * multiplier} total images
+                      {trainImageCount * multiplier} generated images
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -1232,7 +1755,7 @@ export default function DatasetDetailClient({ id }: Props) {
                         key={m}
                         type="button"
                         onClick={() => setMultiplier(m)}
-                        className={`flex-1 rounded-lg border py-2.5 text-xs font-bold transition-all ${
+                        className={`h-12 flex-1 rounded-xl border px-3 text-sm font-bold transition-all ${
                           multiplier === m
                             ? "border-orange-400 bg-orange-500 text-white shadow-md shadow-orange-500/25"
                             : "border-stone-200 bg-white text-stone-600 hover:border-orange-300 hover:bg-orange-50"
@@ -1245,46 +1768,277 @@ export default function DatasetDetailClient({ id }: Props) {
                             multiplier === m ? "text-orange-200" : "text-stone-400",
                           ].join(" ")}
                         >
-                          +{originalCount * m} imgs
+                          +{trainImageCount * m} imgs
                         </span>
                       </button>
                     ))}
                   </div>
                 </div>
+                </>}
 
                 {/* Actions */}
-                <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-100">
+                <div className="flex min-h-16 items-center justify-between gap-4 border-t border-stone-200 bg-white px-5 py-4">
+                  <p className="hidden text-xs text-stone-400 sm:block">
+                    {splitIsSaved
+                      ? "Step 2: configure options, then generate"
+                      : splitIsConfigured ? "Save split changes before generating" : "Step 1: save the split to continue"}
+                  </p>
+                  <div className="ml-auto flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => void handleAugPreview()}
-                    disabled={augLoading || augActiveCount === 0}
+                    disabled={!splitIsSaved || augLoading || !hasGenerationTransforms}
                     className={[
-                      "flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 bg-white text-stone-600",
-                      "rounded-xl text-xs font-bold hover:bg-stone-50 transition-all disabled:opacity-40",
+                      "flex h-10 min-w-28 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4",
+                      "text-sm font-bold text-stone-600 transition-colors hover:bg-stone-50 disabled:opacity-40",
                       "disabled:pointer-events-none",
                     ].join(" ")}
                   >
-                    {augLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                    {augLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                     Preview
                   </button>
                   <button
                     type="button"
                     onClick={() => setAugConfirmOpen(true)}
-                    disabled={augApplying || augActiveCount === 0}
+                    disabled={!splitIsSaved || augApplying}
                     className={[
-                      "flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-xl text-xs",
-                      "font-bold shadow-lg shadow-orange-500/25 hover:scale-105 active:scale-95 transition-all",
+                      "flex h-10 min-w-40 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm text-white",
+                      "font-bold shadow-sm shadow-orange-200 transition-colors hover:bg-orange-600",
                       "disabled:opacity-40 disabled:pointer-events-none",
                     ].join(" ")}
                   >
-                    {augApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                    {augApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                     Apply to Dataset
                   </button>
+                  </div>
+                </div>
+                </section>
                 </div>
               </div>
             )}
           </motion.div>
         )}
+
+        {false && <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+          className={CARD_P}
+          aria-labelledby="dataset-split-heading"
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 id="dataset-split-heading" className="text-base font-bold text-stone-900">Data Split</h2>
+                {datasetDetail?.split_updated_at && (
+                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                    Ready
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-stone-500">
+                Augmentation is included in Train only. Valid and Test remain raw.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              {(["train", "val", "test"] as const).map((key) => (
+                <label key={key} className="grid gap-1 text-xs font-semibold capitalize text-stone-500">
+                  {key === "val" ? "Valid" : key}
+                  <span className="flex h-10 items-center rounded-xl border border-stone-200 bg-white px-3 focus-within:border-orange-400">
+                    <input
+                      type="number"
+                      min={key === "train" ? 70 : 10}
+                      max={key === "train" ? 80 : key === "val" ? 20 : 10}
+                      value={splitRatios[key]}
+                      disabled={key === "test" && testMode !== "split"}
+                      onChange={(event) =>
+                        setSplitRatios((current) => ({ ...current, [key]: Number(event.target.value) }))
+                      }
+                      className="no-number-spinner w-10 bg-transparent text-sm font-bold text-stone-800 outline-none disabled:text-stone-400"
+                      aria-label={`${key} percentage`}
+                    />
+                    <span className="text-stone-400">%</span>
+                  </span>
+                </label>
+              ))}
+              <button
+                type="button"
+                onClick={() => void handleConfigureSplit()}
+                disabled={
+                  splitting
+                  || splitRatios.train + splitRatios.val + splitRatios.test !== 100
+                  || (testMode === "dataset" && !fixedTestDatasetId)
+                }
+                className="flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
+              >
+                {splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
+                Apply split
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 rounded-2xl border border-stone-200 bg-stone-50/60 p-4 lg:grid-cols-2">
+            <fieldset>
+              <legend className="text-xs font-bold uppercase tracking-wider text-stone-500">Split strategy</legend>
+              <div className="mt-2 inline-flex rounded-xl border border-stone-200 bg-white p-1">
+                {([['class', 'By Class'], ['random', 'Random']] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSplitStrategy(value)}
+                    aria-pressed={splitStrategy === value}
+                    className={`rounded-lg px-4 py-2 text-xs font-bold transition ${
+                      splitStrategy === value
+                        ? "bg-orange-50 text-orange-700 shadow-sm ring-1 ring-orange-200"
+                        : "text-stone-500 hover:text-stone-800"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-stone-400">
+                {splitStrategy === "class"
+                  ? "Balances every class and background while keeping capture groups together."
+                  : "Random split with a fixed seed; capture groups still stay together."}
+              </p>
+            </fieldset>
+
+            <fieldset>
+              <legend className="text-xs font-bold uppercase tracking-wider text-stone-500">Test source</legend>
+              <div className="mt-2 flex flex-wrap gap-1 rounded-xl border border-stone-200 bg-white p-1">
+                {([['split', 'Split 10%'], ['none', 'No test'], ['dataset', 'Fixed dataset']] as const).map(
+                  ([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => handleTestModeChange(value)}
+                      aria-pressed={testMode === value}
+                      className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
+                        testMode === value
+                          ? "bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-200"
+                          : "text-stone-500 hover:text-stone-800"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ),
+                )}
+              </div>
+              {testMode === "dataset" ? (
+                <select
+                  value={fixedTestDatasetId ?? ""}
+                  onChange={(event) => setFixedTestDatasetId(event.target.value ? Number(event.target.value) : null)}
+                  className="mt-2 h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700 outline-none focus:border-violet-400"
+                  aria-label="Fixed test dataset"
+                >
+                  <option value="">Select a verified dataset…</option>
+                  {projectDatasets
+                    .filter((item) => item.id !== numericId && item.verification_status === "verified")
+                    .map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              ) : (
+                <p className="mt-2 text-xs text-stone-400">
+                  {testMode === "none"
+                    ? "Training sends only Train and Valid. You can attach a test dataset later."
+                    : "10% of this dataset is reserved for final evaluation."}
+                </p>
+              )}
+            </fieldset>
+          </div>
+
+          {datasetDetail?.split_config?.summary && (() => {
+            const summary = datasetDetail!.split_config!.summary!;
+            const totalRaw = summary.train.raw + summary.val.raw + summary.test.raw;
+            const colors = { train: "#52d8c2", val: "#f7cf5c", test: "#7657f6" };
+            return (
+              <div className="mt-6 border-t border-stone-100 pt-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-stone-900">View your split ({totalRaw} raw images)</p>
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-stone-600">
+                      <span>Train: <b className="text-stone-900">{summary.train.raw}</b></span>
+                      <span>Valid: <b className="text-stone-900">{summary.val.raw}</b></span>
+                      <span>Test: <b className="text-stone-900">{summary.test.raw}</b></span>
+                    </div>
+                  </div>
+                  <div className="inline-flex self-start rounded-lg border border-stone-200 bg-stone-50 p-0.5" role="tablist">
+                    {([['class', 'By Class'], ['split', 'By Split']] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="tab"
+                        aria-selected={splitView === value}
+                        onClick={() => setSplitView(value)}
+                        className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+                          splitView === value
+                            ? "bg-white text-stone-900 shadow-sm ring-1 ring-stone-200"
+                            : "text-stone-400 hover:text-stone-600"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  {splitView === "class" ? (
+                    summary.classes?.length ? (summary.classes ?? []).map((row) => {
+                      const total = row.train + row.val + row.test;
+                      return (
+                        <div key={row.name} className="grid grid-cols-[7rem_1fr] items-center gap-3">
+                          <span className="truncate text-xs font-medium text-stone-700" title={row.name}>{row.name}</span>
+                          <div className="flex h-2 overflow-hidden rounded-full bg-stone-100">
+                            {(["train", "val", "test"] as const).map((key) => (
+                              <motion.span
+                                key={key}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${total ? row[key] * 100 / total : 0}%` }}
+                                transition={{ duration: 0.45 }}
+                                style={{ backgroundColor: colors[key] }}
+                                title={`${key}: ${row[key]}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }) : <p className="text-xs text-stone-400">Apply split again to calculate class distribution.</p>
+                  ) : (
+                    (["train", "val", "test"] as const).map((key) => {
+                      const value = summary[key];
+                      return (
+                        <div key={key} className="grid grid-cols-[7rem_1fr_auto] items-center gap-3">
+                          <span className="text-xs font-bold capitalize text-stone-700">{key === "val" ? "Valid" : key}</span>
+                          <div className="h-2 overflow-hidden rounded-full bg-stone-100">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${totalRaw ? value.raw * 100 / totalRaw : 0}%` }}
+                              transition={{ duration: 0.45 }}
+                              className="h-full rounded-full"
+                              style={{ backgroundColor: colors[key] }}
+                            />
+                          </div>
+                          <span className="w-28 text-right text-xs tabular-nums text-stone-500">
+                            {value.raw} raw{value.augmented ? ` + ${value.augmented} aug` : ""}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-4 border-t border-stone-100 pt-3">
+                  {([['train', 'Train'], ['val', 'Valid'], ['test', 'Test']] as const).map(([key, label]) => (
+                    <span key={key} className="flex items-center gap-1.5 text-[11px] font-medium text-stone-500">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[key] }} />{label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </motion.section>}
 
         {confirmDialog}
 
@@ -1345,8 +2099,14 @@ export default function DatasetDetailClient({ id }: Props) {
                 <h2 className="text-base font-bold text-stone-900">Generate dataset</h2>
 
                 <p className="mt-1.5 text-sm text-stone-500">
-                  Generate <span className="font-bold text-stone-700">{originalCount * multiplier}</span> augmented
-                  image{originalCount * multiplier === 1 ? "" : "s"} and add them to this dataset?
+                  {hasGenerationTransforms ? (
+                    <>
+                      Generate <span className="font-bold text-stone-700">{trainImageCount * multiplier}</span> processed
+                      image{trainImageCount * multiplier === 1 ? "" : "s"} from Train images?
+                    </>
+                  ) : (
+                    "Finalize the current Train, Validation and Test split without preprocessing or augmentation?"
+                  )}
                 </p>
 
                 <div className="mt-6 flex gap-3">
@@ -1420,76 +2180,42 @@ export default function DatasetDetailClient({ id }: Props) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.28 }}
-            className={CARD_P}
+            className={`${CARD} order-1 overflow-hidden`}
           >
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="text-base font-bold text-stone-900">Image Browser</h3>
-                <p className="text-sm text-stone-500 mt-1">
-                  Select images to delete, or click an image to open the annotation view. Hold Shift and click another
-                  checkbox to select a range.
-                </p>
-              </div>
-              {(selectableMediaIds.length > 0 || selectedMediaIds.length > 0) && (
-                <div
-                  className={[
-                    "relative z-10 flex w-full shrink-0 flex-wrap items-center justify-end gap-2",
-                    "sm:flex-nowrap sm:w-auto sm:min-w-[17.5rem]",
-                  ].join(" ")}
-                >
-                  {selectableMediaIds.length > 0 && (
-                    <label
-                      className={[
-                        "inline-flex min-w-[7.25rem] cursor-pointer items-center gap-2.5 whitespace-nowrap",
-                        "rounded-full bg-white/80 px-3 py-2 text-sm font-semibold text-stone-600 shadow-sm",
-                        "backdrop-blur-sm transition hover:bg-white hover:shadow-md",
-                      ].join(" ")}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={allSelectableSelected}
-                        onChange={() => toggleSelectAllMedia()}
-                        className="peer sr-only"
-                      />
-                      <span
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md
-                          shadow-inner ring-1 transition-all duration-200
-                          peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50 ${
-                            allSelectableSelected
-                              ? "bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm ring-orange-400/40"
-                              : "bg-stone-100/95 text-stone-500 ring-stone-200/80"
-                          }`}
-                      >
-                        <Check
-                          className={`h-3 w-3 stroke-[3] text-white transition-opacity duration-150 ${
-                            allSelectableSelected ? "opacity-100" : "opacity-0"
-                          }`}
-                          aria-hidden
-                        />
-                      </span>
-                      Select all
-                    </label>
+            <div className="flex flex-col sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setAugOpen(false);
+                  setBrowserOpen((open) => currentDatasetSection === 1 ? !open : true);
+                  setCurrentDatasetSection(1);
+                }}
+                className={`${ACCORDION_TRIGGER} min-w-0 flex-1`}
+                aria-label={browserOpen ? "Collapse Image Browser" : "Expand Image Browser"}
+                aria-expanded={browserOpen}
+              >
+                <DatasetSectionMarker section={1} current={currentDatasetSection} />
+                <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-stone-900">Image Browser</h3>
+                  {labelsAreVerified && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                      <BadgeCheck className="h-3 w-3" aria-hidden="true" /> Verified
+                    </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteSelectedMedia()}
-                    disabled={deleting || selectedMediaIds.length === 0}
-                    className={[
-                      "inline-flex min-w-[9.5rem] shrink-0 cursor-pointer items-center justify-center gap-1.5",
-                      "rounded-full bg-red-50/90 px-3.5 py-2 text-sm font-bold tabular-nums text-red-700",
-                      "shadow-sm backdrop-blur-sm transition hover:bg-red-100/95 hover:shadow-md",
-                      "disabled:cursor-not-allowed disabled:opacity-45",
-                    ].join(" ")}
-                  >
-                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    Delete ({selectedMediaIds.length})
-                  </button>
                 </div>
-              )}
+                <p className="mt-0.5 text-xs text-stone-400">
+                  Review images · Check annotations · Verify dataset
+                </p>
+                </div>
+                <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-stone-400 transition-transform ${browserOpen ? "rotate-180" : ""}`} />
+              </button>
             </div>
 
+            {browserOpen && <div className="border-t border-stone-100 bg-stone-50/40 px-6 pb-6 pt-5">
             {/* ── Original / Augmented tabs ── */}
-            <div className="mb-4 inline-flex items-center gap-1 rounded-xl bg-stone-100 p-1">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="inline-flex w-fit items-center gap-1 rounded-xl bg-stone-100 p-1">
               {[
                 { key: "original" as const, label: "Original", count: originalCount },
                 { key: "augmented" as const, label: "Augmented", count: augmentedCount },
@@ -1518,6 +2244,40 @@ export default function DatasetDetailClient({ id }: Props) {
                   </span>
                 </button>
               ))}
+            </div>
+            {(selectableMediaIds.length > 0 || selectedMediaIds.length > 0) && (
+              <div className="relative z-10 flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+                {selectableMediaIds.length > 0 && (
+                  <label className="inline-flex h-10 min-w-32 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 transition-colors hover:bg-stone-50">
+                    <input
+                      type="checkbox"
+                      checked={allSelectableSelected}
+                      onChange={() => toggleSelectAllMedia()}
+                      className="peer sr-only"
+                    />
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50 ${
+                        allSelectableSelected
+                          ? "border-orange-500 bg-orange-500 text-white"
+                          : "border-stone-300 bg-white text-transparent"
+                      }`}
+                    >
+                      <Check className="h-3 w-3 stroke-[3]" aria-hidden="true" />
+                    </span>
+                    Select all
+                  </label>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteSelectedMedia()}
+                  disabled={deleting || selectedMediaIds.length === 0}
+                  className="inline-flex h-10 min-w-32 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-bold tabular-nums text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Delete ({selectedMediaIds.length})
+                </button>
+              </div>
+            )}
             </div>
 
             {activeFrames.length === 0 ? (
@@ -1561,6 +2321,17 @@ export default function DatasetDetailClient({ id }: Props) {
                               ].join(" ")
                         }`}
                     >
+                      {splitIsConfigured && frame.split && (() => {
+                        const badge = SPLIT_BADGES[frame.split];
+                        return (
+                          <span
+                            className={`absolute right-2.5 top-2.5 z-20 flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold shadow-sm ring-1 ${badge.className}`}
+                          >
+                            <badge.Icon className="h-3 w-3" aria-hidden="true" />
+                            {badge.label}
+                          </span>
+                        );
+                      })()}
                       {typeof frame.media_id === "number" && (
                         <div
                           className={`absolute left-2.5 top-2.5 z-20 transition-all duration-300 ease-out ${
@@ -1761,6 +2532,22 @@ export default function DatasetDetailClient({ id }: Props) {
                 </div>
               </div>
             )}
+            <div className="mt-6 flex items-center justify-end border-t border-stone-200 pt-4">
+                <button
+                  type="button"
+                  onClick={() => void (labelsAreVerified ? handleUnverifyLabels() : handleVerifyLabels())}
+                  disabled={verifyingLabels}
+                  className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    labelsAreVerified
+                      ? "border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                      : "bg-orange-500 text-white shadow-sm shadow-orange-200 hover:bg-orange-600"
+                  }`}
+                >
+                  {verifyingLabels ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
+                  {labelsAreVerified ? "Unverify" : "Verify"}
+                </button>
+              </div>
+            </div>}
           </motion.div>
         )}
       </div>
