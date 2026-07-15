@@ -1,345 +1,358 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  Bell,
   Camera,
+  Check,
+  ChevronDown,
+  CircleStop,
+  CloudUpload,
   Cpu,
+  Database,
+  Grid2X2,
+  HardDrive,
+  Maximize2,
+  Minus,
+  MoreHorizontal,
   Play,
   Plus,
-  Settings,
-  ArrowRight,
-  Monitor,
-  Bell,
-  HardDrive,
+  Radio,
+  RotateCcw,
+  Search,
+  Settings2,
+  Sparkles,
   Trash2,
-  Save,
+  Webhook,
+  Workflow,
   Zap,
 } from "lucide-react";
-import BlueprintGrid from "@/components/BlueprintGrid";
+import type { LucideIcon } from "lucide-react";
 
-const INITIAL_NODES = [
-  { id: "1", type: "source", title: "CCTV Stream 01", icon: Camera, x: 100, y: 150, color: "#22c55e" },
-  { id: "2", type: "model", title: "YOLOv8 Detector", icon: Cpu, x: 450, y: 300, color: "#FF7300" },
-  { id: "3", type: "action", title: "Alert Webhook", icon: Bell, x: 800, y: 150, color: "#6735E0" },
-  { id: "4", type: "action", title: "Save to DB", icon: HardDrive, x: 800, y: 450, color: "#3b82f6" },
+type NodeKind = "input" | "model" | "output";
+
+type WorkflowNode = {
+  id: string;
+  kind: NodeKind;
+  title: string;
+  subtitle: string;
+  icon: LucideIcon;
+  x: number;
+  y: number;
+  tone: string;
+};
+
+const NODE_WIDTH = 232;
+const NODE_HEIGHT = 132;
+
+const INITIAL_NODES: WorkflowNode[] = [
+  {
+    id: "camera",
+    kind: "input",
+    title: "Entrance camera",
+    subtitle: "RTSP · 1920 × 1080",
+    icon: Camera,
+    x: 72,
+    y: 178,
+    tone: "#10b981",
+  },
+  {
+    id: "detector",
+    kind: "model",
+    title: "Person detector",
+    subtitle: "YOLOv8 · 94% confidence",
+    icon: Cpu,
+    x: 392,
+    y: 178,
+    tone: "#f97316",
+  },
+  {
+    id: "alert",
+    kind: "output",
+    title: "Security alert",
+    subtitle: "Webhook · Instant",
+    icon: Bell,
+    x: 712,
+    y: 82,
+    tone: "#8b5cf6",
+  },
+  {
+    id: "storage",
+    kind: "output",
+    title: "Event storage",
+    subtitle: "PostgreSQL · 30 days",
+    icon: HardDrive,
+    x: 712,
+    y: 274,
+    tone: "#3b82f6",
+  },
 ];
 
-const INITIAL_CONNECTIONS = [
-  { from: "1", to: "2" },
-  { from: "2", to: "3" },
-  { from: "2", to: "4" },
+const CONNECTIONS = [
+  { from: "camera", to: "detector" },
+  { from: "detector", to: "alert" },
+  { from: "detector", to: "storage" },
 ];
 
-const NODE_WIDTH = 224; // w-56
+const NODE_LIBRARY = [
+  { label: "Camera stream", icon: Camera, tone: "bg-emerald-50 text-emerald-600" },
+  { label: "Vision model", icon: Cpu, tone: "bg-orange-50 text-orange-600" },
+  { label: "Webhook", icon: Webhook, tone: "bg-violet-50 text-violet-600" },
+  { label: "Database", icon: Database, tone: "bg-blue-50 text-blue-600" },
+];
+
+const KIND_LABELS: Record<NodeKind, string> = {
+  input: "Input",
+  model: "AI model",
+  output: "Output",
+};
 
 export default function WorkflowsPage() {
   const [nodes, setNodes] = useState(INITIAL_NODES);
-  const [isSaving, setIsSaving] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const connections = INITIAL_CONNECTIONS;
+  const [zoom, setZoom] = useState(100);
+  const [isRunning, setIsRunning] = useState(true);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [saved, setSaved] = useState(true);
+  const canvasRef = useRef<HTMLDivElement>(null);
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => setIsSaving(false), 1500);
-  };
+  const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
-  const updateNodePos = (id: string, x: number, y: number) => {
-    // Functional update to avoid stale closures
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, x, y } : n)));
-  };
+  function deployWorkflow() {
+    setIsDeploying(true);
+    window.setTimeout(() => setIsDeploying(false), 1200);
+  }
+
+  function moveNode(id: string, dx: number, dy: number) {
+    setNodes((current) =>
+      current.map((node) =>
+        node.id === id
+          ? { ...node, x: Math.max(24, node.x + dx), y: Math.max(56, node.y + dy) }
+          : node,
+      ),
+    );
+    setSaved(false);
+  }
+
+  function resetCanvas() {
+    setNodes(INITIAL_NODES);
+    setZoom(100);
+    setSaved(true);
+  }
 
   return (
-    <div className="relative flex-1 flex flex-col min-h-screen overflow-hidden bg-[#fcfaf7]">
-      <BlueprintGrid />
-
-      {/* Header */}
-      <div className="absolute left-0 right-0 top-0 z-30 p-8">
-        <div
-          className={[
-            "flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm",
-            "shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between",
-          ].join(" ")}
-        >
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">Active Pipeline Builder</h1>
-              <div
-                className={`flex items-center gap-2 px-2 py-1 rounded-full text-[10px] font-bold
-                  transition-all ${isSaving ? "bg-orange-100 text-orange-600" : "bg-stone-100 text-stone-400"}`}
-              >
-                <Save className={`w-3 h-3 ${isSaving ? "animate-bounce" : ""}`} />
-                <span>{isSaving ? "Saving Changes..." : "All Changes Saved"}</span>
-              </div>
+    <div className="flex min-h-screen flex-1 flex-col bg-[#f8f7f4] text-stone-900">
+      <header className="border-b border-stone-200 bg-white/95 px-4 py-4 backdrop-blur sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-stone-900 text-white shadow-sm">
+              <Workflow className="h-5 w-5" />
             </div>
-            <p className="mt-1 max-w-xl text-sm leading-6 text-stone-500">
-              Build, monitor, and deploy visual automation pipelines from one canvas.
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">Entrance monitoring</h1>
+                <button
+                  type="button"
+                  aria-label="Workflow menu"
+                  className="rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-500">
+                {saved ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <CloudUpload className="h-3.5 w-3.5" />}
+                {saved ? "All changes saved" : "Unsaved changes"}
+                <span aria-hidden="true">·</span> Edited just now
+              </p>
+            </div>
           </div>
 
-          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
-            <div
-              className={[
-                "hidden h-11 items-center gap-4 rounded-xl border border-stone-200 bg-white px-4 text-sm",
-                "font-bold shadow-sm md:flex",
-              ].join(" ")}
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-stone-600">Pipeline Online</span>
-              </div>
-              <div className="w-[1px] h-4 bg-stone-200" />
-              <div className="text-stone-400">
-                Throughput: <span className="text-stone-900">1.2 GB/s</span>
-              </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-1 hidden items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 text-xs font-semibold text-stone-600 sm:flex">
+              <span className={`h-2 w-2 rounded-full ${isRunning ? "bg-emerald-500" : "bg-stone-400"}`} />
+              {isRunning ? "Live · 24 FPS" : "Paused"}
             </div>
             <button
-              onClick={handleSave}
-              className={[
-                "flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
-                "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
-                "transition-all hover:bg-orange-200",
-              ].join(" ")}
+              type="button"
+              onClick={() => setIsRunning((value) => !value)}
+              className="flex h-10 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
             >
-              <Play className="w-4 h-4 text-orange-500 fill-orange-500" />
-              <span>Deploy Workflow</span>
+              {isRunning ? <CircleStop className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {isRunning ? "Stop" : "Run"}
+            </button>
+            <button
+              type="button"
+              onClick={deployWorkflow}
+              disabled={isDeploying}
+              className="flex h-10 items-center gap-2 rounded-xl bg-[#FF7300] px-4 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-wait disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2"
+            >
+              {isDeploying ? <Sparkles className="h-4 w-4 animate-pulse" /> : <CloudUpload className="h-4 w-4" />}
+              {isDeploying ? "Deploying…" : "Deploy"}
+            </button>
+            <button
+              type="button"
+              aria-label="More actions"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:bg-stone-50"
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Builder Canvas */}
-      <div className="flex-grow relative mt-40 md:mt-36" ref={containerRef}>
-        {/* SVG Connections Layer */}
-        <svg
-          className={[
-            "absolute inset-0 w-full h-full pointer-events-none z-10",
-            "transition-opacity duration-300",
-          ].join(" ")}
-        >
-          <defs>
-            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#cbd5e1" />
-            </marker>
-          </defs>
+      <div className="flex flex-1 flex-col lg:flex-row">
+        <aside className="border-b border-stone-200 bg-white p-4 lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r lg:p-5">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+            <input
+              aria-label="Search nodes"
+              placeholder="Search nodes…"
+              className="h-10 w-full rounded-xl border border-stone-200 bg-stone-50 pl-9 pr-3 text-sm outline-none transition placeholder:text-stone-400 focus:border-orange-300 focus:bg-white focus:ring-2 focus:ring-orange-100"
+            />
+          </div>
 
-          {connections.map((conn, idx) => {
-            const fromNode = nodes.find((n) => n.id === conn.from);
-            const toNode = nodes.find((n) => n.id === conn.to);
-            if (!fromNode || !toNode) return null;
-
-            // Updated Connection Points based on actual width
-            const x1 = fromNode.x + NODE_WIDTH;
-            const y1 = fromNode.y + 40; // Approx center of header
-            const x2 = toNode.x;
-            const y2 = toNode.y + 40;
-            const midX = (x1 + x2) / 2;
-
-            // Smoother Cubic Bezier path
-            const path = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
-
-            return (
-              <g key={`${conn.from}-${conn.to}`}>
-                {/* Visual link body */}
-                <path d={path} stroke="rgba(0,0,0,0.03)" strokeWidth="8" fill="none" />
-                <motion.path
-                  d={path}
-                  stroke={fromNode.color}
-                  strokeWidth="2"
-                  fill="none"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.5, delay: idx * 0.1 }}
-                />
-
-                {/* Data Pips */}
-                <motion.circle r="3" fill={fromNode.color} filter="blur(1px)">
-                  <animateMotion path={path} dur={`${2 + (idx % 3) * 0.5}s`} repeatCount="indefinite" />
-                </motion.circle>
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Nodes Layer */}
-        <div className="absolute inset-0 pointer-events-none z-20 overflow-visible">
-          {nodes.map((node) => (
-            <motion.div
-              key={node.id}
-              drag
-              dragMomentum={false}
-              onDrag={(e, info) => {
-                // Stabilized position update using absolute point relative to container
-                if (!containerRef.current) return;
-                const rect = containerRef.current.getBoundingClientRect();
-                void rect;
-                // info.delta is safer for incremental updates in frame-motion if used carefully
-                updateNodePos(node.id, node.x + info.delta.x, node.y + info.delta.y);
-              }}
-              style={{ x: node.x, y: node.y }}
-              className={[
-                "absolute w-[224px] bg-white border border-stone-200 rounded-3xl shadow-xl",
-                "pointer-events-auto cursor-grab active:cursor-grabbing group hover:border-orange-500/50",
-                "hover:shadow-2xl transition-all duration-300",
-              ].join(" ")}
-            >
-              {/* Node Header */}
-              <div className="p-4 border-b border-stone-50 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={[
-                      "w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-lg",
-                      "transition-transform group-hover:scale-110",
-                    ].join(" ")}
-                    style={{ backgroundColor: node.color }}
-                  >
-                    <node.icon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">{node.type}</p>
-                    <h3 className="text-xs font-bold text-stone-900 leading-tight">{node.title}</h3>
-                  </div>
-                </div>
-                <div className="flex opacity-0 group-hover:opacity-100 transition-opacity gap-1">
-                  <button className="p-1 text-stone-300 hover:text-stone-600">
-                    <Settings className="w-3 h-3" />
-                  </button>
-                  <button className="p-1 text-stone-300 hover:text-red-500">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Node Body */}
-              <div className="p-4">
-                {node.type === "model" && (
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-[10px] font-bold text-stone-500">
-                      <span className="flex items-center gap-1">
-                        <Zap className="w-2.5 h-2.5 text-orange-500" /> Confidence
-                      </span>
-                      <span className="text-stone-900">94%</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full bg-orange-500"
-                        initial={{ width: 0 }}
-                        animate={{ width: "94%" }}
-                        transition={{ duration: 1.5, ease: "easeOut" }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-stone-400 font-medium">
-                      Latency: <span className="text-stone-900">12ms</span>
-                    </p>
-                  </div>
-                )}
-
-                {node.type === "source" && (
-                  <div className="relative rounded-2xl overflow-hidden h-24 bg-orange-50 group/video">
-                    <img
-                      src="https://images.unsplash.com/photo-1541888941255-0816962f28fb?q=80&w=400"
-                      className={[
-                        "w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform",
-                        "duration-700",
-                      ].join(" ")}
-                      alt="stream"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-orange-950/25 to-transparent" />
-                    <div
-                      className={[
-                        "absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-red-500 text-[8px]",
-                        "font-bold text-white rounded-full uppercase shadow-lg shadow-red-500/20",
-                      ].join(" ")}
-                    >
-                      <div className="w-1 h-1 bg-white rounded-full animate-pulse" />
-                      Live Feed
-                    </div>
-                  </div>
-                )}
-
-                {node.type === "action" && (
-                  <div
-                    className={["flex items-center gap-3 p-3 bg-stone-50 rounded-2xl border", "border-stone-100"].join(
-                      " ",
-                    )}
-                  >
-                    <div
-                      className={`w-2 h-2 rounded-full ${node.color === "#6735E0" ? "bg-[#6735E0]" : "bg-blue-500"}`}
-                    />
-                    <span className="text-[10px] font-bold text-stone-600 truncate">{node.title} initialized</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Port Markers */}
-              {node.type !== "action" && (
-                <div
-                  className={[
-                    "absolute top-10 -right-2 w-4 h-4 bg-white border-2 border-orange-500 rounded-full z-30",
-                    "shadow-sm",
-                  ].join(" ")}
-                />
-              )}
-              {node.type !== "source" && (
-                <div
-                  className={[
-                    "absolute top-10 -left-2 w-4 h-4 bg-white border-2 border-stone-300 rounded-full z-30",
-                    "shadow-sm",
-                  ].join(" ")}
-                />
-              )}
-
-              {/* Node Footer */}
-              <div
-                className={[
-                  "px-4 pb-4 flex justify-between items-center opacity-0 group-hover:opacity-100",
-                  "transition-opacity",
-                ].join(" ")}
+          <div className="mt-5 flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-400">Node library</p>
+            <button type="button" className="text-xs font-bold text-orange-600 hover:text-orange-700">View all</button>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-1">
+            {NODE_LIBRARY.map((item) => (
+              <button
+                type="button"
+                key={item.label}
+                className="group flex min-h-14 items-center gap-3 rounded-xl border border-transparent px-2.5 text-left transition hover:border-stone-200 hover:bg-stone-50"
               >
-                <button className="text-[9px] font-bold text-orange-500 hover:underline">Config Params</button>
-                <ArrowRight className="w-3 h-3 text-stone-400" />
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.tone}`}>
+                  <item.icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-700">{item.label}</span>
+                <Plus className="hidden h-4 w-4 text-stone-300 group-hover:text-orange-500 xl:block" />
+              </button>
+            ))}
+          </div>
 
-        {/* Toolbar */}
-        <div className="absolute right-8 bottom-8 z-30 flex flex-col gap-3">
-          <button
-            className={[
-              "p-4 bg-white border border-stone-200 rounded-2xl shadow-2xl text-stone-600",
-              "hover:text-orange-500 hover:scale-110 active:scale-95 transition-all group relative",
-            ].join(" ")}
-          >
-            <Plus className="w-6 h-6" />
-            <div
-              className={[
-                "absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-orange-100",
-                "text-orange-700 border border-orange-200 text-[10px] rounded-xl opacity-0",
-                "group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl",
-              ].join(" ")}
-            >
-              Add Pipeline Node
+          <div className="mt-6 hidden rounded-2xl bg-orange-100 p-4 text-stone-600 lg:block">
+            <div className="flex items-center gap-2 text-xs font-bold text-orange-500">
+              <Zap className="h-3.5 w-3.5" /> Runtime health
             </div>
-          </button>
-          <button
-            className={[
-              "p-4 bg-white border border-stone-200 rounded-2xl shadow-2xl text-stone-600",
-              "hover:text-[#6735E0] hover:scale-110 transition-all group relative",
-            ].join(" ")}
-          >
-            <Monitor className="w-6 h-6" />
-            <div
-              className={[
-                "absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-orange-100",
-                "text-orange-700 border border-orange-200 text-[10px] rounded-xl opacity-0",
-                "group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap shadow-xl",
-              ].join(" ")}
-            >
-              Open Cloud Monitor
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div><p className="text-lg font-bold tabular-nums">12ms</p><p className="text-[10px] text-stone-500">Latency</p></div>
+              <div><p className="text-lg font-bold tabular-nums">99.9%</p><p className="text-[10px] text-stone-500">Uptime</p></div>
             </div>
+          </div>
+        </aside>
+
+        <main className="relative min-h-[650px] flex-1 overflow-hidden bg-[#f8f7f4]">
+          <div className="absolute left-5 top-5 z-30 flex items-center gap-2 rounded-xl border border-stone-200 bg-white/95 p-1.5 shadow-sm backdrop-blur">
+            <button type="button" className="flex h-8 items-center gap-2 rounded-lg bg-stone-100 px-3 text-xs font-bold text-stone-700">
+              <Grid2X2 className="h-3.5 w-3.5" /> Build
+            </button>
+            <button type="button" className="flex h-8 items-center gap-2 rounded-lg px-3 text-xs font-bold text-stone-500 hover:bg-stone-50">
+              <Radio className="h-3.5 w-3.5" /> Runs
+            </button>
+          </div>
+
+          <div
+            ref={canvasRef}
+            className="absolute inset-0 overflow-auto"
+            style={{
+              backgroundImage: "radial-gradient(circle, #d6d3d1 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+            }}
+          >
+            <div className="relative h-[620px] min-w-[1040px] origin-top-left" style={{ transform: `scale(${zoom / 100})` }}>
+              <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" aria-hidden="true">
+                {CONNECTIONS.map((connection, index) => {
+                  const from = nodeMap.get(connection.from);
+                  const to = nodeMap.get(connection.to);
+                  if (!from || !to) return null;
+                  const x1 = from.x + NODE_WIDTH;
+                  const y1 = from.y + NODE_HEIGHT / 2;
+                  const x2 = to.x;
+                  const y2 = to.y + NODE_HEIGHT / 2;
+                  const control = Math.max(60, (x2 - x1) / 2);
+                  const path = `M ${x1} ${y1} C ${x1 + control} ${y1}, ${x2 - control} ${y2}, ${x2} ${y2}`;
+
+                  return (
+                    <g key={`${connection.from}-${connection.to}`}>
+                      <path d={path} fill="none" stroke="#e7e5e4" strokeWidth="5" />
+                      <motion.path
+                        d={path}
+                        fill="none"
+                        stroke={isRunning ? from.tone : "#a8a29e"}
+                        strokeLinecap="round"
+                        strokeWidth="2"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 0.5, delay: index * 0.08 }}
+                      />
+                      {isRunning ? (
+                        <circle r="3.5" fill={from.tone}>
+                          <animateMotion path={path} dur={`${2.1 + index * 0.25}s`} repeatCount="indefinite" />
+                        </circle>
+                      ) : null}
+                    </g>
+                  );
+                })}
+              </svg>
+
+              {nodes.map((node) => (
+                <motion.article
+                  key={node.id}
+                  drag
+                  dragMomentum={false}
+                  onDragEnd={(_, info) => moveNode(node.id, info.offset.x, info.offset.y)}
+                  style={{ left: node.x, top: node.y }}
+                  className="group absolute z-20 h-[132px] w-[232px] cursor-grab rounded-2xl border border-stone-200 bg-white shadow-[0_8px_24px_rgba(28,25,23,0.07)] transition-shadow hover:shadow-[0_12px_32px_rgba(28,25,23,0.12)] active:cursor-grabbing"
+                >
+                  <div className="flex items-start gap-3 p-4">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" style={{ backgroundColor: node.tone }}>
+                      <node.icon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-400">{KIND_LABELS[node.kind]}</p>
+                      <h2 className="mt-0.5 truncate text-sm font-bold text-stone-900">{node.title}</h2>
+                      <p className="mt-1 truncate text-[11px] text-stone-500">{node.subtitle}</p>
+                    </div>
+                    <button type="button" aria-label={`Settings for ${node.title}`} className="rounded-lg p-1.5 text-stone-300 opacity-0 transition hover:bg-stone-100 hover:text-stone-600 group-hover:opacity-100">
+                      <Settings2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-stone-100 px-4 py-2.5">
+                    <span className="flex items-center gap-1.5 text-[10px] font-semibold text-stone-500">
+                      <span className={`h-1.5 w-1.5 rounded-full ${isRunning ? "bg-emerald-500" : "bg-stone-400"}`} />
+                      {isRunning ? "Healthy" : "Idle"}
+                    </span>
+                    <span className="text-[10px] font-bold tabular-nums text-stone-400">{node.kind === "model" ? "12ms" : "24 FPS"}</span>
+                  </div>
+                  {node.kind !== "input" ? <span className="absolute -left-2 top-[58px] h-4 w-4 rounded-full border-[3px] border-white bg-stone-300 shadow-sm" /> : null}
+                  {node.kind !== "output" ? <span className="absolute -right-2 top-[58px] h-4 w-4 rounded-full border-[3px] border-white shadow-sm" style={{ backgroundColor: node.tone }} /> : null}
+                </motion.article>
+              ))}
+            </div>
+          </div>
+
+          <div className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-stone-200 bg-white/95 p-1.5 shadow-lg shadow-stone-900/5 backdrop-blur">
+            <button type="button" onClick={() => setZoom((value) => Math.max(70, value - 10))} aria-label="Zoom out" className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100">
+              <Minus className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={() => setZoom(100)} className="h-8 min-w-14 rounded-lg px-2 text-xs font-bold tabular-nums text-stone-600 hover:bg-stone-100">{zoom}%</button>
+            <button type="button" onClick={() => setZoom((value) => Math.min(130, value + 10))} aria-label="Zoom in" className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100">
+              <Plus className="h-4 w-4" />
+            </button>
+            <span className="mx-1 h-5 w-px bg-stone-200" />
+            <button type="button" onClick={resetCanvas} aria-label="Reset canvas" className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100">
+              <RotateCcw className="h-4 w-4" />
+            </button>
+            <button type="button" aria-label="Fit to screen" className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100">
+              <Maximize2 className="h-4 w-4" />
+            </button>
+          </div>
+
+          <button type="button" className="absolute bottom-5 right-5 z-30 hidden h-10 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 text-xs font-bold text-stone-600 shadow-sm transition hover:bg-stone-50 sm:flex">
+            <Trash2 className="h-3.5 w-3.5" /> Clear canvas
           </button>
-        </div>
+        </main>
       </div>
     </div>
   );

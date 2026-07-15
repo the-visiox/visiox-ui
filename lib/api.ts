@@ -15,6 +15,21 @@ export class ApiError extends Error {
   }
 }
 
+function formatErrorValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(formatErrorValue).filter(Boolean).join(" ");
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, nested]) => {
+        const message = formatErrorValue(nested);
+        return message ? `${key}: ${message}` : "";
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+  return value == null ? "" : String(value);
+}
+
 function resolveBaseUrl(): string {
   const normalized = BASE_URL.replace(/\/+$/, "");
   if (typeof window === "undefined") return normalized;
@@ -132,16 +147,38 @@ export interface Dataset {
     train: number;
     val: number;
     test: number;
-    seed: number;
-    strategy?: "class" | "random";
+    seed: number | null;
+    strategy?: "class" | "random" | "imported";
+    source?: string;
+    format?: string;
+    archive_name?: string;
     test_dataset_id?: number | null;
     test_dataset_name?: string | null;
     summary?: DatasetSplitSummary;
   };
   split_updated_at?: string | null;
+  latest_import_job?: DatasetImportJob | null;
   thumbnail: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface DatasetImportJob {
+  id: number;
+  format: "images" | "yolo26" | "coco";
+  status: "queued" | "running" | "done" | "error";
+  total: number;
+  done: number;
+  summary?: Record<string, unknown>;
+  error?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DatasetImportAccepted {
+  accepted: boolean;
+  dataset: Dataset;
+  job: DatasetImportJob;
 }
 
 export interface DatasetSplitSummary {
@@ -226,7 +263,29 @@ export interface RunMetric {
   map50: number | null;
   f1: number | null;
   accuracy?: number | null;
-  extra?: { precision?: number; recall?: number; total_epochs?: number };
+  extra?: {
+    precision?: number;
+    recall?: number;
+    total_epochs?: number;
+    progress_percent?: number;
+    stage?: string;
+    message?: string;
+    eta_seconds?: number;
+    gpu_memory_mb?: number;
+    gpu_utilization?: number;
+    learning_rate?: number;
+    split_metrics?: Partial<Record<"train" | "valid" | "test", {
+      f1?: number;
+      precision?: number;
+      recall?: number;
+      map50?: number;
+      map50_95?: number;
+      "map50-95"?: number;
+      "mAP50-95"?: number;
+      "metrics/mAP50-95(B)"?: number;
+      map75?: number;
+    }>>;
+  } & Record<string, unknown>;
   recorded_at: string;
 }
 
@@ -255,8 +314,34 @@ export interface ModelRegistry {
   version: string;
   format: string;
   training_job: number | null;
+  model_file?: string | null;
+  file_size?: number | null;
+  artifact_url?: string | null;
   metrics: Record<string, unknown>;
   created_at: string;
+}
+
+export interface PredictionBox {
+  media_id: number;
+  label: string;
+  label_id?: number | null;
+  confidence: number;
+  bbox: [number, number, number, number];
+  bbox_format?: "xywh" | "xyxy";
+  normalized?: boolean;
+  color?: string;
+}
+
+export interface DatasetPredictionResponse {
+  dataset: number;
+  model: number;
+  predictions: PredictionBox[];
+  summary?: {
+    total_images?: number;
+    predicted_images?: number;
+    total_predictions?: number;
+    latency_ms?: number;
+  };
 }
 
 export interface PaginatedResponse<T> {
@@ -285,8 +370,9 @@ export async function request<T>(path: string, options: RequestInit = {}, retryO
 
   // Normalize URL to avoid double slashes or missing slashes
   const baseUrl = resolveBaseUrl();
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  const url = `${baseUrl}${cleanPath}`;
+  const url = /^https?:\/\//i.test(path)
+    ? path
+    : `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
   let res: Response;
   try {
@@ -324,14 +410,16 @@ export async function request<T>(path: string, options: RequestInit = {}, retryO
 
   if (!res.ok) {
     let message = `API error ${res.status}`;
+    let body: string | undefined;
     try {
       const err = await res.json();
-      message = err.detail || err.error || JSON.stringify(err);
+      body = formatErrorValue(err.detail || err.error || err) || undefined;
+      message = body || message;
     } catch {
       // If not JSON, use the status text or the generic message
       message = res.statusText || message;
     }
-    throw new Error(message);
+    throw new ApiError(message, res.status, body);
   }
 
   if (res.status === 204) return undefined as T;
@@ -346,6 +434,19 @@ export async function request<T>(path: string, options: RequestInit = {}, retryO
   }
 
   return undefined as unknown as T;
+}
+
+async function requestAllPages<T>(path: string): Promise<T[]> {
+  const results: T[] = [];
+  let nextPath: string | null = path;
+
+  while (nextPath) {
+    const page: PaginatedResponse<T> = await request<PaginatedResponse<T>>(nextPath);
+    results.push(...page.results);
+    nextPath = page.next;
+  }
+
+  return results;
 }
 
 async function tryRefresh(): Promise<boolean> {
@@ -653,13 +754,28 @@ export const datasets = {
     const form = new FormData();
     form.append("file", file);
     form.append("type", type);
-    return request<Media>(`/api/v1/datasets/${id}/upload/`, { method: "POST", body: form });
+    return request<DatasetImportAccepted>(`/api/v1/datasets/${id}/upload/`, { method: "POST", body: form });
   },
   uploadBatch(id: number, files: File[], type: "image" | "video" = "image") {
     const form = new FormData();
     for (const file of files) form.append("files", file);
     form.append("type", type);
-    return request<Media[]>(`/api/v1/datasets/${id}/upload-batch/`, { method: "POST", body: form });
+    return request<DatasetImportAccepted>(`/api/v1/datasets/${id}/upload-batch/`, { method: "POST", body: form });
+  },
+  importArchive(id: number, file: File, format: "yolo26" | "coco") {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("format", format);
+    return request<DatasetImportAccepted>(`/api/v1/datasets/${id}/import-archive/`, { method: "POST", body: form });
+  },
+  startImport(id: number, files: File[], format: "images" | "yolo26" | "coco") {
+    const form = new FormData();
+    for (const file of files) form.append("files", file);
+    form.append("format", format);
+    return request<DatasetImportAccepted>(
+      `/api/v1/datasets/${id}/start-import/`,
+      { method: "POST", body: form },
+    );
   },
   deleteMedia(id: number, mediaIds: number[]) {
     return request<{ deleted: number; ids: number[] }>(`/api/v1/datasets/${id}/media/`, {
@@ -857,11 +973,20 @@ export const deployments = {
   listRegistry() {
     return request<PaginatedResponse<ModelRegistry>>("/api/v1/registry/");
   },
+  listAllRegistry() {
+    return requestAllPages<ModelRegistry>("/api/v1/registry/");
+  },
   listEndpoints() {
     return request<PaginatedResponse<InferenceEndpoint>>("/api/v1/endpoints/");
   },
   getEndpoint(id: number) {
     return request<InferenceEndpoint>(`/api/v1/endpoints/${id}/`);
+  },
+  predictDataset(registryId: number, data: { dataset: number; media_ids?: number[]; confidence?: number }) {
+    return request<DatasetPredictionResponse>(`/api/v1/registry/${registryId}/predict-dataset/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
   createEndpoint(data: { registry_entry: number; name: string; confidence_threshold?: number }) {
     return request<InferenceEndpoint>("/api/v1/endpoints/", { method: "POST", body: JSON.stringify(data) });

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import {
+  type LucideIcon,
   Play,
   Square,
   Activity,
@@ -29,6 +30,14 @@ import {
   Rocket,
   Trash2,
   RotateCcw,
+  CalendarDays,
+  Clock3,
+  BatteryCharging,
+  TrendingUp,
+  FolderOpen,
+  Wrench,
+  FileText,
+  ShieldCheck,
 } from "lucide-react";
 import {
   training,
@@ -43,18 +52,314 @@ import {
   type ModelRegistry,
 } from "@/lib/api";
 
-const STATUS_COLOR: Record<TrainingJob["status"], string> = {
-  pending: "text-stone-400",
-  queued: "text-blue-500",
-  running: "text-orange-500",
-  completed: "text-green-500",
-  failed: "text-red-500",
-  cancelled: "text-stone-400",
-};
-
-const EMPTY_LOSS_PLACEHOLDER = [12, 18, 24, 22, 30, 28, 35, 26, 20, 16, 14, 18, 22, 19, 25, 29, 24, 18, 15, 12];
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 type JobFilter = "all" | "active" | "completed" | "failed";
+type SummarySplit = "train" | "valid" | "test";
+type ZoomedChart = "loss" | "map50";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function findMetricValue(source: unknown, keys: string[], depth = 0): unknown {
+  if (!isRecord(source) || depth > 4) return undefined;
+  for (const key of keys) {
+    if (source[key] != null) return source[key];
+  }
+  for (const nestedKey of ["metrics", "results", "summary", "latest", "best", "extra"]) {
+    const nested = source[nestedKey];
+    const found = findMetricValue(nested, keys, depth + 1);
+    if (found != null) return found;
+  }
+  for (const value of Object.values(source)) {
+    const found = findMetricValue(value, keys, depth + 1);
+    if (found != null) return found;
+  }
+  return undefined;
+}
+
+function parseTrainingLogMetrics(source: unknown): RunMetric[] {
+  if (!isRecord(source) || !Array.isArray(source.events)) return [];
+  return source.events.flatMap((entry, index) => {
+    if (!isRecord(entry) || entry.event !== "metrics" || !isRecord(entry.payload)) return [];
+    const payload = entry.payload;
+    const timestamp = asNumber(entry.timestamp);
+    return [
+      {
+        id: -index - 1,
+        experiment: 0,
+        epoch: asNumber(payload.epoch) ?? index + 1,
+        step: asNumber(payload.step) ?? 0,
+        loss: asNumber(payload.loss),
+        val_loss: asNumber(payload.val_loss),
+        map50: asNumber(payload.map50 ?? findMetricValue(payload, ["metrics/mAP50(B)"])),
+        f1: asNumber(payload.f1),
+        accuracy: asNumber(payload.accuracy),
+        extra: isRecord(payload.extra) ? payload.extra : {},
+        recorded_at: timestamp == null ? "" : new Date(timestamp * 1000).toISOString(),
+      },
+    ];
+  });
+}
+
+function parseTrainingLogSplitMetrics(source: unknown): Record<string, unknown> | null {
+  if (!isRecord(source) || !Array.isArray(source.events)) return null;
+  const splitMetrics: Record<string, unknown> = {};
+
+  for (const entry of source.events) {
+    if (!isRecord(entry) || entry.event !== "split_metrics" || !isRecord(entry.payload)) continue;
+    const split = asString(entry.payload.split) as SummarySplit | null;
+    if (split !== "train" && split !== "valid" && split !== "test") continue;
+    splitMetrics[split] = isRecord(entry.payload.summary) ? entry.payload.summary : entry.payload;
+  }
+
+  return Object.keys(splitMetrics).length > 0 ? { split_metrics: splitMetrics, ...splitMetrics } : null;
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds == null || seconds < 0) return "-";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+function formatMetric(value: number | null | undefined, digits = 3): string {
+  return value == null ? "-" : value.toFixed(digits);
+}
+
+function formatScorePercent(value: number | null | undefined, digits = 2): string {
+  if (value == null) return "-";
+  const percentValue = Math.abs(value) <= 1 ? value * 100 : value;
+  return `${percentValue.toFixed(digits)}%`;
+}
+
+function MetricLineChart({
+  title,
+  description,
+  points,
+  color,
+  icon: Icon,
+  tone = "orange",
+  percent = false,
+  yAxisLabel = "Value",
+  xAxisMax,
+  expanded = false,
+  onExpand,
+}: {
+  title: string;
+  description?: string;
+  points: { epoch: number; value: number }[];
+  color: string;
+  icon: LucideIcon;
+  tone?: "orange" | "violet";
+  percent?: boolean;
+  yAxisLabel?: string;
+  xAxisMax?: number;
+  expanded?: boolean;
+  onExpand?: () => void;
+}) {
+  const width = expanded ? 980 : 760;
+  const height = expanded ? 420 : 280;
+  const paddingLeft = expanded ? 150 : 130;
+  const paddingRight = expanded ? 40 : 28;
+  const paddingTop = expanded ? 44 : 34;
+  const paddingBottom = expanded ? 104 : 76;
+  const values = points.map((point) => point.value);
+  const minValue = values.length ? Math.min(...values) : 0;
+  const maxValue = values.length ? Math.max(...values) : 1;
+  const valueRange = maxValue - minValue;
+  const range = Math.max(valueRange, Math.abs(maxValue) * 0.05, 0.001);
+  const chartMin = valueRange === 0 ? minValue - range / 2 : minValue;
+  const chartMax = chartMin + range;
+  const plotWidth = width - paddingLeft - paddingRight;
+  const plotHeight = height - paddingTop - paddingBottom;
+  const maxEpoch = Math.max(...points.map((point) => point.epoch), xAxisMax ?? 0, 1);
+  const coordinates = points.map((point) => ({
+    ...point,
+    x: paddingLeft + (point.epoch / maxEpoch) * plotWidth,
+    y: paddingTop + ((chartMax - point.value) / range) * plotHeight,
+  }));
+  const latest = points.at(-1)?.value;
+  const axisValue = (value: number) => (percent ? formatScorePercent(value) : value.toFixed(2));
+  const yTicks = Array.from({ length: 5 }, (_, index) => {
+    const ratio = index / 4;
+    const value = chartMax - ratio * (chartMax - chartMin);
+    return { label: axisValue(value), y: paddingTop + ratio * plotHeight };
+  });
+  const xTicks = Array.from({ length: 3 }, (_, index) => {
+    const epoch = (maxEpoch * index) / 2;
+    return {
+      epoch,
+      label: Number.isInteger(epoch) ? String(epoch) : epoch.toFixed(1),
+      x: paddingLeft + (epoch / maxEpoch) * plotWidth,
+    };
+  });
+  const latestDisplay = latest == null ? "-" : percent ? formatScorePercent(latest) : formatMetric(latest, 2);
+  const toneClass =
+    tone === "violet"
+      ? {
+          iconWrap: "bg-violet-100 text-violet-600",
+          valueBox: "border-violet-200 bg-violet-50/80 text-violet-700",
+          value: "text-violet-700",
+        }
+      : {
+          iconWrap: "bg-orange-100 text-orange-600",
+          valueBox: "border-orange-200 bg-orange-50/80 text-orange-600",
+          value: "text-orange-600",
+        };
+
+  const cardClass = [
+    "rounded-2xl border border-stone-200 bg-white shadow-sm",
+    expanded ? "p-5 sm:p-6" : "p-4",
+    onExpand
+      ? "w-full cursor-zoom-in text-left transition-colors hover:border-orange-200 hover:bg-orange-50/20 focus-visible:ring-2 focus-visible:ring-orange-500/30"
+      : "",
+  ].join(" ");
+  const chartContent = (
+    <>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${toneClass.iconWrap}`}>
+            <Icon aria-hidden="true" className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-lg font-bold tracking-normal text-slate-950">{title}</p>
+            {description ? <p>{description}</p> : null}
+          </div>
+        </div>
+        <div className={`rounded-xl border px-2.5 py-1.5 text-center ${toneClass.valueBox}`}>
+          <p className={`font-mono text-sm font-extrabold tabular-nums tracking-normal ${toneClass.value}`}>
+            {latestDisplay}
+          </p>
+        </div>
+      </div>
+      {coordinates.length ? (
+        <div className="mt-4 overflow-hidden">
+          <svg
+            role="img"
+            aria-label={`${title}: ${yAxisLabel} by epoch over ${coordinates.length} epochs`}
+            viewBox={`0 0 ${width} ${height}`}
+            className={expanded ? "h-[22rem] w-full sm:h-[28rem]" : "h-44 w-full sm:h-48"}
+          >
+            {yTicks.map((tick) => (
+              <g key={tick.y}>
+                <line
+                  x1={paddingLeft}
+                  x2={width - paddingRight}
+                  y1={tick.y}
+                  y2={tick.y}
+                  stroke="#dedbd6"
+                  strokeDasharray="4 5"
+                />
+                <text
+                  x={paddingLeft - (expanded ? 30 : 24)}
+                  y={tick.y + 5}
+                  textAnchor="end"
+                  className={expanded ? "fill-stone-600 text-[22px] font-semibold" : "fill-stone-600 text-[18px] font-semibold"}
+                >
+                  {tick.label}
+                </text>
+              </g>
+            ))}
+            <line
+              x1={paddingLeft}
+              x2={paddingLeft}
+              y1={paddingTop}
+              y2={paddingTop + plotHeight}
+              stroke="#bdb7ae"
+            />
+            <line
+              x1={paddingLeft}
+              x2={width - paddingRight}
+              y1={paddingTop + plotHeight}
+              y2={paddingTop + plotHeight}
+              stroke="#bdb7ae"
+            />
+            {xTicks.map((tick) => (
+              <g key={tick.epoch}>
+                <line
+                  x1={tick.x}
+                  x2={tick.x}
+                  y1={paddingTop + plotHeight}
+                  y2={paddingTop + plotHeight + 4}
+                  stroke="#a8a29e"
+                />
+                <text
+                  x={tick.x}
+                  y={height - (expanded ? 58 : 42)}
+                  textAnchor="middle"
+                  className={expanded ? "fill-stone-600 text-[22px] font-semibold" : "fill-stone-600 text-[18px] font-semibold"}
+                >
+                  {tick.label}
+                </text>
+              </g>
+            ))}
+            <text
+              x={paddingLeft - (expanded ? 104 : 88)}
+              y={paddingTop + plotHeight / 2}
+              textAnchor="middle"
+              transform={`rotate(-90 ${paddingLeft - (expanded ? 104 : 88)} ${paddingTop + plotHeight / 2})`}
+              className={expanded ? "fill-stone-700 text-[23px] font-bold" : "fill-stone-700 text-[18px] font-bold"}
+            >
+              {yAxisLabel}
+            </text>
+            <text
+              x={paddingLeft + plotWidth / 2}
+              y={height - (expanded ? 14 : 10)}
+              textAnchor="middle"
+              className={expanded ? "fill-stone-700 text-[23px] font-bold" : "fill-stone-700 text-[18px] font-bold"}
+            >
+              Epoch
+            </text>
+            <polyline
+              points={coordinates.map((point) => `${point.x},${point.y}`).join(" ")}
+              fill="none"
+              stroke={color}
+              strokeWidth={expanded ? "6" : "5"}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {coordinates.map((point, index) => (
+              <circle key={`${point.epoch}-${index}`} cx={point.x} cy={point.y} r={expanded ? "5.75" : "4.75"} fill={color} />
+            ))}
+          </svg>
+        </div>
+      ) : (
+        <div className="mt-4 flex h-40 items-center justify-center rounded-2xl border border-dashed border-stone-200 bg-stone-50 px-4 text-center text-sm font-semibold text-stone-400 sm:h-44">
+          Waiting for epoch metrics
+        </div>
+      )}
+    </>
+  );
+
+  return onExpand ? (
+    <button type="button" onClick={onExpand} className={cardClass} aria-label={`Phóng to biểu đồ ${title}`}>
+      {chartContent}
+    </button>
+  ) : (
+    <div className={cardClass}>{chartContent}</div>
+  );
+}
 
 function SkeletonJob() {
   return (
@@ -417,8 +722,13 @@ export default function TrainPage() {
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [selectedJob, setSelectedJob] = useState<TrainingJob | null>(null);
   const [metrics, setMetrics] = useState<RunMetric[]>([]);
+  const [metricsByJobId, setMetricsByJobId] = useState<Record<number, RunMetric[]>>({});
+  const [metricsLoadingJobId, setMetricsLoadingJobId] = useState<number | null>(null);
+  const [artifactMetrics, setArtifactMetrics] = useState<Record<string, unknown> | null>(null);
+  const [artifactLogMetrics, setArtifactLogMetrics] = useState<RunMetric[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [zoomedChart, setZoomedChart] = useState<ZoomedChart | null>(null);
   const [projectList, setProjectList] = useState<Project[]>([]);
   const [datasetList, setDatasetList] = useState<Dataset[]>([]);
   const [architectures, setArchitectures] = useState<ModelArchitecture[]>([]);
@@ -429,6 +739,7 @@ export default function TrainPage() {
   const [jobQuery, setJobQuery] = useState("");
   const [pageError, setPageError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [summarySplit, setSummarySplit] = useState<SummarySplit>("train");
   const [trainingTarget, setTrainingTarget] = useState<{ projectId?: number; datasetId?: number }>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deepLinkHandledRef = useRef(false);
@@ -441,7 +752,7 @@ export default function TrainPage() {
         projects.list(),
         datasets.list(),
         training.listArchitectures(),
-        deployments.listRegistry(),
+        deployments.listAllRegistry(),
       ]);
       if (jobsRes.status === "fulfilled") {
         const list = jobsRes.value.results;
@@ -457,7 +768,7 @@ export default function TrainPage() {
       if (projRes.status === "fulfilled") setProjectList(projRes.value.results);
       if (dsRes.status === "fulfilled") setDatasetList(dsRes.value.results);
       if (archRes.status === "fulfilled") setArchitectures(archRes.value.results);
-      if (registryRes.status === "fulfilled") setRegisteredModels(registryRes.value.results);
+      if (registryRes.status === "fulfilled") setRegisteredModels(registryRes.value);
       if (!deepLinkHandledRef.current) {
         deepLinkHandledRef.current = true;
         const params = new URLSearchParams(window.location.search);
@@ -489,20 +800,36 @@ export default function TrainPage() {
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!selectedJobId) return;
+    let cancelled = false;
 
     const fetchMetrics = async () => {
+      const jobId = selectedJobId;
+      setMetricsLoadingJobId(jobId);
       try {
-        const exps = await training.getExperiments(selectedJobId);
+        const exps = await training.getExperiments(jobId);
         if (exps.length > 0) {
           const m = await training.getMetrics(exps[0].id);
+          if (cancelled) return;
           setMetrics(m);
+          setMetricsByJobId((current) => ({ ...current, [jobId]: m }));
+        } else {
+          if (cancelled) return;
+          setMetrics([]);
+          setMetricsByJobId((current) => ({ ...current, [jobId]: [] }));
         }
         // Refresh job status
-        const updated = await training.getJob(selectedJobId);
+        const updated = await training.getJob(jobId);
+        if (cancelled) return;
         setSelectedJob(updated);
         setJobs((prev) => prev.map((j) => (j.id === updated.id ? updated : j)));
       } catch {
-        setPageError("Live metrics are temporarily unavailable. VisioX will retry automatically.");
+        if (!cancelled) {
+          setPageError("Live metrics are temporarily unavailable. VisioX will retry automatically.");
+        }
+      } finally {
+        if (!cancelled) {
+          setMetricsLoadingJobId((current) => (current === jobId ? null : current));
+        }
       }
     };
 
@@ -511,9 +838,62 @@ export default function TrainPage() {
       pollRef.current = setInterval(fetchMetrics, 2000);
     }
     return () => {
+      cancelled = true;
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [selectedJobId, selectedJobStatus]);
+
+  useEffect(() => {
+    if (!zoomedChart) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setZoomedChart(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [zoomedChart]);
+
+  useEffect(() => {
+    const metricsUrl = selectedJob?.artifact_urls?.["metrics.json"];
+    const trainingLogUrl = selectedJob?.artifact_urls?.["training_log.json"];
+    if (selectedJob?.status !== "completed" || (!metricsUrl && !trainingLogUrl)) {
+      setArtifactMetrics(null);
+      setArtifactLogMetrics([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadArtifactMetrics = async () => {
+      const fetchJson = async (url: string): Promise<unknown> => {
+        const response = await fetch(url, { signal: controller.signal });
+        return response.ok ? response.json() : null;
+      };
+
+      let metricsPayload: unknown = null;
+      let trainingLogPayload: unknown = null;
+
+      try {
+        metricsPayload = metricsUrl ? await fetchJson(metricsUrl) : null;
+      } catch {
+        metricsPayload = null;
+      }
+
+      try {
+        trainingLogPayload = trainingLogUrl ? await fetchJson(trainingLogUrl) : null;
+      } catch {
+        trainingLogPayload = null;
+      }
+
+      if (controller.signal.aborted) return;
+
+      const logSplitMetrics = parseTrainingLogSplitMetrics(trainingLogPayload);
+      setArtifactMetrics(isRecord(metricsPayload) ? metricsPayload : logSplitMetrics);
+      setArtifactLogMetrics(parseTrainingLogMetrics(trainingLogPayload));
+    };
+
+    void loadArtifactMetrics();
+    return () => controller.abort();
+  }, [selectedJob?.artifact_urls, selectedJob?.status]);
 
   const handleStop = async (jobId: number) => {
     const job = jobs.find((item) => item.id === jobId);
@@ -538,6 +918,7 @@ export default function TrainPage() {
       setJobs((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setSelectedJob(updated);
       setMetrics([]);
+      setMetricsByJobId((current) => ({ ...current, [job.id]: [] }));
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Couldn’t retry this training run.");
     } finally {
@@ -557,6 +938,11 @@ export default function TrainPage() {
         setSelectedJob(remaining[0] ?? null);
         setMetrics([]);
       }
+      setMetricsByJobId((current) => {
+        const next = { ...current };
+        delete next[job.id];
+        return next;
+      });
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Couldn’t delete this training run.");
     } finally {
@@ -567,17 +953,235 @@ export default function TrainPage() {
   const handleJobCreated = (job: TrainingJob) => {
     setJobs((prev) => [job, ...prev]);
     setSelectedJob(job);
+    setMetricsByJobId((current) => ({ ...current, [job.id]: [] }));
     setShowModal(false);
   };
 
-  const latestMetric = metrics[metrics.length - 1];
-  const lossHistory = metrics.slice(-20).map((m) => m.loss ?? 0);
-  const maxLoss = Math.max(...lossHistory, 0.001);
+  const handleSelectJob = (job: TrainingJob) => {
+    if (selectedJob?.id === job.id) return;
+    setSelectedJob(job);
+  };
+
+  const selectedLiveMetrics = selectedJobId ? (metricsByJobId[selectedJobId] ?? []) : metrics;
+  const displayMetrics =
+    selectedLiveMetrics.length > 0 || selectedJob?.status !== "completed" ? selectedLiveMetrics : artifactLogMetrics;
+  const latestMetric = displayMetrics[displayMetrics.length - 1];
+  const hasMetrics = Boolean(latestMetric);
+  const isMetricsLoading = metricsLoadingJobId === selectedJobId;
+  const isActiveJob = selectedJob?.status === "queued" || selectedJob?.status === "running";
+  const chartMetrics = displayMetrics.slice(-40);
+  const lossChartPoints = chartMetrics.flatMap((metric) =>
+    metric.loss == null ? [] : [{ epoch: metric.epoch, value: metric.loss }],
+  );
+  const map50ChartPoints = chartMetrics.flatMap((metric) =>
+    metric.map50 == null ? [] : [{ epoch: metric.epoch, value: metric.map50 }],
+  );
+  const zoomedChartConfig =
+    zoomedChart === "loss"
+      ? {
+          title: "Training Loss",
+          points: lossChartPoints,
+          color: "#f97316",
+          icon: Activity,
+          tone: "orange" as const,
+          percent: false,
+          yAxisLabel: "Loss",
+        }
+      : zoomedChart === "map50"
+        ? {
+            title: "mAP@0.5",
+            points: map50ChartPoints,
+            color: "#7c3aed",
+            icon: Target,
+            tone: "violet" as const,
+            percent: false,
+            yAxisLabel: "Score",
+          }
+        : null;
+  const completedMetricSource = artifactMetrics ?? null;
 
   const hyperparams = selectedJob?.hyperparams ?? {};
-  const totalEpochs = Number(latestMetric?.extra?.total_epochs ?? hyperparams.epochs ?? 0);
-  const progress = totalEpochs > 0 ? Math.min(100, ((latestMetric?.epoch ?? 0) / totalEpochs) * 100) : 0;
+  const metricExtra = latestMetric?.extra ?? {};
+  const lossDisplay =
+    latestMetric?.loss ??
+    asNumber(findMetricValue(completedMetricSource, ["loss", "train_loss", "train/box_loss", "box_loss"]));
+  const epochDisplay =
+    latestMetric?.epoch ??
+    asNumber(findMetricValue(completedMetricSource, ["best_epoch", "epoch", "epochs_completed", "total_epochs"]));
+  const totalEpochs =
+    asNumber(metricExtra.total_epochs) ??
+    asNumber(findMetricValue(completedMetricSource, ["total_epochs", "epochs"])) ??
+    asNumber(hyperparams.epochs) ??
+    0;
+  const explicitProgress =
+    asNumber(metricExtra.progress_percent ?? metricExtra.progress) ??
+    asNumber(findMetricValue(completedMetricSource, ["progress_percent", "progress"]));
+  const epochProgress = totalEpochs > 0 ? ((epochDisplay ?? 0) / totalEpochs) * 100 : 0;
+  const progress =
+    selectedJob?.status === "completed"
+      ? 100
+      : selectedJob?.status === "queued"
+        ? 8
+        : selectedJob?.status === "running" && !hasMetrics
+          ? 12
+        : clampPercent(explicitProgress ?? epochProgress);
+  const stageLabel =
+    selectedJob?.status === "queued"
+      ? "Waiting for GPU agent"
+      : selectedJob?.status === "completed"
+        ? asString(findMetricValue(completedMetricSource, ["stage"])) ?? "Completed"
+        : selectedJob?.status === "running" && !hasMetrics
+          ? "Preparing"
+          : asString(metricExtra.stage) ?? "Training";
+  const progressMessage =
+    asString(metricExtra.message) ??
+    asString(findMetricValue(completedMetricSource, ["message"])) ??
+    (selectedJob?.status === "running" && !hasMetrics
+      ? "GPU agent is preparing the dataset and waiting to report the first epoch"
+      : selectedJob?.status === "running"
+        ? `Epoch ${epochDisplay ?? 0}${totalEpochs ? ` of ${totalEpochs}` : ""}`
+      : selectedJob?.status === "completed"
+        ? epochDisplay != null
+          ? `Training completed at epoch ${epochDisplay}${totalEpochs ? ` / ${totalEpochs}` : ""}`
+          : "Training completed"
+      : selectedJob?.status ?? "No active run");
+  const etaSeconds =
+    asNumber(metricExtra.eta_seconds) ??
+    asNumber(findMetricValue(completedMetricSource, ["eta_seconds"]));
+  const gpuMemoryMb =
+    asNumber(metricExtra.gpu_memory_mb) ??
+    asNumber(findMetricValue(completedMetricSource, ["gpu_memory_mb"]));
+  const gpuUtilization =
+    asNumber(metricExtra.gpu_utilization) ??
+    asNumber(findMetricValue(completedMetricSource, ["gpu_utilization"]));
+  const map50 =
+    latestMetric?.map50 ??
+    asNumber(metricExtra["metrics/mAP50(B)"]) ??
+    asNumber(findMetricValue(completedMetricSource, ["best_map50", "map50", "mAP50", "metrics/mAP50(B)"]));
+  const valLoss =
+    latestMetric?.val_loss ??
+    asNumber(metricExtra["val/box_loss"]) ??
+    asNumber(findMetricValue(completedMetricSource, ["val_loss", "val/box_loss", "validation_loss"]));
+  const learningRate = asNumber(metricExtra.learning_rate ?? metricExtra["lr/pg0"]);
+  const learningRateDisplay = learningRate ?? asNumber(hyperparams.lr ?? hyperparams.lr0);
   const selectedDataset = datasetList.find((dataset) => dataset.id === selectedJob?.dataset);
+  const selectedRegistry = registeredModels.find((model) => model.training_job === selectedJob?.id);
+  const selectedModelMetrics = selectedRegistry?.metrics ?? {};
+  const metricSources = [completedMetricSource, selectedModelMetrics, metricExtra, latestMetric].filter(Boolean);
+  const findSplitMetric = (split: SummarySplit, metricKeys: string[]): number | null => {
+    const splitKeys =
+      split === "train"
+        ? ["train", "training"]
+        : split === "valid"
+          ? ["valid", "val", "validation", "dev"]
+          : ["test"];
+    const splitContainers = ["summary", "summaries", "splits", "split_metrics", "by_split", "datasets", "metrics", "results", "best", "latest"];
+    const candidateKeys = splitKeys.flatMap((splitKey) =>
+      metricKeys.flatMap((metricKey) => [
+        `${splitKey}_${metricKey}`,
+        `${metricKey}_${splitKey}`,
+        `${splitKey}/${metricKey}`,
+        `${metricKey}/${splitKey}`,
+        `${splitKey}.${metricKey}`,
+        `${metricKey}.${splitKey}`,
+        `metrics/${splitKey}/${metricKey}`,
+        `metrics/${metricKey}/${splitKey}`,
+      ]),
+    );
+
+    for (const source of metricSources) {
+      if (!isRecord(source)) continue;
+
+      for (const splitKey of splitKeys) {
+        const directSplit = source[splitKey];
+        if (isRecord(directSplit)) {
+          const directValue = asNumber(findMetricValue(directSplit, metricKeys));
+          if (directValue != null) return directValue;
+        }
+      }
+
+      for (const containerKey of splitContainers) {
+        const container = source[containerKey];
+        if (!isRecord(container)) continue;
+        for (const splitKey of splitKeys) {
+          const splitRecord = container[splitKey];
+          if (isRecord(splitRecord)) {
+            const nestedValue = asNumber(findMetricValue(splitRecord, metricKeys));
+            if (nestedValue != null) return nestedValue;
+          }
+        }
+      }
+    }
+
+    for (const source of metricSources) {
+      if (!isRecord(source)) continue;
+      const found = asNumber(findMetricValue(source, candidateKeys));
+      if (found != null) return found;
+    }
+
+    if (split === "valid") {
+      for (const source of metricSources) {
+        if (!isRecord(source)) continue;
+        const validationRecords = [source, source.latest, source.summary].filter(isRecord);
+        for (const record of validationRecords) {
+          for (const metricKey of metricKeys) {
+            const directValue = asNumber(record[metricKey]);
+            if (directValue != null) return directValue;
+          }
+        }
+      }
+    }
+    return null;
+  };
+  const getSplitSummaryValues = (split: SummarySplit): [string, number | null][] => {
+    const precision = findSplitMetric(split, ["precision", "metrics/precision(B)"]);
+    const recall = findSplitMetric(split, ["recall", "metrics/recall(B)"]);
+    const explicitF1 = findSplitMetric(split, ["f1", "f1_score"]);
+    const derivedF1 =
+      precision != null && recall != null
+        ? precision + recall === 0
+          ? 0
+          : (2 * precision * recall) / (precision + recall)
+        : null;
+    return [
+      ["F1 Score", explicitF1 ?? derivedF1],
+      ["Precision", precision],
+      ["Recall", recall],
+      ["mAP50", findSplitMetric(split, ["map50", "mAP50", "best_map50", "metrics/mAP50(B)"])],
+      [
+        "mAP50-95",
+        findSplitMetric(split, [
+          "map50_95",
+          "map50-95",
+          "mAP50-95",
+          "mAP50-95(B)",
+          "best_map50_95",
+          "metrics/mAP50-95(B)",
+          "metrics/mAP50-95",
+        ]),
+      ],
+    ];
+  };
+  const summarySplitMetrics: Record<SummarySplit, { label: string; values: [string, number | null][] }> = {
+    train: {
+      label: "Train Summary",
+      values: getSplitSummaryValues("train"),
+    },
+    valid: {
+      label: "Valid Summary",
+      values: getSplitSummaryValues("valid"),
+    },
+    test: {
+      label: "Test Summary",
+      values: getSplitSummaryValues("test"),
+    },
+  };
+  const confusionMatrixUrl = selectedJob?.artifact_urls?.["confusion_matrix.png"] ?? null;
+  const summaryArtifacts = Object.entries(selectedJob?.artifact_urls ?? {}).filter(
+    ([name]) => name === "best.onnx" || name === "best.pt",
+  );
+  const showSummaryPanel = Boolean(selectedJob);
+  const summaryReady = selectedJob?.status === "completed";
   const filteredJobs = useMemo(() => {
     const query = jobQuery.trim().toLowerCase();
     return jobs.filter((job) => {
@@ -610,6 +1214,53 @@ export default function TrainPage() {
             initialDatasetId={trainingTarget.datasetId}
           />
         )}
+        {zoomedChartConfig ? (
+          <motion.div
+            key="chart-zoom"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/55 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${zoomedChartConfig.title} enlarged chart`}
+            onClick={() => setZoomedChart(null)}
+          >
+            <motion.div
+              initial={{ y: 18, scale: 0.98, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: 18, scale: 0.98, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 24 }}
+              className="max-h-[calc(100vh-2rem)] w-full max-w-5xl overflow-y-auto rounded-3xl border border-stone-200 bg-white p-4 shadow-2xl sm:p-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-widest text-stone-400">Training Chart</p>
+                  <h3 className="mt-1 truncate text-lg font-bold text-stone-900">{zoomedChartConfig.title}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setZoomedChart(null)}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-stone-200 text-stone-500 transition-colors hover:bg-stone-50 hover:text-stone-900 focus-visible:ring-2 focus-visible:ring-orange-500/30"
+                >
+                  <X aria-hidden="true" className="h-5 w-5" />
+                </button>
+              </div>
+              <MetricLineChart
+                title={zoomedChartConfig.title}
+                points={zoomedChartConfig.points}
+                color={zoomedChartConfig.color}
+                icon={zoomedChartConfig.icon}
+                tone={zoomedChartConfig.tone}
+                percent={zoomedChartConfig.percent}
+                yAxisLabel={zoomedChartConfig.yAxisLabel}
+                xAxisMax={totalEpochs || undefined}
+                expanded
+              />
+            </motion.div>
+          </motion.div>
+        ) : null}
       </AnimatePresence>
 
       <main className="z-10 mx-auto w-full max-w-6xl flex-grow p-4 md:p-6">
@@ -714,7 +1365,10 @@ export default function TrainPage() {
           {registeredModels.length > 0 ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {registeredModels.slice(0, 4).map((model) => {
-                const map50 = typeof model.metrics.map50 === "number" ? model.metrics.map50 : null;
+                const map50 = asNumber(
+                  model.metrics.map50 ??
+                    findMetricValue(model.metrics, ["best_map50", "map50", "mAP50", "metrics/mAP50(B)"]),
+                );
                 return (
                   <article key={model.id} className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4">
                     <div className="mb-3 flex items-start justify-between gap-2">
@@ -772,21 +1426,17 @@ export default function TrainPage() {
               />
 
               <div className="relative z-10">
-                <div className="flex justify-between items-start mb-5">
-                  <div>
-                    <h2 className="text-xl font-bold text-stone-900 mb-1">
+                <div className="mb-5 flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 flex-wrap items-center gap-3">
+                    <h2 className="truncate text-2xl font-bold tracking-tight text-stone-900">
                       {selectedJob ? selectedJob.name : "No job selected"}
                     </h2>
-                    <p className="text-stone-500 text-sm">
-                      {selectedJob ? (
-                        <>
-                          Status:{" "}
-                          <span className={`font-mono ${STATUS_COLOR[selectedJob.status]}`}>{selectedJob.status}</span>
-                        </>
-                      ) : (
-                        "Start a new experiment to begin training"
-                      )}
-                    </p>
+                    {selectedJob ? (
+                      <span className={["inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold capitalize", selectedJob.status === "running" ? "bg-emerald-50 text-emerald-600" : selectedJob.status === "failed" ? "bg-red-50 text-red-600" : selectedJob.status === "completed" ? "bg-blue-50 text-blue-600" : "bg-stone-100 text-stone-600"].join(" ")}>
+                        <span className={["h-2 w-2 rounded-full", selectedJob.status === "running" ? "bg-emerald-500" : selectedJob.status === "failed" ? "bg-red-500" : selectedJob.status === "completed" ? "bg-blue-500" : "bg-stone-400"].join(" ")} />
+                        {selectedJob.status}
+                      </span>
+                    ) : <p className="w-full text-sm text-stone-500">Start a new experiment to begin training</p>}
                   </div>
                   {selectedJob && (
                     <div className="flex gap-2">
@@ -797,7 +1447,7 @@ export default function TrainPage() {
                           disabled={stoppingId === selectedJob.id}
                           aria-label={"Cancel " + selectedJob.name}
                           className={[
-                            "p-3 bg-white text-stone-500 border border-orange-100 rounded-2xl hover:text-red-500",
+                            "flex h-11 w-11 items-center justify-center rounded-xl border border-red-200 bg-red-50/30 text-red-500 hover:bg-red-50",
                             "transition-colors hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50",
                           ].join(" ")}
                         >
@@ -834,18 +1484,76 @@ export default function TrainPage() {
                   )}
                 </div>
 
-                {selectedJob && ["queued", "running"].includes(selectedJob.status) ? (
-                  <div className="mb-7">
-                    <div className="mb-2 flex items-center justify-between text-xs font-bold text-stone-500">
-                      <span>{selectedJob.status === "queued" ? "Waiting for GPU agent" : `Epoch ${latestMetric?.epoch ?? 0} of ${totalEpochs || "—"}`}</span>
-                      <span>{Math.round(progress)}%</span>
+                {selectedJob ? (
+                  <div className="mb-6 rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50/70 via-white to-orange-50/40 p-5">
+                    <div className="mb-3 flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-4">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                          <Activity aria-hidden="true" className="h-6 w-6" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold uppercase tracking-wide text-orange-600">{stageLabel}</p>
+                          <p className="mt-1 truncate text-sm font-bold text-stone-900">{progressMessage}</p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-mono text-2xl font-bold tabular-nums text-orange-600">
+                          {Math.round(progress)}%
+                        </p>
+                      </div>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-orange-100">
+                    <div className="ml-0 h-2 overflow-hidden rounded-full bg-orange-100 sm:ml-16">
                       <motion.div
                         className="h-full rounded-full bg-gradient-to-r from-orange-600 to-amber-400"
-                        animate={{ width: selectedJob.status === "queued" ? "8%" : `${Math.max(progress, 2)}%` }}
+                        animate={{ width: `${Math.max(progress, selectedJob.status === "running" ? 2 : 0)}%` }}
                       />
                     </div>
+                    <dl className="mt-5 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        [
+                          "Epoch",
+                          epochDisplay != null
+                            ? `${epochDisplay}${totalEpochs ? ` / ${totalEpochs}` : ""}`
+                            : totalEpochs && isActiveJob
+                              ? `0 / ${totalEpochs}`
+                              : "-",
+                          CalendarDays,
+                          "bg-blue-50 text-blue-500",
+                        ],
+                        ["ETA", formatDuration(etaSeconds), Clock3, "bg-violet-50 text-violet-500"],
+                        [
+                          "GPU",
+                          gpuMemoryMb == null
+                            ? selectedJob.agent_job_id
+                              ? "Agent assigned"
+                              : isActiveJob
+                                ? "Waiting"
+                                : "-"
+                            : `${Math.round(gpuMemoryMb)} MB${gpuUtilization == null ? "" : ` / ${Math.round(gpuUtilization)}%`}`,
+                          BatteryCharging,
+                          "bg-emerald-50 text-emerald-500",
+                        ],
+                        ["Learning Rate", learningRateDisplay == null ? "-" : learningRateDisplay.toExponential(2), TrendingUp, "bg-orange-50 text-orange-500"],
+                      ].map(([label, value, Icon, iconClass], index) => (
+                        <div key={String(label)} className={["flex items-center gap-3 px-1 py-2", index > 0 ? "lg:border-l lg:border-orange-100 lg:pl-5" : ""].join(" ")}>
+                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${String(iconClass)}`}>
+                            {typeof Icon !== "string" ? <Icon aria-hidden="true" className="h-4 w-4" /> : null}
+                          </span>
+                          <div className="min-w-0">
+                            <dt className="font-semibold text-stone-500">{String(label)}</dt>
+                            <dd className="mt-1 truncate font-mono text-sm font-bold tabular-nums text-stone-900">{String(value)}</dd>
+                          </div>
+                        </div>
+                      ))}
+                    </dl>
+                    {isActiveJob && !hasMetrics ? (
+                      <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                        <Loader2 aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
+                        <span>
+                          Live metrics will fill in after the first callback from the GPU agent.
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -859,75 +1567,133 @@ export default function TrainPage() {
                   </div>
                 ) : null}
 
-                {/* Metrics chart */}
-                <div className="hidden">
-                  {lossHistory.length > 0
-                    ? lossHistory.map((v, i) => (
-                        <motion.div
-                          key={i}
-                          initial={{ height: 0 }}
-                          animate={{ height: `${(v / maxLoss) * 100}%` }}
-                          transition={{ duration: 0.3 }}
-                          className={[
-                            "flex-1 min-w-[4px] bg-gradient-to-t from-orange-600/20 to-orange-500",
-                            "rounded-t-sm",
-                          ].join(" ")}
-                        />
-                      ))
-                    : EMPTY_LOSS_PLACEHOLDER.map((height, i) => (
-                        <div
-                          key={i}
-                          className="flex-1 min-w-[4px] bg-orange-300 rounded-t-sm"
-                          style={{ height: `${height}%` }}
-                        />
-                      ))}
-                </div>
-
-                <div
-                  className={[
-                    "grid grid-cols-3 gap-3 border-t border-stone-100 pt-5 text-stone-500 text-xs font-bold",
-                  ].join(" ")}
-                >
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-green-500" />
-                    <span>
-                      Loss:{" "}
-                      <span className="text-stone-900 font-mono">
-                        {latestMetric?.loss != null ? latestMetric.loss.toFixed(4) : "—"}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-[#6735E0]" />
-                    <span>
-                      mAP@.5:{" "}
-                      <span className="text-stone-900 font-mono">
-                        {latestMetric?.map50 != null ? latestMetric.map50.toFixed(3) : "—"}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-blue-500" />
-                    <span>
-                      Epoch: <span className="text-stone-900 font-mono">{latestMetric?.epoch ?? "—"}</span>
-                    </span>
-                  </div>
-                </div>
-                {latestMetric ? (
-                  <div className="hidden">
+                <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4">
                     {[
-                      ["Precision", latestMetric.extra?.precision],
-                      ["Recall", latestMetric.extra?.recall],
-                      ["F1 score", latestMetric.f1],
-                      ["Validation loss", latestMetric.val_loss],
-                    ].map(([label, value]) => (
-                      <div key={String(label)} className="rounded-xl border border-orange-100 bg-white/70 p-3">
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-stone-400">{label}</p>
-                        <p className="mt-1 font-mono text-sm font-bold text-stone-900">
-                          {typeof value === "number" ? value.toFixed(4) : "—"}
-                        </p>
+                      ["Loss", formatMetric(lossDisplay, 4), Activity, "text-emerald-500"],
+                      ["mAP50", formatMetric(map50), BarChart3, "text-violet-500"],
+                      ["Epoch", String(epochDisplay ?? "-"), Target, "text-blue-500"],
+                      ["Val loss", formatMetric(valLoss, 4), ShieldCheck, "text-orange-500"],
+                    ].map(([label, value, Icon, color], index) => (
+                      <div key={String(label)} className={["flex min-h-20 items-center gap-3 px-5 py-4", index > 0 ? "border-t border-stone-100 sm:border-l sm:border-t-0" : ""].join(" ")}>
+                        {typeof Icon !== "string" ? <Icon aria-hidden="true" className={`h-5 w-5 shrink-0 ${String(color)}`} /> : null}
+                        <div><p className="text-xs font-semibold text-stone-500">{String(label)}</p><p className="mt-1 font-mono text-sm font-bold text-stone-900">{String(value)}</p></div>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                {showSummaryPanel ? (
+                  <div className="mt-5 overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                    <div className="grid lg:grid-cols-[1.15fr_0.95fr]">
+                      <div className="border-b border-stone-200 p-5 lg:border-b-0 lg:border-r">
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="min-w-0">
+                            <h3 className="flex items-center gap-3 text-sm font-bold text-stone-900"><BarChart3 className="h-5 w-5 text-violet-500" />Training Summary</h3>
+                            <p className="mt-1 pl-8 text-xs font-medium text-stone-500">{summaryReady ? "Training completed successfully." : "This summary will be updated automatically when training completes."}</p>
+                          </div>
+                          <div className="flex rounded-xl border border-stone-200 bg-stone-100 p-1" aria-label="Training summary split">
+                            {(["train", "valid", "test"] as SummarySplit[]).map((split) => (
+                              <button
+                                key={split}
+                                type="button"
+                                onClick={() => setSummarySplit(split)}
+                                aria-pressed={summarySplit === split}
+                                className={[
+                                  "h-8 rounded-lg px-3 text-xs font-bold transition-colors focus-visible:ring-2 focus-visible:ring-orange-500",
+                                  summarySplit === split ? "bg-white text-stone-900 shadow-sm" : "text-stone-500 hover:text-stone-900",
+                                ].join(" ")}
+                              >
+                                {split === "valid" ? "Valid" : split[0].toUpperCase() + split.slice(1)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="mt-5">
+                          <p className="text-xs font-bold uppercase tracking-widest text-stone-400">{summarySplitMetrics[summarySplit].label}</p>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            {summarySplitMetrics[summarySplit].values.map(([label, value]) => (
+                              <div key={label} className="flex min-h-16 items-center justify-between gap-4 rounded-xl bg-stone-50 px-4 py-3">
+                                <p className="text-sm font-semibold text-stone-600">{label}</p>
+                                <p className="font-mono text-lg font-bold text-stone-900">{formatScorePercent(value)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="mt-4">
+                          <p className="text-xs font-bold uppercase tracking-widest text-stone-400">Artifacts</p>
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            {summaryArtifacts.length > 0
+                              ? summaryArtifacts.map(([name, url]) => (
+                                <a
+                                  key={name}
+                                  href={url}
+                                  className="inline-flex h-12 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white px-3 text-xs font-bold text-stone-700 transition-colors hover:bg-stone-50"
+                                >
+                                  <span className="flex min-w-0 items-center gap-2"><FileText className="h-4 w-4 shrink-0 text-stone-500" /><span className="truncate">{name}</span></span>
+                                  <Download className="h-4 w-4 text-orange-500" />
+                                </a>
+                                ))
+                              : ["best.onnx", "best.pt"].map((name) => (
+                                  <div
+                                    key={name}
+                                    className="inline-flex h-12 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white px-3 text-xs font-bold text-stone-400"
+                                  >
+                                    <span className="flex min-w-0 items-center gap-2"><FileText className="h-4 w-4 shrink-0" /><span className="truncate">{name}</span></span>
+                                    <Download className="h-4 w-4" />
+                                  </div>
+                                ))}
+                          </div>
+                        </div>
+
+                        <div className="mt-5">
+                          <h3 className="flex items-center gap-3 text-sm font-bold text-stone-900"><Wrench className="h-5 w-5 text-violet-500" />Tools</h3>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            {confusionMatrixUrl ? <a href={confusionMatrixUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-violet-200 px-3 text-xs font-bold text-violet-600 transition hover:bg-violet-50"><Grid3X3 className="h-4 w-4" />Confusion Matrix</a> : <div className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-violet-100 px-3 text-xs font-bold text-violet-400"><Grid3X3 className="h-4 w-4" />View Confusion Matrix</div>}
+                            {selectedJob?.dataset ? (
+                              <Link
+                                href={`/datasets/${selectedJob.dataset}`}
+                                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold text-violet-600 transition-colors hover:bg-violet-50"
+                              >
+                                <ImageIcon className="h-4 w-4" />Try Model
+                              </Link>
+                            ) : <div className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-violet-100 px-3 text-xs font-bold text-violet-400"><ImageIcon className="h-4 w-4" />Try Model on Image Browser</div>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-5">
+                        <div className="min-w-0">
+                          <h3 className="flex items-center gap-3 text-sm font-bold text-stone-900">
+                            <FolderOpen aria-hidden="true" className="h-5 w-5 text-blue-500" />
+                            Training Chart
+                          </h3>
+                        </div>
+                        <div className="mt-5 flex flex-col gap-4">
+                          <MetricLineChart
+                            title="Training Loss"
+                            points={lossChartPoints}
+                            color="#f97316"
+                            icon={Activity}
+                            yAxisLabel="Loss"
+                            xAxisMax={totalEpochs || undefined}
+                            onExpand={() => setZoomedChart("loss")}
+                          />
+                          <MetricLineChart
+                            title="mAP@0.5"
+                            points={map50ChartPoints}
+                            color="#7c3aed"
+                            icon={Target}
+                            tone="violet"
+                            yAxisLabel="Score"
+                            xAxisMax={totalEpochs || undefined}
+                            onExpand={() => setZoomedChart("map50")}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -969,23 +1735,28 @@ export default function TrainPage() {
                       key={job.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => {
-                        setSelectedJob(job);
-                        setMetrics([]);
-                      }}
+                      onClick={() => handleSelectJob(job)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setSelectedJob(job);
-                          setMetrics([]);
+                          handleSelectJob(job);
                         }
                       }}
                       className={[
-                        "w-full cursor-pointer text-left bg-white rounded-2xl border p-5",
-                        "transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-orange-500",
-                        selectedJob?.id === job.id ? "border-orange-500/50 shadow-md" : "border-stone-200",
+                        "group relative w-full cursor-pointer overflow-hidden rounded-2xl border bg-white p-5 text-left",
+                        "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/40",
+                        selectedJob?.id === job.id
+                          ? "border-orange-400/70 bg-orange-50/30 shadow-[0_14px_34px_rgba(249,115,22,0.14)]"
+                          : "border-stone-200 shadow-sm",
                       ].join(" ")}
                     >
+                      <span
+                        aria-hidden="true"
+                        className={[
+                          "pointer-events-none absolute inset-y-4 left-0 w-1 rounded-r-full bg-orange-500 transition-opacity duration-200",
+                          selectedJob?.id === job.id ? "opacity-100" : "opacity-0 group-hover:opacity-50",
+                        ].join(" ")}
+                      />
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div
@@ -1042,6 +1813,9 @@ export default function TrainPage() {
                             >
                               <RotateCcw aria-hidden="true" className="h-4 w-4" />
                             </button>
+                          ) : null}
+                          {selectedJob?.id === job.id && isMetricsLoading ? (
+                            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-orange-500 motion-reduce:animate-none" />
                           ) : null}
                           {!["queued", "running"].includes(job.status) ? (
                             <button
@@ -1126,28 +1900,6 @@ export default function TrainPage() {
                       </div>
                     ))}
               </div>
-            </div>
-
-            <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-              <h3 className="mb-3 flex items-center gap-2 font-bold text-stone-900">
-                <Grid3X3 aria-hidden="true" className="h-4 w-4 text-orange-500" />
-                Confusion Matrix
-              </h3>
-              {selectedJob?.artifact_urls?.["confusion_matrix.png"] ? (
-                <a
-                  href={selectedJob.artifact_urls["confusion_matrix.png"]}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700 transition-colors hover:bg-orange-100 focus-visible:ring-2 focus-visible:ring-orange-500"
-                >
-                  Open confusion matrix
-                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                </a>
-              ) : (
-                <p className="text-sm leading-6 text-stone-500">
-                  Not generated by the current GPU agent. Epoch metrics remain available above; update the agent to upload <code className="rounded bg-stone-100 px-1 py-0.5 text-xs">confusion_matrix.png</code>.
-                </p>
-              )}
             </div>
 
             <div

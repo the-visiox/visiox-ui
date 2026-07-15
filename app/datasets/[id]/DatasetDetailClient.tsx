@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Wand2,
   Eye,
+  EyeOff,
   FlipHorizontal,
   FlipVertical,
   RotateCcw,
@@ -48,30 +49,28 @@ import {
 } from "lucide-react";
 
 const BATCH_SIZE = 50;
+const IMPORT_BATCH_SIZE = 500;
 const INTEGER_FORMATTER = new Intl.NumberFormat();
 import BlueprintGrid from "@/components/BlueprintGrid";
 import DatasetExportDialog from "@/components/datasets/DatasetExportDialog";
+import DatasetImportDialog, { type DatasetImportFormat } from "@/components/datasets/DatasetImportDialog";
 import { useConfirm } from "@/components/useConfirm";
 import {
   datasets,
   annotationClasses,
+  deployments,
   resolveMediaUrl,
   type DatasetStats,
   type Dataset,
   type BrowserData,
   type Media,
   type AnnotationClass,
+  type ModelRegistry,
+  type PredictionBox,
 } from "@/lib/api";
 
 interface Props {
   id: string;
-}
-
-function inferUploadMediaType(file: File): "image" | "video" {
-  if (file.type.startsWith("video/")) return "video";
-  const lower = file.name.toLowerCase();
-  if (/\.(mp4|webm|mov|mkv|avi|m4v)$/.test(lower)) return "video";
-  return "image";
 }
 
 function mediaDisplayName(media: Media): string {
@@ -124,6 +123,26 @@ function buildBrowserDataWithMediaFallback(browser: BrowserData, media: Media[],
 }
 
 // ── Class management ──────────────────────────────────────────────────────────
+function pointsToPath(points: number[]): string {
+  if (points.length < 4) return "";
+  const pairs: string[] = [];
+  for (let index = 0; index < points.length - 1; index += 2) {
+    pairs.push(`${points[index]},${points[index + 1]}`);
+  }
+  return pairs.join(" ");
+}
+
+function predictionToPoints(prediction: PredictionBox, width: number, height: number): number[] {
+  const [a, b, c, d] = prediction.bbox;
+  const values = prediction.normalized ? [a * width, b * height, c * width, d * height] : [a, b, c, d];
+  if (prediction.bbox_format === "xyxy") {
+    const [x1, y1, x2, y2] = values;
+    return [x1, y1, x2, y1, x2, y2, x1, y2];
+  }
+  const [x, y, boxWidth, boxHeight] = values;
+  return [x, y, x + boxWidth, y, x + boxWidth, y + boxHeight, x, y + boxHeight];
+}
+
 const CARD = "bg-white rounded-2xl border border-stone-200";
 const CARD_P = `${CARD} p-6`;
 const CARD_COL1 = `flex h-full min-h-0 flex-col space-y-4 ${CARD_P}`;
@@ -140,8 +159,16 @@ const SPLIT_BADGES = {
 
 type SplitRatios = { train: number; val: number; test: number };
 
-function GenerationStepMarker({ step, current }: { step: 1 | 2 | 3; current: 1 | 2 | 3 }) {
-  const done = current > step;
+function GenerationStepMarker({
+  step,
+  current,
+  completed = false,
+}: {
+  step: 1 | 2 | 3;
+  current: 1 | 2 | 3;
+  completed?: boolean;
+}) {
+  const done = completed || current > step;
   const active = current === step;
   return (
     <span
@@ -157,8 +184,16 @@ function GenerationStepMarker({ step, current }: { step: 1 | 2 | 3; current: 1 |
   );
 }
 
-function DatasetSectionMarker({ section, current }: { section: 1 | 2; current: 1 | 2 }) {
-  const done = current > section;
+function DatasetSectionMarker({
+  section,
+  current,
+  completed = false,
+}: {
+  section: 1 | 2;
+  current: 1 | 2;
+  completed?: boolean;
+}) {
+  const done = completed || current > section;
   const active = current === section;
   return (
     <span
@@ -417,13 +452,39 @@ const AUG_CARDS: AugCardDef[] = [
   { key: "cutout", label: "Cutout", desc: "Random rectangular dropout", Icon: Square, type: "toggle", defaultVal: 1 },
 ];
 
+const DEFAULT_SPLIT_RATIOS = { train: 80, val: 15, test: 5 };
+
+const DEFAULT_PREPROCESS_CONFIG = {
+  auto_orient: false,
+  resize: false,
+  resize_width: 640,
+  resize_height: 640,
+  grayscale: false,
+};
+
+const DEFAULT_AUG_CONFIG = {
+  flip_h: false,
+  flip_v: false,
+  rotate90: false,
+  rotation: 0,
+  brightness: 0,
+  blur: 0,
+  noise: 0,
+  shear: 0,
+  contrast: 0,
+  hue: 0,
+  saturation: 0,
+  motion_blur: 0,
+  cutout: false,
+};
+
 export default function DatasetDetailClient({ id }: Props) {
   const router = useRouter();
   const numericId = parseInt(id, 10);
 
   const [stats, setStats] = useState<DatasetStats | null>(null);
   const [datasetDetail, setDatasetDetail] = useState<Dataset | null>(null);
-  const [splitRatios, setSplitRatios] = useState({ train: 80, val: 15, test: 5 });
+  const [splitRatios, setSplitRatios] = useState(DEFAULT_SPLIT_RATIOS);
   const [splitting, setSplitting] = useState(false);
   const [verifyingLabels, setVerifyingLabels] = useState(false);
   const [splitView, setSplitView] = useState<"class" | "split">("class");
@@ -438,15 +499,22 @@ export default function DatasetDetailClient({ id }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [browserTab, setBrowserTab] = useState<"original" | "augmented">("original");
+  const [registeredModels, setRegisteredModels] = useState<ModelRegistry[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<number | "">("");
+  const [predicting, setPredicting] = useState(false);
+  const [predictionError, setPredictionError] = useState("");
+  const [predictionsByMediaId, setPredictionsByMediaId] = useState<Record<number, PredictionBox[]>>({});
+  const [showAnnotationLabels, setShowAnnotationLabels] = useState(true);
+  const [showPredictionLabels, setShowPredictionLabels] = useState(true);
   const [currentDatasetSection, setCurrentDatasetSection] = useState<1 | 2>(1);
   const [browserOpen, setBrowserOpen] = useState(true);
   const browserLayoutInitializedRef = useRef(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   /** Last frame row index for Shift+click range selection (in `browserData.frames` order). */
   const anchorFrameIndexRef = useRef<number | null>(null);
   /** Image browser card — clicks outside clear selection. */
@@ -457,28 +525,8 @@ export default function DatasetDetailClient({ id }: Props) {
   const [splitOpen, setSplitOpen] = useState(true);
   const [prepareOpen, setPrepareOpen] = useState(true);
   const [augmentOpen, setAugmentOpen] = useState(false);
-  const [preprocessConfig, setPreprocessConfig] = useState({
-    auto_orient: false,
-    resize: false,
-    resize_width: 640,
-    resize_height: 640,
-    grayscale: false,
-  });
-  const [augConfig, setAugConfig] = useState({
-    flip_h: false,
-    flip_v: false,
-    rotate90: false,
-    rotation: 0,
-    brightness: 0,
-    blur: 0,
-    noise: 0,
-    shear: 0,
-    contrast: 0,
-    hue: 0,
-    saturation: 0,
-    motion_blur: 0,
-    cutout: false,
-  });
+  const [preprocessConfig, setPreprocessConfig] = useState(DEFAULT_PREPROCESS_CONFIG);
+  const [augConfig, setAugConfig] = useState(DEFAULT_AUG_CONFIG);
   const [multiplier, setMultiplier] = useState(1);
   const [augPreviews, setAugPreviews] = useState<Array<{ media_id: number; name: string; augmented_url: string }>>([]);
   const [augLoading, setAugLoading] = useState(false);
@@ -494,11 +542,12 @@ export default function DatasetDetailClient({ id }: Props) {
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   const refreshStatsAndBrowser = useCallback(async () => {
-    const [dsResult, statsResult, browserResult, mediaResult] = await Promise.allSettled([
+    const [dsResult, statsResult, browserResult, mediaResult, registryResult] = await Promise.allSettled([
       datasets.get(numericId),
       datasets.stats(numericId),
       datasets.browser(numericId),
       datasets.media(numericId),
+      deployments.listRegistry(),
     ]);
     if (dsResult.status === "fulfilled") {
       setDatasetDetail(dsResult.value);
@@ -513,7 +562,8 @@ export default function DatasetDetailClient({ id }: Props) {
           val,
           test: savedIsUsable ? saved.test : 5,
         });
-        setSplitStrategy(splitStrategyTouchedRef.current ? saved.strategy ?? "random" : "random");
+        const savedStrategy = saved.strategy === "class" ? "class" : "random";
+        setSplitStrategy(splitStrategyTouchedRef.current ? savedStrategy : "random");
         setFixedTestDatasetId(null);
         setTestMode("split");
       }
@@ -538,10 +588,27 @@ export default function DatasetDetailClient({ id }: Props) {
     } else if (mediaResult.status === "fulfilled" && mediaResult.value.some((item) => item.type === "image")) {
       setBrowserData(buildMediaFallbackBrowserData(mediaResult.value, numericId));
     }
+    if (registryResult.status === "fulfilled") {
+      setRegisteredModels(registryResult.value.results);
+      setSelectedModelId((current) => current || registryResult.value.results[0]?.id || "");
+    }
     if (dsResult.status === "rejected" && statsResult.status === "rejected" && browserResult.status === "rejected") {
       setError("Failed to load dataset data");
     }
   }, [numericId]);
+
+  const latestImportJob = datasetDetail?.latest_import_job ?? null;
+  const hasActiveImport = latestImportJob != null && ["queued", "running"].includes(latestImportJob.status);
+
+  useEffect(() => {
+    if (!hasActiveImport) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshStatsAndBrowser();
+      }
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [hasActiveImport, refreshStatsAndBrowser]);
 
   const handleConfigureSplit = async () => {
     if (splitRatios.train + splitRatios.val + splitRatios.test !== 100) {
@@ -606,6 +673,25 @@ export default function DatasetDetailClient({ id }: Props) {
     try {
       const updated = await datasets.unverify(numericId);
       setDatasetDetail(updated);
+      setSplitRatios(DEFAULT_SPLIT_RATIOS);
+      setSplitStrategy("random");
+      splitStrategyTouchedRef.current = false;
+      setTestMode("split");
+      setFixedTestDatasetId(null);
+      setCurrentGenerationStep(1);
+      setSplitOpen(true);
+      setPrepareOpen(true);
+      setAugmentOpen(false);
+      setPreprocessConfig(DEFAULT_PREPROCESS_CONFIG);
+      setAugConfig(DEFAULT_AUG_CONFIG);
+      setMultiplier(1);
+      setAugPreviews([]);
+      setAugConfirmOpen(false);
+      setAugJob(null);
+      setBrowserTab("original");
+      setCurrentPage(1);
+      setSelectedMediaIds([]);
+      anchorFrameIndexRef.current = null;
       setCurrentDatasetSection(1);
       setBrowserOpen(true);
       setAugOpen(false);
@@ -701,6 +787,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const labelsAreVerified = Boolean(
     datasetDetail?.verification_status === "verified" && datasetDetail.verification_is_current,
   );
+  const generationIsComplete = Boolean(datasetDetail?.generation_is_complete);
   useEffect(() => {
     if (!datasetDetail || browserLayoutInitializedRef.current) return;
     browserLayoutInitializedRef.current = true;
@@ -810,31 +897,57 @@ export default function DatasetDetailClient({ id }: Props) {
     }
   };
 
-  const handleUploadFiles = async (fileList: FileList | null) => {
-    if (!fileList?.length || isNaN(numericId)) return;
+  const handleRunInference = async () => {
+    if (!selectedModelId || isNaN(numericId)) {
+      setPredictionError("Select a trained model first.");
+      return;
+    }
+    const visibleOriginalMediaIds = visibleFrames
+      .filter((frame) => !frame.augmented && typeof frame.media_id === "number")
+      .map((frame) => frame.media_id as number);
+    const mediaIds = selectedMediaIds.length > 0 ? selectedMediaIds : visibleOriginalMediaIds;
+    if (mediaIds.length === 0) {
+      setPredictionError("No original images are available for inference on this page.");
+      return;
+    }
+    setPredicting(true);
+    setPredictionError("");
+    try {
+      const result = await deployments.predictDataset(selectedModelId as number, {
+        dataset: numericId,
+        media_ids: mediaIds,
+      });
+      const next: Record<number, PredictionBox[]> = {};
+      for (const prediction of result.predictions ?? []) {
+        if (!next[prediction.media_id]) next[prediction.media_id] = [];
+        next[prediction.media_id].push(prediction);
+      }
+      setPredictionsByMediaId((current) => ({ ...current, ...next }));
+      setShowPredictionLabels(true);
+    } catch (err) {
+      setPredictionError(err instanceof Error ? err.message : "Inference request failed.");
+    } finally {
+      setPredicting(false);
+    }
+  };
+
+  const handleUploadFiles = async (files: File[], format: DatasetImportFormat) => {
+    if (files.length === 0 || isNaN(numericId)) return;
     setUploading(true);
     setError("");
     try {
-      const files = Array.from(fileList);
-      const images = files.filter((f) => inferUploadMediaType(f) === "image");
-      const videos = files.filter((f) => inferUploadMediaType(f) === "video");
-
-      const uploadGroup = async (group: File[], type: "image" | "video") => {
-        for (let i = 0; i < group.length; i += 100) {
-          await datasets.uploadBatch(numericId, group.slice(i, i + 100), type);
+      if (format === "images") {
+        for (let i = 0; i < files.length; i += IMPORT_BATCH_SIZE) {
+          await datasets.startImport(numericId, files.slice(i, i + IMPORT_BATCH_SIZE), "images");
         }
-      };
-
-      await Promise.all([
-        images.length > 0 ? uploadGroup(images, "image") : Promise.resolve(),
-        videos.length > 0 ? uploadGroup(videos, "video") : Promise.resolve(),
-      ]);
+      } else {
+        await datasets.startImport(numericId, files, "yolo26");
+      }
       await refreshStatsAndBrowser();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      throw err instanceof Error ? err : new Error("Upload failed");
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -964,15 +1077,6 @@ export default function DatasetDetailClient({ id }: Props) {
     <div className="relative flex-1 flex flex-col min-h-screen bg-stone-50">
       <BlueprintGrid />
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,video/*,.mp4,.webm,.mov,.mkv,.avi,.m4v"
-        multiple
-        className="hidden"
-        onChange={(e) => void handleUploadFiles(e.target.files)}
-      />
-
       {/* Navbar */}
       <div className="sticky top-4 z-20 w-full max-w-8xl mx-auto px-6 mb-4">
         <nav
@@ -1016,8 +1120,8 @@ export default function DatasetDetailClient({ id }: Props) {
           <div className="flex flex-wrap items-center gap-3 md:justify-end">
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
+              onClick={() => setImportDialogOpen(true)}
+              disabled={uploading || hasActiveImport}
               className={[
                 "flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm",
                 "font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50",
@@ -1025,10 +1129,12 @@ export default function DatasetDetailClient({ id }: Props) {
             >
               {uploading ? (
                 <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
+              ) : hasActiveImport ? (
+                <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
               ) : (
                 <Upload className="w-4 h-4" />
               )}
-              Upload
+              {uploading ? "Queueing upload..." : hasActiveImport ? "Importing..." : "Upload"}
             </button>
 
             <button
@@ -1070,11 +1176,104 @@ export default function DatasetDetailClient({ id }: Props) {
         </div>
       )}
 
+      {latestImportJob && (
+        <div
+          role={latestImportJob.status === "error" ? "alert" : "status"}
+          aria-live={latestImportJob.status === "error" ? "assertive" : "polite"}
+          className={[
+            "mx-6 mt-3 flex flex-col gap-3 rounded-2xl border px-4 py-3.5 text-sm shadow-sm",
+            "sm:flex-row sm:items-center sm:justify-between",
+            latestImportJob.status === "error"
+              ? "border-red-200 bg-red-50/80"
+              : latestImportJob.status === "done"
+                ? "border-emerald-200 bg-emerald-50/80"
+                : "border-orange-200 bg-orange-50/80",
+          ].join(" ")}
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <span
+              className={[
+                "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                latestImportJob.status === "error"
+                  ? "bg-red-100 text-red-600"
+                  : latestImportJob.status === "done"
+                    ? "bg-emerald-100 text-emerald-600"
+                    : "bg-orange-100 text-orange-600",
+              ].join(" ")}
+              aria-hidden="true"
+            >
+              {latestImportJob.status === "error" ? (
+                <AlertTriangle className="h-4 w-4" />
+              ) : latestImportJob.status === "done" ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+            </span>
+            <div className="min-w-0">
+              <p
+                className={[
+                  "font-bold",
+                  latestImportJob.status === "error"
+                    ? "text-red-800"
+                    : latestImportJob.status === "done"
+                      ? "text-emerald-800"
+                      : "text-orange-800",
+                ].join(" ")}
+              >
+                {latestImportJob.status === "queued"
+                  ? "Upload queued for worker"
+                  : latestImportJob.status === "running"
+                    ? "Worker is importing files"
+                    : latestImportJob.status === "error"
+                      ? "Latest import failed"
+                      : "Latest import completed"}
+              </p>
+              <p
+                className={[
+                  "mt-0.5 break-words text-xs leading-relaxed",
+                  latestImportJob.status === "error"
+                    ? "text-red-600"
+                    : latestImportJob.status === "done"
+                      ? "text-emerald-600"
+                      : "text-orange-600",
+                ].join(" ")}
+              >
+                {latestImportJob.status === "error"
+                  ? latestImportJob.error || "The worker could not finish this import."
+                  : `${latestImportJob.done}/${latestImportJob.total} files processed`}
+              </p>
+            </div>
+          </div>
+          {latestImportJob.status === "error" ? (
+            <button
+              type="button"
+              onClick={() => setImportDialogOpen(true)}
+              className={[
+                "inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl",
+                "border border-red-200 bg-white px-3 text-xs font-bold text-red-700",
+                "transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2",
+                "focus-visible:ring-red-400 focus-visible:ring-offset-2 sm:self-center",
+              ].join(" ")}
+            >
+              <Upload className="h-3.5 w-3.5" /> Choose another file
+            </button>
+          ) : null}
+        </div>
+      )}
+
       <DatasetExportDialog
         targets={[{ id: numericId, name }]}
         exportName={name}
         open={exportOpen}
         onClose={() => setExportOpen(false)}
+      />
+
+      <DatasetImportDialog
+        open={importDialogOpen}
+        datasetName={name}
+        onClose={() => setImportDialogOpen(false)}
+        onSubmit={handleUploadFiles}
       />
 
       {/* Main Content */}
@@ -1301,7 +1500,11 @@ export default function DatasetDetailClient({ id }: Props) {
               className={`${ACCORDION_TRIGGER} w-full justify-between disabled:bg-stone-50/70`}
             >
               <div className="flex items-center gap-3">
-                <DatasetSectionMarker section={2} current={currentDatasetSection} />
+                <DatasetSectionMarker
+                  section={2}
+                  current={currentDatasetSection}
+                  completed={generationIsComplete}
+                />
                 <div className="text-left">
                   <h3 className="text-base font-bold text-stone-900">Generate Dataset</h3>
                   <p className="mt-0.5 text-xs text-stone-400">
@@ -1644,7 +1847,11 @@ export default function DatasetDetailClient({ id }: Props) {
                   }}
                   className={`${ACCORDION_TRIGGER} w-full`}
                 >
-                  <GenerationStepMarker step={3} current={currentGenerationStep} />
+                  <GenerationStepMarker
+                    step={3}
+                    current={currentGenerationStep}
+                    completed={generationIsComplete}
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2 text-base font-bold text-stone-900">
                       Step 3. Augment Images
@@ -1745,7 +1952,7 @@ export default function DatasetDetailClient({ id }: Props) {
                       <p className="text-sm font-bold text-stone-800">Dataset Multiplier</p>
                       <p className="text-xs text-stone-400 mt-0.5">Number of augmented copies per original image</p>
                     </div>
-                    <span className="text-xs font-bold text-orange-600 tabular-nums">
+                    <span className="text-xs font-bold text-stone-800 tabular-nums">
                       {trainImageCount * multiplier} generated images
                     </span>
                   </div>
@@ -1777,6 +1984,7 @@ export default function DatasetDetailClient({ id }: Props) {
                 </>}
 
                 {/* Actions */}
+                {splitIsConfigured && augmentOpen && !generationIsComplete && (
                 <div className="flex min-h-16 items-center justify-between gap-4 border-t border-stone-200 bg-white px-5 py-4">
                   <p className="hidden text-xs text-stone-400 sm:block">
                     {splitIsSaved
@@ -1812,6 +2020,7 @@ export default function DatasetDetailClient({ id }: Props) {
                   </button>
                   </div>
                 </div>
+                )}
                 </section>
                 </div>
               </div>
@@ -2159,16 +2368,16 @@ export default function DatasetDetailClient({ id }: Props) {
             </p>
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
+              onClick={() => setImportDialogOpen(true)}
+              disabled={uploading || hasActiveImport}
               className={[
                 "mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-500 text-white rounded-xl",
                 "text-sm font-bold shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95",
                 "transition-all disabled:opacity-50",
               ].join(" ")}
             >
-              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              Upload files
+              {uploading || hasActiveImport ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {uploading ? "Queueing upload..." : hasActiveImport ? "Importing..." : "Upload files"}
             </button>
           </motion.div>
         )}
@@ -2194,7 +2403,11 @@ export default function DatasetDetailClient({ id }: Props) {
                 aria-label={browserOpen ? "Collapse Image Browser" : "Expand Image Browser"}
                 aria-expanded={browserOpen}
               >
-                <DatasetSectionMarker section={1} current={currentDatasetSection} />
+                <DatasetSectionMarker
+                  section={1}
+                  current={currentDatasetSection}
+                  completed={labelsAreVerified}
+                />
                 <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-bold text-stone-900">Image Browser</h3>
@@ -2280,6 +2493,68 @@ export default function DatasetDetailClient({ id }: Props) {
             )}
             </div>
 
+            <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  value={selectedModelId}
+                  onChange={(event) => setSelectedModelId(event.target.value ? Number(event.target.value) : "")}
+                  className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700 focus-visible:ring-2 focus-visible:ring-orange-500"
+                  aria-label="Select model for inference"
+                >
+                  <option value="">Select trained model</option>
+                  {registeredModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} v{model.version}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void handleRunInference()}
+                  disabled={predicting || !selectedModelId || browserTab !== "original"}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 text-sm font-bold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {predicting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  Try Model
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  {
+                    label: "Annotations",
+                    active: showAnnotationLabels,
+                    toggle: () => setShowAnnotationLabels((value) => !value),
+                  },
+                  {
+                    label: "Predictions",
+                    active: showPredictionLabels,
+                    toggle: () => setShowPredictionLabels((value) => !value),
+                  },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={item.toggle}
+                    aria-pressed={item.active}
+                    className={[
+                      "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition-colors",
+                      item.active
+                        ? "border-orange-200 bg-orange-50 text-orange-700"
+                        : "border-stone-200 bg-white text-stone-500 hover:bg-stone-50",
+                    ].join(" ")}
+                  >
+                    {item.active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {predictionError ? (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                {predictionError}
+              </div>
+            ) : null}
+
             {activeFrames.length === 0 ? (
               <div
                 className={[
@@ -2305,6 +2580,8 @@ export default function DatasetDetailClient({ id }: Props) {
                   const imageSrc = frame.image_url
                     ? resolveMediaUrl(frame.image_url)
                     : datasets.frameUrl(numericId, frame.frame, "thumb");
+                  const framePredictions =
+                    typeof frame.media_id === "number" ? (predictionsByMediaId[frame.media_id] ?? []) : [];
                   return (
                     <div
                       key={frame.frame}
@@ -2411,25 +2688,102 @@ export default function DatasetDetailClient({ id }: Props) {
                       >
                         <div
                           className={[
-                            "aspect-[4/3] overflow-hidden bg-gradient-to-br from-stone-100",
+                            "relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-stone-100",
                             "to-stone-200/80",
                           ].join(" ")}
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element -- JWT-backed frame URLs */}
-                          <img
-                            src={imageSrc}
-                            alt={frame.name}
-                            loading="lazy"
+                          <svg
                             className={[
-                              "h-full w-full object-cover transition-transform duration-500 ease-out",
+                              "absolute inset-0 h-full w-full transition-transform duration-500 ease-out",
                               "group-hover/card:scale-[1.03]",
                             ].join(" ")}
-                          />
+                            viewBox={`0 0 ${Math.max(frame.width, 1)} ${Math.max(frame.height, 1)}`}
+                            preserveAspectRatio="xMidYMid slice"
+                            aria-label={frame.name}
+                            role="img"
+                          >
+                            <image
+                              href={imageSrc}
+                              width={Math.max(frame.width, 1)}
+                              height={Math.max(frame.height, 1)}
+                              preserveAspectRatio="xMidYMid slice"
+                            />
+                            {(showAnnotationLabels || showPredictionLabels) && (
+                              <g className="pointer-events-none">
+                                {showAnnotationLabels &&
+                                  frame.annotations.map((annotation) => {
+                                    const points = annotation.points ?? [];
+                                    const path = pointsToPath(points);
+                                    if (!path) return null;
+                                    return (
+                                      <g key={`ann-${annotation.id}`}>
+                                        <polygon
+                                          points={path}
+                                          fill="none"
+                                          stroke={annotation.color || "#16a34a"}
+                                          strokeWidth={Math.max(1.25, Math.max(frame.width, frame.height) * 0.0005)}
+                                          vectorEffect="non-scaling-stroke"
+                                        />
+                                        <text
+                                          x={points[0] ?? 0}
+                                          y={Math.max(10, (points[1] ?? 0) - 3)}
+                                          fill={annotation.color || "#16a34a"}
+                                          fontSize={Math.max(frame.width, frame.height) * 0.028}
+                                          fontWeight={700}
+                                          paintOrder="stroke"
+                                          stroke="white"
+                                          strokeWidth={2}
+                                        >
+                                          {annotation.label}
+                                        </text>
+                                      </g>
+                                    );
+                                  })}
+                                {showPredictionLabels &&
+                                  framePredictions.map((prediction, predictionIndex) => {
+                                    const points = predictionToPoints(
+                                      prediction,
+                                      Math.max(frame.width, 1),
+                                      Math.max(frame.height, 1),
+                                    );
+                                    const path = pointsToPath(points);
+                                    if (!path) return null;
+                                    return (
+                                      <g key={`pred-${prediction.media_id}-${predictionIndex}`}>
+                                        <polygon
+                                          points={path}
+                                          fill="none"
+                                          stroke={prediction.color || "#f97316"}
+                                          strokeDasharray="6 5"
+                                          strokeWidth={Math.max(1.25, Math.max(frame.width, frame.height) * 0.0025)}
+                                          vectorEffect="non-scaling-stroke"
+                                        />
+                                        <text
+                                          x={points[0] ?? 0}
+                                          y={Math.max(10, (points[1] ?? 0) - 3)}
+                                          fill={prediction.color || "#f97316"}
+                                          fontSize={Math.max(frame.width, frame.height) * 0.028}
+                                          fontWeight={700}
+                                          paintOrder="stroke"
+                                          stroke="white"
+                                          strokeWidth={2}
+                                        >
+                                          {prediction.label} {Math.round(prediction.confidence * 100)}%
+                                        </text>
+                                      </g>
+                                    );
+                                  })}
+                              </g>
+                            )}
+                          </svg>
                         </div>
                         <div className="bg-white/60 px-2.5 py-2 backdrop-blur-[2px]">
                           <p className="truncate text-xs font-semibold text-stone-800">{frame.name}</p>
                           <p className="mt-0.5 text-[11px] font-medium text-stone-500">
                             {frame.annotations.length} labels
+                            {framePredictions.length > 0 ? (
+                              <span className="text-orange-600"> · {framePredictions.length} predictions</span>
+                            ) : null}
                           </p>
                         </div>
                       </Link>

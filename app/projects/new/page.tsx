@@ -36,13 +36,16 @@ export default function NewProjectPage() {
     setSaving(true);
     setError("");
     try {
-      await projects.create({
+      const created = await projects.create({
         name: name.trim(),
         task_type: taskType,
         description: description.trim() || undefined,
         is_public: isPublic,
       });
-      router.push("/projects");
+      if (!created?.id) {
+        throw new Error("Project was created but the server did not return its id.");
+      }
+      router.push(`/projects/${created.id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not create project.");
     } finally {

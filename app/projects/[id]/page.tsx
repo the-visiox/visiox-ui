@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -23,6 +23,12 @@ import {
   Check,
   ChevronDown,
   BrainCircuit,
+  FileArchive,
+  FileText,
+  FolderTree,
+  CircleHelp,
+  DatabaseZap,
+  BookOpen,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
@@ -30,6 +36,7 @@ import DatasetExportDialog, { type DatasetExportTarget } from "@/components/data
 import { useConfirm } from "@/components/useConfirm";
 import { useAuth } from "@/lib/auth";
 import {
+  ApiError,
   annotationClasses,
   dataverse,
   datasets,
@@ -47,7 +54,133 @@ import {
 const STATUS_DOT: Record<string, string> = {
   Ready: "bg-green-500",
   "In Progress": "bg-[#6735E0] animate-pulse",
+  Importing: "bg-orange-500 animate-pulse",
+  "Import failed": "bg-red-500",
   Draft: "bg-stone-300",
+};
+
+type DatasetImportHint = "images" | "yolo26" | "coco";
+
+const DATASET_IMPORT_OPTIONS: Array<{ value: DatasetImportHint; label: string }> = [
+  { value: "images", label: "Images" },
+  { value: "yolo26", label: "YOLO26" },
+  { value: "coco", label: "COCO" },
+];
+
+const DATASET_UPLOAD_RULES: Record<
+  DatasetImportHint,
+  {
+    accept: string;
+    emptyTitle: string;
+    emptyDescription: string;
+    multiple: boolean;
+  }
+> = {
+  images: {
+    accept: "image/*,video/*,.mp4,.webm,.mov,.mkv,.avi,.m4v",
+    emptyTitle: "Drag and drop your images or videos here",
+    emptyDescription: "Images & videos - PNG, JPG, MP4, MOV...",
+    multiple: true,
+  },
+  yolo26: {
+    accept: ".zip,application/zip,application/x-zip-compressed",
+    emptyTitle: "Drag and drop your YOLO26 ZIP here",
+    emptyDescription: "Upload one .zip containing data.yaml plus train/valid/test folders",
+    multiple: false,
+  },
+  coco: {
+    accept: ".zip,application/zip,application/x-zip-compressed",
+    emptyTitle: "Drag and drop your COCO ZIP here",
+    emptyDescription: "Upload one .zip containing images and annotations JSON",
+    multiple: false,
+  },
+};
+
+const DATASET_IMPORT_HINTS: Record<
+  DatasetImportHint,
+  {
+    title: string;
+    description: string;
+    testPath: string;
+    structure: string;
+    configLabel: string;
+    configExample: string;
+    checklist: string[];
+  }
+> = {
+  images: {
+    title: "Images upload guide",
+    description: "Upload image or video files now and add annotations later in VisioX.",
+    testPath: "images folder",
+    structure: `dataset/
+\`-- images/
+    |-- image_001.jpg
+    |-- image_002.png
+    \`-- video_001.mp4`,
+    configLabel: "Supported files",
+    configExample: `Images: PNG, JPG, JPEG
+Videos: MP4, MOV, WEBM`,
+    checklist: [
+      "Use this option when you only need to upload media files.",
+      "You can annotate uploaded images in the VisioX annotation workspace.",
+      "Duplicate files in the same selection are ignored.",
+    ],
+  },
+  yolo26: {
+    title: "YOLO26 ZIP import guide",
+    description: "Upload one .zip archive that contains data.yaml and matching image/label folders.",
+    testPath: "E:\\truck_detection.zip",
+    structure: `truck_detection.zip
+  |-- truck_detection/
+    |-- data.yaml
+    |-- train/
+    |   |-- images/
+    |   |-- labels/
+    |-- valid/
+    |   |-- images/
+    |   |-- labels/
+    |-- test/
+        |-- images/
+        |-- labels/`,
+    configLabel: "data.yaml",
+    configExample: `train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['truck']`,
+    checklist: [
+      "Choose YOLO26, then upload exactly one ZIP archive.",
+      "Every image in images/ should have a matching .txt file in labels/.",
+      "Keep class order in data.yaml names aligned with the label ids.",
+    ],
+  },
+  coco: {
+    title: "COCO ZIP import guide",
+    description: "Upload one .zip archive that contains images and COCO JSON annotations.",
+    testPath: "coco_dataset.zip",
+    structure: `coco_dataset.zip
+\`-- coco_dataset/
+    |-- images/
+    |   |-- train/
+    |   |-- val/
+    |   \`-- test/
+    \`-- annotations/
+        |-- instances_train.json
+        |-- instances_val.json
+        \`-- instances_test.json`,
+    configLabel: "instances_train.json",
+    configExample: `{
+  "images": [],
+  "annotations": [],
+  "categories": []
+}`,
+    checklist: [
+      "Choose COCO, then upload exactly one ZIP archive.",
+      "Image ids in COCO JSON should match entries in the images array.",
+      "Keep categories stable because they become project classes.",
+    ],
+  },
 };
 
 interface ExportDialogState {
@@ -55,7 +188,9 @@ interface ExportDialogState {
   exportName: string;
 }
 
-function datasetStatus(d: Dataset): "Ready" | "In Progress" | "Draft" {
+function datasetStatus(d: Dataset): "Ready" | "In Progress" | "Importing" | "Import failed" | "Draft" {
+  if (d.latest_import_job && ["queued", "running"].includes(d.latest_import_job.status)) return "Importing";
+  if (d.latest_import_job?.status === "error") return "Import failed";
   if (d.media_count === 0) return "Draft";
   if (d.is_train_ready && d.generation_is_complete) return "Ready";
   return "In Progress";
@@ -504,13 +639,19 @@ function LabelColorPicker({ value, onChange, usedColors }: LabelColorPickerProps
 
 function CreateDatasetModal({
   project,
+  importHint,
   onClose,
   onCreated,
 }: {
   project: Project;
+  importHint: DatasetImportHint;
   onClose: () => void;
   onCreated: (d: Dataset) => void;
 }) {
+  const [selectedHintKey, setSelectedHintKey] = useState<DatasetImportHint>(importHint);
+  const selectedImportHint = DATASET_IMPORT_HINTS[selectedHintKey];
+  const selectedImportOption = DATASET_IMPORT_OPTIONS.find((option) => option.value === selectedHintKey)!;
+  const [formatMenuOpen, setFormatMenuOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -524,14 +665,65 @@ function CreateDatasetModal({
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formatMenuRef = useRef<HTMLDivElement>(null);
+  const selectedUploadRule = DATASET_UPLOAD_RULES[selectedHintKey];
+  const archiveImport = selectedHintKey !== "images";
+  const archiveFormat = selectedHintKey === "images" ? null : selectedHintKey;
+
+  useEffect(() => {
+    if (!formatMenuOpen) return;
+
+    const closeMenu = (event: PointerEvent) => {
+      if (!formatMenuRef.current?.contains(event.target as Node)) {
+        setFormatMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFormatMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [formatMenuOpen]);
+
+  function isZipFile(file: File) {
+    const lowerName = file.name.toLowerCase();
+    return lowerName.endsWith(".zip") || file.type === "application/zip" || file.type === "application/x-zip-compressed";
+  }
+
+  function isMediaFile(file: File) {
+    return file.type.startsWith("image/") || file.type.startsWith("video/");
+  }
 
   function addFiles(incoming: FileList | File[]) {
     const arr = Array.from(incoming);
 
+    if (archiveImport) {
+      const archive = arr.find(isZipFile);
+      if (!archive) {
+        setError(`Please upload one ${selectedImportOption.label} .zip archive.`);
+        return;
+      }
+      setError("");
+      setFiles([archive]);
+      return;
+    }
+
+    const mediaFiles = arr.filter(isMediaFile);
+    if (mediaFiles.length === 0) {
+      setError("Please upload image or video files.");
+      return;
+    }
+    setError("");
+
     setFiles((prev) => {
       const existing = new Set(prev.map((f) => f.name + f.size));
 
-      return [...prev, ...arr.filter((f) => !existing.has(f.name + f.size))];
+      return [...prev, ...mediaFiles.filter((f) => !existing.has(f.name + f.size))];
     });
   }
 
@@ -552,11 +744,20 @@ function CreateDatasetModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    setSaving(true);
     setError("");
+    if (archiveImport && files.length !== 1) {
+      setError(`Please upload one ${selectedImportOption.label} .zip archive before creating the dataset.`);
+      return;
+    }
+    if (archiveImport && files[0] && !isZipFile(files[0])) {
+      setError(`The selected ${selectedImportOption.label} file must be a .zip archive.`);
+      return;
+    }
+
+    setSaving(true);
 
     try {
-      const created = await datasets.create({
+      let created = await datasets.create({
         project: project.id,
         name,
         description,
@@ -564,22 +765,9 @@ function CreateDatasetModal({
 
       if (files.length > 0) {
         setUploadProgress({ current: 0, total: files.length });
-
-        const images = files.filter((f) => !f.type.startsWith("video/"));
-        const videos = files.filter((f) => f.type.startsWith("video/"));
-        let uploaded = 0;
-
-        const uploadGroup = async (group: File[], type: "image" | "video") => {
-          for (let i = 0; i < group.length; i += 100) {
-            const batch = group.slice(i, i + 100);
-            await datasets.uploadBatch(created.id, batch, type);
-            uploaded += batch.length;
-            setUploadProgress({ current: uploaded, total: files.length });
-          }
-        };
-
-        await uploadGroup(images, "image");
-        await uploadGroup(videos, "video");
+        const importResponse = await datasets.startImport(created.id, files, archiveFormat ?? "images");
+        created = importResponse.dataset;
+        setUploadProgress({ current: files.length, total: files.length });
       }
 
       onCreated(created);
@@ -599,61 +787,215 @@ function CreateDatasetModal({
     if (!saving) return "Create Dataset";
 
     if (uploadProgress.total > 0) {
-      return `Uploading ${uploadProgress.current}/${uploadProgress.total}…`;
+      return "Starting import...";
     }
 
-    return "Creating…";
+    return "Creating...";
   }
 
   return (
     <div
-      className={["fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4", "backdrop-blur-sm"].join(" ")}
+      className={["fixed inset-0 z-50 flex items-center justify-center bg-stone-950/35 p-3 sm:p-5", "backdrop-blur-sm"].join(" ")}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className={[
-          "w-full max-w-4xl rounded-3xl border border-stone-200 bg-white p-8 shadow-2xl",
-          "max-h-[90vh] overflow-y-auto",
+          "flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl",
+          "border border-stone-200 bg-white shadow-2xl",
         ].join(" ")}
       >
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-stone-900">New Dataset</h2>
-
-            <p className="mt-1 text-xs text-stone-500">
-              Creating in project <span className="font-bold text-stone-900">{project.name}</span>
-            </p>
+        <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-5 py-5 sm:px-8">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
+              <DatabaseZap className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-2xl font-bold tracking-tight text-stone-950">New Dataset</h2>
+              <p className="mt-1 truncate text-sm text-stone-500">
+                Creating in project <span className="font-bold text-orange-600">{project.name}</span>
+              </p>
+            </div>
           </div>
 
-          <button onClick={onClose} className="rounded-xl p-2 transition-colors hover:bg-stone-100">
-            <X className="h-5 w-5 text-stone-500" />
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close new dataset modal"
+            className="rounded-xl p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:opacity-50"
+          >
+            <X className="h-6 w-6" />
           </button>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-xs text-red-600">{error}</div>
+          <div className="mx-5 mt-5 rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-600 sm:mx-8">{error}</div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="space-y-5 p-5 sm:p-8">
+          <section className="rounded-2xl border border-orange-200 bg-orange-50/60 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600 ring-1 ring-orange-100">
+                <FolderTree className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-stone-900">Dataset import format</h3>
+                      <div className="group relative z-30">
+                        <button
+                          type="button"
+                          aria-label={`Show ${selectedImportHint.title}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-orange-600 transition-colors hover:bg-orange-100 focus-visible:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30"
+                        >
+                          <CircleHelp className="h-4 w-4" />
+                        </button>
+                        <div
+                          role="tooltip"
+                          className={[
+                            "pointer-events-none invisible absolute left-0 top-full mt-2 w-[min(36rem,calc(100vw-4rem))]",
+                            "translate-y-1 rounded-2xl border border-orange-200 bg-white p-5 opacity-0 shadow-xl",
+                            "transition duration-150 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:opacity-100",
+                            "group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100",
+                          ].join(" ")}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+                              <BookOpen className="h-5 w-5" />
+                            </div>
+                            <p className="text-base font-bold text-stone-900">{selectedImportHint.title}</p>
+                          </div>
+                          <p className="mt-3 text-sm leading-6 text-stone-600">{selectedImportHint.description}</p>
+                          <p className="mt-2 text-sm text-stone-600">
+                            Test path:{" "}
+                            <code className="break-all rounded-md bg-stone-100 px-2 py-1 font-semibold text-stone-700">
+                              {selectedImportHint.testPath}
+                            </code>
+                          </p>
+
+                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-xl border border-orange-100 bg-orange-50/30 p-4 text-stone-800">
+                              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-orange-600">
+                                <FileArchive className="h-4 w-4" /> Expected structure
+                              </div>
+                              <pre className="overflow-x-auto whitespace-pre font-mono text-[11px] leading-6">
+{selectedImportHint.structure}
+                              </pre>
+                            </div>
+                            <div className="rounded-xl border border-orange-100 bg-orange-50/30 p-4">
+                              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-orange-600">
+                                <FileText className="h-4 w-4" /> {selectedImportHint.configLabel}
+                              </div>
+                              <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-6 text-stone-700">
+{selectedImportHint.configExample}
+                              </pre>
+                            </div>
+                          </div>
+
+                          <ul className="mt-5 space-y-3 text-sm leading-5 text-stone-700">
+                            {selectedImportHint.checklist.map((item) => (
+                              <li key={item} className="grid grid-cols-[20px_minmax(0,1fr)] gap-2">
+                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-100">
+                                  <Check className="h-3.5 w-3.5 text-orange-600" />
+                                </span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-1 text-xs leading-6 text-stone-600">
+                      Choose the annotation format to import.
+                    </p>
+                  </div>
+                  <div ref={formatMenuRef} className="relative shrink-0">
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={formatMenuOpen}
+                      onClick={() => setFormatMenuOpen((open) => !open)}
+                      className={[
+                        "flex h-10 min-w-40 items-center justify-between gap-4 rounded-xl border bg-white px-3.5",
+                        "text-sm font-bold text-stone-900 outline-none transition",
+                        formatMenuOpen
+                          ? "border-orange-500 ring-2 ring-orange-500/15"
+                          : "border-orange-200 hover:border-orange-400 focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/20",
+                      ].join(" ")}
+                    >
+                      <span>{selectedImportOption.label}</span>
+                      <ChevronDown
+                        className={`h-4 w-4 text-orange-500 transition-transform ${formatMenuOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+
+                    {formatMenuOpen && (
+                      <div
+                        role="listbox"
+                        aria-label="Dataset import format"
+                        className="absolute right-0 top-full z-40 mt-2 min-w-40 overflow-hidden rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl"
+                      >
+                        {DATASET_IMPORT_OPTIONS.map((option) => {
+                          const selected = option.value === selectedHintKey;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              onClick={() => {
+                                if (option.value !== selectedHintKey) {
+                                  setFiles([]);
+                                  setError("");
+                                  if (fileInputRef.current) fileInputRef.current.value = "";
+                                }
+                                setSelectedHintKey(option.value);
+                                setFormatMenuOpen(false);
+                              }}
+                              className={[
+                                "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                                selected
+                                  ? "bg-orange-50 font-bold text-orange-700"
+                                  : "font-medium text-stone-700 hover:bg-stone-50 hover:text-stone-950",
+                              ].join(" ")}
+                            >
+                              <span>{option.label}</span>
+                              {selected && <Check className="h-4 w-4 text-orange-500" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </section>
+
           {/* Dataset Name */}
           <div>
-            <label
-              className={["mb-2 block text-[10px] font-bold uppercase tracking-widest", "text-stone-400"].join(" ")}
-            >
-              Dataset Name
-            </label>
+            <div className="mb-2 flex items-center justify-between">
+              <label htmlFor="dataset-name" className="text-sm font-semibold text-stone-800">Dataset name</label>
+              <span className="text-xs tabular-nums text-stone-400">{name.length}/100</span>
+            </div>
 
             <input
+              id="dataset-name"
               type="text"
               required
+              maxLength={100}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Workshop-Safety-Part-A"
               className={[
-                "w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none",
+                "h-12 w-full rounded-xl border border-stone-200 bg-white px-4 text-sm outline-none",
                 "focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20",
               ].join(" ")}
             />
@@ -661,19 +1003,22 @@ function CreateDatasetModal({
 
           {/* Description */}
           <div>
-            <label
-              className={["mb-2 block text-[10px] font-bold uppercase tracking-widest", "text-stone-400"].join(" ")}
-            >
-              Description
-            </label>
+            <div className="mb-2 flex items-center justify-between">
+              <label htmlFor="dataset-description" className="text-sm font-semibold text-stone-800">
+                Description <span className="font-normal text-stone-400">(optional)</span>
+              </label>
+              <span className="text-xs tabular-nums text-stone-400">{description.length}/500</span>
+            </div>
 
             <textarea
-              rows={3}
+              id="dataset-description"
+              rows={4}
+              maxLength={500}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional description..."
               className={[
-                "w-full resize-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm",
+                "w-full resize-none rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm",
                 "outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20",
               ].join(" ")}
             />
@@ -681,17 +1026,16 @@ function CreateDatasetModal({
 
           {/* Upload Section */}
           <div>
-            <label
-              className={["mb-2 block text-[10px] font-bold uppercase tracking-widest", "text-stone-400"].join(" ")}
-            >
-              Upload Data <span className="normal-case font-normal text-stone-300">(optional)</span>
+            <label className="mb-2 block text-sm font-semibold text-stone-800">
+              {archiveImport ? "Upload archive" : "Upload data"}{" "}
+              {!archiveImport && <span className="font-normal text-stone-400">(optional)</span>}
             </label>
 
             <input
               ref={fileInputRef}
               type="file"
-              multiple
-              accept="image/*,video/*,.mp4,.webm,.mov,.mkv,.avi,.m4v"
+              multiple={selectedUploadRule.multiple}
+              accept={selectedUploadRule.accept}
               className="hidden"
               onChange={(e) => {
                 if (e.target.files) {
@@ -721,31 +1065,34 @@ function CreateDatasetModal({
                   addFiles(e.dataTransfer.files);
                 }
               }}
-              className={`rounded-2xl border-2 border-dashed px-4 py-6 transition-all ${
+              className={`min-h-52 rounded-2xl border border-dashed px-4 py-6 transition-all ${
                 saving ? "cursor-not-allowed opacity-50" : "cursor-pointer"
               } ${
                 dragOver
-                  ? "border-orange-400 bg-orange-50"
-                  : "border-stone-200 hover:border-orange-300 hover:bg-stone-50/60"
+                  ? "border-orange-500 bg-orange-50"
+                  : "border-orange-300 bg-orange-50/20 hover:border-orange-500 hover:bg-orange-50/50"
               }`}
             >
               {/* Empty State */}
               {files.length === 0 && (
-                <div className="text-center">
+                <div className="flex min-h-40 flex-col items-center justify-center text-center">
                   <div
                     className={[
                       "mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl",
-                      "bg-stone-100",
+                      "bg-orange-50",
                     ].join(" ")}
                   >
-                    <Upload className="h-5 w-5 text-stone-400" />
+                    <Upload className="h-7 w-7 text-orange-500" />
                   </div>
 
                   <p className="text-sm font-semibold text-stone-700">
-                    Drop files here or <span className="text-orange-500">browse</span>
+                    {selectedUploadRule.emptyTitle}
                   </p>
-
-                  <p className="mt-1 text-xs text-stone-400">Images & videos — PNG, JPG, MP4, MOV…</p>
+                  <p className="my-2 text-xs text-stone-400">or</p>
+                  <span className="rounded-xl border border-orange-500 bg-white px-5 py-2.5 text-sm font-bold text-orange-600">
+                    Browse files
+                  </span>
+                  <p className="mt-4 text-xs text-stone-400">{selectedUploadRule.emptyDescription}</p>
                 </div>
               )}
 
@@ -757,7 +1104,9 @@ function CreateDatasetModal({
                       {files.length} file{files.length > 1 ? "s" : ""} selected
                     </p>
 
-                    <span className="text-xs text-orange-500">Click or drop more</span>
+                    <span className="text-xs text-orange-500">
+                      {archiveImport ? "Click or drop replacement" : "Click or drop more"}
+                    </span>
                   </div>
 
                   <div className="max-h-62 space-y-2 overflow-y-auto pr-1">
@@ -775,9 +1124,13 @@ function CreateDatasetModal({
                             "bg-stone-100",
                           ].join(" ")}
                         >
-                          <ImageIcon
-                            className={`h-4 w-4 ${f.type.startsWith("video/") ? "text-stone-400" : "text-orange-400"}`}
-                          />
+                          {archiveImport ? (
+                            <FileArchive className="h-4 w-4 text-orange-500" />
+                          ) : (
+                            <ImageIcon
+                              className={`h-4 w-4 ${f.type.startsWith("video/") ? "text-stone-400" : "text-orange-400"}`}
+                            />
+                          )}
                         </div>
 
                         <div className="min-w-0 flex-1">
@@ -817,15 +1170,19 @@ function CreateDatasetModal({
             </div>
           </div>
 
+              </div>
+
+          </div>
+
           {/* Footer */}
-          <div className="ml-auto grid w-fit grid-cols-2 gap-3 pt-2">
+          <div className="flex shrink-0 justify-end gap-3 border-stone-200 bg-white px-5 py-4 sm:px-8">
             <button
               type="button"
               onClick={onClose}
               disabled={saving}
               className={[
-                "rounded-xl bg-stone-100 px-6 py-3 text-sm font-bold text-stone-700 transition-all",
-                "hover:bg-stone-200 disabled:opacity-50",
+                "h-11 rounded-xl border border-stone-200 bg-white px-7 text-sm font-bold text-stone-700 transition-colors",
+                "hover:bg-stone-50 disabled:opacity-50",
               ].join(" ")}
             >
               Cancel
@@ -833,10 +1190,10 @@ function CreateDatasetModal({
 
             <button
               type="submit"
-              disabled={saving || !name}
+              disabled={saving || !name || (archiveImport && files.length !== 1)}
               className={[
-                "flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 py-3 text-sm",
-                "font-bold text-white shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02]",
+                "flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-7 text-sm",
+                "font-bold text-white shadow-lg shadow-orange-500/20 transition-colors hover:bg-orange-600",
                 "disabled:opacity-50",
               ].join(" ")}
             >
@@ -975,6 +1332,7 @@ function ClassEditorInline({
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const { user: currentUser } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
@@ -984,6 +1342,7 @@ export default function ProjectDetailPage() {
   const [exportDialog, setExportDialog] = useState<ExportDialogState | null>(null);
   const [classList, setClassList] = useState<AnnotationClass[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [classModalOpen, setClassModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<AnnotationClass | null>(null);
@@ -995,6 +1354,8 @@ export default function ProjectDetailPage() {
   const [inviteRole, setInviteRole] = useState<MemberRole>("member");
   const [inviteSaving, setInviteSaving] = useState(false);
   const [inviteError, setInviteError] = useState("");
+  const [datasetImportHint, setDatasetImportHint] = useState<DatasetImportHint>("images");
+  const datasetPromptHandledRef = useRef(false);
 
   const projectIdNum = id ? parseInt(id as string, 10) : NaN;
 
@@ -1042,6 +1403,34 @@ export default function ProjectDetailPage() {
       /* silent */
     }
   }, []);
+
+  const hasActiveDatasetImport = datasetList.some((dataset) =>
+    dataset.latest_import_job && ["queued", "running"].includes(dataset.latest_import_job.status),
+  );
+
+  useEffect(() => {
+    if (!hasActiveDatasetImport || Number.isNaN(projectIdNum)) return;
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshDatasetCounts(projectIdNum);
+      }
+    }, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [hasActiveDatasetImport, projectIdNum, refreshDatasetCounts]);
+
+  useEffect(() => {
+    if (datasetPromptHandledRef.current) return;
+    if (!projectIdNum || Number.isNaN(projectIdNum)) return;
+    if (searchParams.get("newDataset") !== "1") return;
+
+    const hint = searchParams.get("importHint");
+    setDatasetImportHint(hint === "coco" || hint === "yolo26" ? hint : "images");
+    datasetPromptHandledRef.current = true;
+    setShowModal(true);
+    router.replace(`/projects/${projectIdNum}`);
+  }, [projectIdNum, router, searchParams]);
 
   useEffect(() => {
     if (!id) return;
@@ -1096,22 +1485,34 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (!id) return;
     async function load() {
+      setLoading(true);
+      setPageError("");
       try {
         const projectId = parseInt(id as string, 10);
-        const [found, dsRes] = await Promise.all([projects.get(projectId), datasets.list(projectId)]);
+        const found = await projects.get(projectId);
         setProject(found);
-        setDatasetList(dsRes.results);
-        const clsRes = await annotationClasses.list(projectId);
-        setClassList(clsRes.results ?? []);
-        await Promise.all([loadMembers(found.team), loadInvitations(found.team)]);
+        await Promise.all([
+          refreshDatasetCounts(projectId),
+          loadClasses(),
+          loadMembers(found.team),
+          loadInvitations(found.team),
+        ]);
       } catch (err) {
-        console.error(err);
+        if (err instanceof ApiError && err.status === 404) {
+          setProject(null);
+          setDatasetList([]);
+          setClassList([]);
+          setMembers([]);
+          setInvitations([]);
+          return;
+        }
+        setPageError(err instanceof Error ? err.message : "Could not load this project.");
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, [id, loadMembers, loadInvitations]);
+  }, [id, loadClasses, loadInvitations, loadMembers, refreshDatasetCounts]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1141,7 +1542,7 @@ export default function ProjectDetailPage() {
   if (!project)
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8">
-        <p className="text-stone-500 mb-4">Project not found</p>
+        <p className="mb-4 text-stone-500">{pageError || "Project not found"}</p>
         <button onClick={() => router.push("/projects")} className="text-orange-500 font-bold">
           Back to Projects
         </button>
@@ -1216,7 +1617,7 @@ export default function ProjectDetailPage() {
         val,
         test,
         seed: dataset.split_config?.seed ?? 42,
-        strategy: dataset.split_config?.strategy ?? "class",
+        strategy: dataset.split_config?.strategy === "random" ? "random" : "class",
         test_dataset_id: test === 0 ? dataset.split_config?.test_dataset_id ?? null : null,
       });
       setDatasetList((currentList) =>
@@ -1288,9 +1689,10 @@ export default function ProjectDetailPage() {
         {showModal && (
           <CreateDatasetModal
             project={project}
+            importHint={datasetImportHint}
             onClose={() => setShowModal(false)}
             onCreated={(d) => {
-              setDatasetList([d, ...datasetList]);
+              setDatasetList((current) => [d, ...current.filter((dataset) => dataset.id !== d.id)]);
               setShowModal(false);
             }}
           />
@@ -1792,6 +2194,10 @@ export default function ProjectDetailPage() {
         >
           {datasetList.map((dataset, i) => {
             const status = datasetStatus(dataset);
+            const importJob = dataset.latest_import_job;
+            const importProgress = importJob && importJob.total > 0
+              ? Math.min(100, Math.round((importJob.done / importJob.total) * 100))
+              : 0;
             return (
               <motion.div
                 key={dataset.id}
@@ -1828,6 +2234,30 @@ export default function ProjectDetailPage() {
                   >
                     <div className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} /> {status}
                   </div>
+                  {importJob && ["queued", "running"].includes(importJob.status) ? (
+                    <div className="absolute inset-x-3 bottom-3 rounded-xl border border-orange-100 bg-white/95 p-2.5 shadow-sm backdrop-blur">
+                      <div className="flex items-center justify-between gap-3 text-[10px] font-bold text-stone-700">
+                        <span>{importJob.status === "queued" ? "Waiting for worker" : "Importing files"}</span>
+                        <span className="tabular-nums text-orange-600">
+                          {importJob.total > 0 ? `${importJob.done}/${importJob.total}` : "Preparing"}
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-orange-100">
+                        <div
+                          className="h-full rounded-full bg-orange-500 transition-[width] duration-500"
+                          style={{ width: `${importProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  {dataset.latest_import_job?.status === "error" && dataset.latest_import_job.error ? (
+                    <div
+                      title={dataset.latest_import_job.error}
+                      className="absolute inset-x-3 bottom-3 line-clamp-2 rounded-lg bg-red-50/95 px-2.5 py-2 text-[10px] font-semibold leading-4 text-red-700 shadow-sm backdrop-blur"
+                    >
+                      {dataset.latest_import_job.error}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="shrink-0 px-3 pt-2 pb-1">
                   <div className="flex items-center justify-between gap-1 mb-2">
@@ -1857,7 +2287,7 @@ export default function ProjectDetailPage() {
                           ].join(" ")}
                         >
                           <span>
-                            <span className="text-stone-900">{completed}</span> / {total} labeled
+                            <span className="text-stone-900">{completed}</span> / {total} images annotated
                           </span>
                           <span>{pct}%</span>
                         </div>

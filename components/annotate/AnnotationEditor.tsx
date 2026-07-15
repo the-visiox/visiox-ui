@@ -104,12 +104,20 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const onSelectedIdChangeRef = useRef(onSelectedIdChange);
   onSelectedIdChangeRef.current = onSelectedIdChange;
+  const externalSelectedIdRef = useRef<string | null>(externalSelectedId ?? null);
   useEffect(() => {
-    onSelectedIdChangeRef.current?.(selectedId);
-  }, [selectedId]);
+    externalSelectedIdRef.current = externalSelectedId ?? null;
+  }, [externalSelectedId]);
+  const commitSelectedId = useCallback((next: string | null) => {
+    setSelectedId((current) => (current === next ? current : next));
+    if (externalSelectedIdRef.current !== next) {
+      onSelectedIdChangeRef.current?.(next);
+    }
+  }, []);
   useEffect(() => {
     if (externalSelectedId !== undefined) {
-      setSelectedId(externalSelectedId ?? null);
+      const next = externalSelectedId ?? null;
+      setSelectedId((current) => (current === next ? current : next));
     }
   }, [externalSelectedId]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -361,11 +369,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       onShapesChange((prev) =>
         prev.map((shape) => (shape.clientId === clientId ? { ...shape, classLabelId: classId } : shape)),
       );
-      setSelectedId(clientId);
+      commitSelectedId(clientId);
       onActiveClassIdChange(classId);
       setContextMenu(null);
     },
-    [onActiveClassIdChange, onShapesChange],
+    [commitSelectedId, onActiveClassIdChange, onShapesChange],
   );
 
   useEffect(() => {
@@ -391,10 +399,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const deleteShape = useCallback(
     (id: string) => {
       onShapesChange((prev) => prev.filter((shape) => shape.clientId !== id));
-      setSelectedId((current) => (current === id ? null : current));
+      commitSelectedId(selectedId === id ? null : selectedId);
       setHoveredId((current) => (current === id ? null : current));
     },
-    [onShapesChange],
+    [commitSelectedId, onShapesChange, selectedId],
   );
 
   useEffect(() => {
@@ -446,18 +454,18 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const checkDeselect = useCallback((e: KonvaEventObject<MouseEvent>) => {
     if (isCanvasBackground(e)) {
-      setSelectedId(null);
+      commitSelectedId(null);
       setContextMenu(null);
     }
-  }, []);
+  }, [commitSelectedId]);
 
   const selectShape = useCallback(
     (clientId: string, e: KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (activeTool !== "select") return;
       e.cancelBubble = true;
-      setSelectedId(clientId);
+      commitSelectedId(clientId);
     },
-    [activeTool],
+    [activeTool, commitSelectedId],
   );
 
   const openShapeClassMenu = useCallback(
@@ -466,14 +474,14 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       e.evt.preventDefault();
       e.cancelBubble = true;
       const pos = menuPositionFromPointer(e.evt, containerRef.current);
-      setSelectedId(clientId);
+      commitSelectedId(clientId);
       setContextMenu({
         shapeId: clientId,
         x: pos.x,
         y: pos.y,
       });
     },
-    [activeTool],
+    [activeTool, commitSelectedId],
   );
 
   const clampRectToImage = useCallback(
@@ -521,7 +529,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       if (!pos) return;
 
       if (pathDraftRef.current.length === 0) {
-        setSelectedId(null);
+        commitSelectedId(null);
       }
 
       const nextPoints = [...pathDraftRef.current, pos.x, pos.y];
@@ -551,6 +559,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     [
       activeClassId,
       activeTool,
+      commitSelectedId,
       image,
       imageH,
       imageW,
@@ -569,7 +578,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       if (!image || imageW < 1 || imageH < 1) return;
       const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
       if (!pos) return;
-      setSelectedId(null);
+      commitSelectedId(null);
       const classId = labels.some((label) => label.id === activeClassId) ? activeClassId : (labels[0]?.id ?? 1);
       const shape: EditorShape = canPlaceTag
         ? {
@@ -601,6 +610,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       imageH,
       imageW,
       labels,
+      commitSelectedId,
       layerScale,
       layerX,
       layerY,
@@ -621,7 +631,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     if (!pos) return;
 
     if (!newBox) {
-      if (selectedId) setSelectedId(null);
+      if (selectedId) commitSelectedId(null);
       setNewBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
       return;
     }
@@ -1080,13 +1090,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                             onMouseDown={(e) => {
                               if (!pathVertexEditingEnabled) return;
                               e.cancelBubble = true;
-                              setSelectedId(shape.clientId);
+                              commitSelectedId(shape.clientId);
                             }}
                             onContextMenu={(e) => openShapeClassMenu(shape.clientId, e)}
                             onTap={(e) => {
                               if (!pathVertexEditingEnabled) return;
                               e.cancelBubble = true;
-                              setSelectedId(shape.clientId);
+                              commitSelectedId(shape.clientId);
                             }}
                             onDragMove={(e) =>
                               updatePointGeometry(shape.clientId, vertexIndex, e.target.x(), e.target.y())
