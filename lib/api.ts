@@ -321,21 +321,13 @@ export interface ModelRegistry {
   created_at: string;
 }
 
-export interface PredictionBox {
-  media_id: number;
-  label: string;
-  label_id?: number | null;
-  confidence: number;
-  bbox: [number, number, number, number];
-  bbox_format?: "xywh" | "xyxy";
-  normalized?: boolean;
-  color?: string;
-}
-
-export interface DatasetPredictionResponse {
+export interface DatasetModelLabelResponse {
   dataset: number;
   model: number;
-  predictions: PredictionBox[];
+  processed_images: number;
+  labeled_images: number;
+  saved_annotations: number;
+  skipped_predictions: number;
   summary?: {
     total_images?: number;
     predicted_images?: number;
@@ -762,16 +754,28 @@ export const datasets = {
     form.append("type", type);
     return request<DatasetImportAccepted>(`/api/v1/datasets/${id}/upload-batch/`, { method: "POST", body: form });
   },
-  importArchive(id: number, file: File, format: "yolo26" | "coco") {
+  importArchive(
+    id: number,
+    file: File,
+    format: "yolo26" | "coco",
+    options?: { replaceExisting?: boolean },
+  ) {
     const form = new FormData();
     form.append("file", file);
     form.append("format", format);
+    if (options?.replaceExisting) form.append("replace_existing", "true");
     return request<DatasetImportAccepted>(`/api/v1/datasets/${id}/import-archive/`, { method: "POST", body: form });
   },
-  startImport(id: number, files: File[], format: "images" | "yolo26" | "coco") {
+  startImport(
+    id: number,
+    files: File[],
+    format: "images" | "yolo26" | "coco",
+    options?: { replaceExisting?: boolean },
+  ) {
     const form = new FormData();
     for (const file of files) form.append("files", file);
     form.append("format", format);
+    if (options?.replaceExisting) form.append("replace_existing", "true");
     return request<DatasetImportAccepted>(
       `/api/v1/datasets/${id}/start-import/`,
       { method: "POST", body: form },
@@ -982,8 +986,8 @@ export const deployments = {
   getEndpoint(id: number) {
     return request<InferenceEndpoint>(`/api/v1/endpoints/${id}/`);
   },
-  predictDataset(registryId: number, data: { dataset: number; media_ids?: number[]; confidence?: number }) {
-    return request<DatasetPredictionResponse>(`/api/v1/registry/${registryId}/predict-dataset/`, {
+  labelDataset(registryId: number, data: { dataset: number; media_ids?: number[]; confidence?: number }) {
+    return request<DatasetModelLabelResponse>(`/api/v1/registry/${registryId}/label-dataset/`, {
       method: "POST",
       body: JSON.stringify(data),
     });

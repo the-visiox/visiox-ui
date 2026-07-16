@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
   BookOpen,
@@ -22,6 +22,10 @@ const IMPORT_OPTIONS: Array<{ value: DatasetImportFormat; label: string }> = [
   { value: "images", label: "Images" },
   { value: "yolo26", label: "YOLO26" },
 ];
+
+const subscribeToClient = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 const UPLOAD_RULES: Record<
   DatasetImportFormat,
@@ -127,14 +131,15 @@ interface DatasetImportDialogProps {
   open: boolean;
   datasetName: string;
   onClose: () => void;
-  onSubmit: (files: File[], format: DatasetImportFormat) => Promise<void>;
+  onSubmit: (files: File[], format: DatasetImportFormat, replaceExisting: boolean) => Promise<void>;
 }
 
 export default function DatasetImportDialog({ open, datasetName, onClose, onSubmit }: DatasetImportDialogProps) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(subscribeToClient, getClientSnapshot, getServerSnapshot);
   const [format, setFormat] = useState<DatasetImportFormat>("images");
   const [formatMenuOpen, setFormatMenuOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [replaceExisting, setReplaceExisting] = useState(true);
   const [dragOver, setDragOver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -153,8 +158,6 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
   const rule = UPLOAD_RULES[format];
   const selectedHint = IMPORT_HINTS[format];
   const archiveImport = format !== "images";
-
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -272,22 +275,21 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
     hintCloseTimerRef.current = setTimeout(() => setHintOpen(false), 100);
   };
 
-  const startImport = async () => {
+  const startImport = () => {
     if (files.length === 0) {
       setError(archiveImport ? `Please upload one ${selectedOption.label} .zip archive.` : "Select files to upload.");
       return;
     }
     setSubmitting(true);
     setError("");
-    try {
-      await onSubmit(files, format);
-      setFiles([]);
-      onClose();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Failed to start import.");
-    } finally {
-      setSubmitting(false);
-    }
+    const uploadTask = onSubmit(files, format, archiveImport && replaceExisting);
+    setFiles([]);
+    onClose();
+    void uploadTask
+      .catch(() => {
+        // The dataset page owns background upload errors after this dialog closes.
+      })
+      .finally(() => setSubmitting(false));
   };
 
   return createPortal(
@@ -395,6 +397,7 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
                           setFormat(option.value);
                           setFiles([]);
                           setError("");
+                          setReplaceExisting(true);
                           setFormatMenuOpen(false);
                         }}
                         className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
@@ -412,6 +415,25 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
               </div>
             </div>
           </section>
+
+          {format === "yolo26" ? (
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-stone-200 bg-stone-50/70 p-4 transition-colors hover:border-orange-200 hover:bg-orange-50/40">
+              <input
+                type="checkbox"
+                checked={replaceExisting}
+                disabled={submitting}
+                onChange={(event) => setReplaceExisting(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-orange-500"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-bold text-stone-900">Update matching images</span>
+                <span className="mt-1 block text-xs leading-5 text-stone-600">
+                  Reuse images with the same file name and replace their annotations. Existing files are not uploaded to
+                  MinIO again.
+                </span>
+              </span>
+            </label>
+          ) : null}
 
           {hintOpen && hintPosition
             ? createPortal(
@@ -576,7 +598,7 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
           </button>
           <button
             type="button"
-            onClick={() => void startImport()}
+            onClick={startImport}
             disabled={submitting || files.length === 0}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 text-sm font-bold text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
           >

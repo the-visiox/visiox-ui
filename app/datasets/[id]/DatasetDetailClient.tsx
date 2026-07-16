@@ -66,12 +66,23 @@ import {
   type Media,
   type AnnotationClass,
   type ModelRegistry,
-  type PredictionBox,
 } from "@/lib/api";
 
 interface Props {
   id: string;
 }
+
+type ModelRunConfig = {
+  modelId: number | "";
+  confidence: number;
+  scope: "page" | "dataset";
+};
+
+const DEFAULT_MODEL_RUN_CONFIG: ModelRunConfig = {
+  modelId: "",
+  confidence: 0.25,
+  scope: "page",
+};
 
 function mediaDisplayName(media: Media): string {
   return (
@@ -132,15 +143,10 @@ function pointsToPath(points: number[]): string {
   return pairs.join(" ");
 }
 
-function predictionToPoints(prediction: PredictionBox, width: number, height: number): number[] {
-  const [a, b, c, d] = prediction.bbox;
-  const values = prediction.normalized ? [a * width, b * height, c * width, d * height] : [a, b, c, d];
-  if (prediction.bbox_format === "xyxy") {
-    const [x1, y1, x2, y2] = values;
-    return [x1, y1, x2, y1, x2, y2, x1, y2];
-  }
-  const [x, y, boxWidth, boxHeight] = values;
-  return [x, y, x + boxWidth, y, x + boxWidth, y + boxHeight, x, y + boxHeight];
+function originalMediaIds(frames: BrowserData["frames"]): number[] {
+  return frames
+    .filter((frame) => !frame.augmented && typeof frame.media_id === "number")
+    .map((frame) => frame.media_id as number);
 }
 
 const CARD = "bg-white rounded-2xl border border-stone-200";
@@ -501,17 +507,17 @@ export default function DatasetDetailClient({ id }: Props) {
   const [exportOpen, setExportOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingLabel, setUploadingLabel] = useState("");
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [browserTab, setBrowserTab] = useState<"original" | "augmented">("original");
   const [registeredModels, setRegisteredModels] = useState<ModelRegistry[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<number | "">("");
-  const [predicting, setPredicting] = useState(false);
-  const [predictionError, setPredictionError] = useState("");
-  const [predictionsByMediaId, setPredictionsByMediaId] = useState<Record<number, PredictionBox[]>>({});
+  const [modelRunConfig, setModelRunConfig] = useState<ModelRunConfig>(DEFAULT_MODEL_RUN_CONFIG);
+  const [runningModel, setRunningModel] = useState(false);
+  const [modelRunMessage, setModelRunMessage] = useState("");
+  const [modelRunError, setModelRunError] = useState("");
   const [showAnnotationLabels, setShowAnnotationLabels] = useState(true);
-  const [showPredictionLabels, setShowPredictionLabels] = useState(true);
   const [currentDatasetSection, setCurrentDatasetSection] = useState<1 | 2>(1);
   const [browserOpen, setBrowserOpen] = useState(true);
   const browserLayoutInitializedRef = useRef(false);
@@ -590,7 +596,10 @@ export default function DatasetDetailClient({ id }: Props) {
     }
     if (registryResult.status === "fulfilled") {
       setRegisteredModels(registryResult.value.results);
-      setSelectedModelId((current) => current || registryResult.value.results[0]?.id || "");
+      setModelRunConfig((current) => {
+        if (current.modelId) return current;
+        return { ...current, modelId: registryResult.value.results[0]?.id || "" };
+      });
     }
     if (dsResult.status === "rejected" && statsResult.status === "rejected" && browserResult.status === "rejected") {
       setError("Failed to load dataset data");
@@ -897,43 +906,59 @@ export default function DatasetDetailClient({ id }: Props) {
     }
   };
 
-  const handleRunInference = async () => {
-    if (!selectedModelId || isNaN(numericId)) {
-      setPredictionError("Select a trained model first.");
+  const handleRunModel = async () => {
+    const { modelId, confidence, scope } = modelRunConfig;
+    if (!modelId || isNaN(numericId)) {
+      setModelRunError("Select a trained model first.");
       return;
     }
-    const visibleOriginalMediaIds = visibleFrames
-      .filter((frame) => !frame.augmented && typeof frame.media_id === "number")
-      .map((frame) => frame.media_id as number);
-    const mediaIds = selectedMediaIds.length > 0 ? selectedMediaIds : visibleOriginalMediaIds;
+    const visibleOriginalMediaIds = originalMediaIds(visibleFrames);
+    const mediaIds = selectedMediaIds.length > 0
+      ? selectedMediaIds
+      : scope === "dataset" ? originalMediaIds(activeFrames) : visibleOriginalMediaIds;
     if (mediaIds.length === 0) {
-      setPredictionError("No original images are available for inference on this page.");
+      setModelRunError("No original images are available for model inference.");
       return;
     }
-    setPredicting(true);
-    setPredictionError("");
+    const accepted = await confirm({
+      title: "Label with model",
+      message: [
+        `Run the selected model on ${mediaIds.length} image(s) with ${Math.round(confidence * 100)}% confidence?`,
+        "Previous labels from this model will be replaced; manual annotations are kept.",
+      ].join(" "),
+      confirmLabel: "Label images",
+    });
+    if (!accepted) return;
+
+    setRunningModel(true);
+    setModelRunError("");
+    setModelRunMessage("");
     try {
-      const result = await deployments.predictDataset(selectedModelId as number, {
+      const result = await deployments.labelDataset(modelId, {
         dataset: numericId,
         media_ids: mediaIds,
+        confidence,
       });
-      const next: Record<number, PredictionBox[]> = {};
-      for (const prediction of result.predictions ?? []) {
-        if (!next[prediction.media_id]) next[prediction.media_id] = [];
-        next[prediction.media_id].push(prediction);
-      }
-      setPredictionsByMediaId((current) => ({ ...current, ...next }));
-      setShowPredictionLabels(true);
+      setModelRunMessage(
+        `Saved ${INTEGER_FORMATTER.format(result.saved_annotations)} labels across `
+          + `${INTEGER_FORMATTER.format(result.labeled_images)} images.`,
+      );
+      await refreshStatsAndBrowser();
     } catch (err) {
-      setPredictionError(err instanceof Error ? err.message : "Inference request failed.");
+      setModelRunError(err instanceof Error ? err.message : "Model inference failed.");
     } finally {
-      setPredicting(false);
+      setRunningModel(false);
     }
   };
 
-  const handleUploadFiles = async (files: File[], format: DatasetImportFormat) => {
+  const handleUploadFiles = async (
+    files: File[],
+    format: DatasetImportFormat,
+    replaceExisting: boolean,
+  ) => {
     if (files.length === 0 || isNaN(numericId)) return;
     setUploading(true);
+    setUploadingLabel(files.length === 1 ? files[0].name : `${files.length} files`);
     setError("");
     try {
       if (format === "images") {
@@ -941,13 +966,15 @@ export default function DatasetDetailClient({ id }: Props) {
           await datasets.startImport(numericId, files.slice(i, i + IMPORT_BATCH_SIZE), "images");
         }
       } else {
-        await datasets.startImport(numericId, files, "yolo26");
+        await datasets.startImport(numericId, files, "yolo26", { replaceExisting });
       }
       await refreshStatsAndBrowser();
     } catch (err) {
-      throw err instanceof Error ? err : new Error("Upload failed");
+      setError(err instanceof Error ? err.message : "Upload failed");
+      await refreshStatsAndBrowser();
     } finally {
       setUploading(false);
+      setUploadingLabel("");
     }
   };
 
@@ -1176,7 +1203,27 @@ export default function DatasetDetailClient({ id }: Props) {
         </div>
       )}
 
-      {latestImportJob && (
+      {uploading ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className={[
+            "mx-6 mt-3 flex items-start gap-3 rounded-2xl border border-orange-200",
+            "bg-orange-50/80 px-4 py-3.5 text-sm shadow-sm",
+          ].join(" ")}
+        >
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </span>
+          <div className="min-w-0">
+            <p className="font-bold text-orange-800">Uploading in the background</p>
+            <p className="mt-0.5 break-words text-xs leading-relaxed text-orange-600">
+              {uploadingLabel || "Selected files"} is being sent to storage. You can continue using this page; keep this
+              tab open until the upload is queued.
+            </p>
+          </div>
+        </div>
+      ) : latestImportJob ? (
         <div
           role={latestImportJob.status === "error" ? "alert" : "status"}
           aria-live={latestImportJob.status === "error" ? "assertive" : "polite"}
@@ -1260,7 +1307,7 @@ export default function DatasetDetailClient({ id }: Props) {
             </button>
           ) : null}
         </div>
-      )}
+      ) : null}
 
       <DatasetExportDialog
         targets={[{ id: numericId, name }]}
@@ -2493,65 +2540,81 @@ export default function DatasetDetailClient({ id }: Props) {
             )}
             </div>
 
-            <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-stone-200 bg-white p-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
-                  value={selectedModelId}
-                  onChange={(event) => setSelectedModelId(event.target.value ? Number(event.target.value) : "")}
-                  className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700 focus-visible:ring-2 focus-visible:ring-orange-500"
-                  aria-label="Select model for inference"
+                  value={modelRunConfig.modelId}
+                  onChange={(event) => setModelRunConfig((current) => ({
+                    ...current,
+                    modelId: event.target.value ? Number(event.target.value) : "",
+                  }))}
+                  className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700"
+                  aria-label="Select model"
                 >
                   <option value="">Select trained model</option>
                   {registeredModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name} v{model.version}
-                    </option>
+                    <option key={model.id} value={model.id}>{model.name} v{model.version}</option>
                   ))}
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={modelRunConfig.confidence}
+                  onChange={(event) => setModelRunConfig((current) => ({
+                    ...current,
+                    confidence: Math.max(0, Math.min(1, Number(event.target.value) || 0)),
+                  }))}
+                  className="no-number-spinner h-10 w-24 rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm font-bold"
+                  aria-label="Confidence"
+                />
+                <select
+                  value={modelRunConfig.scope}
+                  onChange={(event) => setModelRunConfig((current) => ({
+                    ...current,
+                    scope: event.target.value as ModelRunConfig["scope"],
+                  }))}
+                  disabled={selectedMediaIds.length > 0}
+                  className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700 disabled:opacity-50"
+                  aria-label="Image scope"
+                  title={selectedMediaIds.length ? "Selected images take priority" : undefined}
+                >
+                  <option value="page">Current page</option>
+                  <option value="dataset">Entire dataset</option>
                 </select>
                 <button
                   type="button"
-                  onClick={() => void handleRunInference()}
-                  disabled={predicting || !selectedModelId || browserTab !== "original"}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 text-sm font-bold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => void handleRunModel()}
+                  disabled={runningModel || !modelRunConfig.modelId || browserTab !== "original"}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-bold text-white disabled:opacity-40"
                 >
-                  {predicting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  Try Model
+                  {runningModel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  Run Model
                 </button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  {
-                    label: "Annotations",
-                    active: showAnnotationLabels,
-                    toggle: () => setShowAnnotationLabels((value) => !value),
-                  },
-                  {
-                    label: "Predictions",
-                    active: showPredictionLabels,
-                    toggle: () => setShowPredictionLabels((value) => !value),
-                  },
-                ].map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={item.toggle}
-                    aria-pressed={item.active}
-                    className={[
-                      "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition-colors",
-                      item.active
-                        ? "border-orange-200 bg-orange-50 text-orange-700"
-                        : "border-stone-200 bg-white text-stone-500 hover:bg-stone-50",
-                    ].join(" ")}
-                  >
-                    {item.active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                    {item.label}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowAnnotationLabels((value) => !value)}
+                aria-pressed={showAnnotationLabels}
+                className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-bold ${
+                  showAnnotationLabels
+                    ? "border-orange-200 bg-orange-50 text-orange-700"
+                    : "border-stone-200 text-stone-500"
+                }`}
+              >
+                {showAnnotationLabels ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                Annotations
+              </button>
             </div>
-            {predictionError ? (
+            {modelRunError ? (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-                {predictionError}
+                {modelRunError}
+              </div>
+            ) : null}
+            {modelRunMessage ? (
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                {modelRunMessage}
               </div>
             ) : null}
 
@@ -2580,8 +2643,6 @@ export default function DatasetDetailClient({ id }: Props) {
                   const imageSrc = frame.image_url
                     ? resolveMediaUrl(frame.image_url)
                     : datasets.frameUrl(numericId, frame.frame, "thumb");
-                  const framePredictions =
-                    typeof frame.media_id === "number" ? (predictionsByMediaId[frame.media_id] ?? []) : [];
                   return (
                     <div
                       key={frame.frame}
@@ -2708,10 +2769,9 @@ export default function DatasetDetailClient({ id }: Props) {
                               height={Math.max(frame.height, 1)}
                               preserveAspectRatio="xMidYMid slice"
                             />
-                            {(showAnnotationLabels || showPredictionLabels) && (
+                            {showAnnotationLabels && (
                               <g className="pointer-events-none">
-                                {showAnnotationLabels &&
-                                  frame.annotations.map((annotation) => {
+                                {frame.annotations.map((annotation) => {
                                     const points = annotation.points ?? [];
                                     const path = pointsToPath(points);
                                     if (!path) return null;
@@ -2739,40 +2799,6 @@ export default function DatasetDetailClient({ id }: Props) {
                                       </g>
                                     );
                                   })}
-                                {showPredictionLabels &&
-                                  framePredictions.map((prediction, predictionIndex) => {
-                                    const points = predictionToPoints(
-                                      prediction,
-                                      Math.max(frame.width, 1),
-                                      Math.max(frame.height, 1),
-                                    );
-                                    const path = pointsToPath(points);
-                                    if (!path) return null;
-                                    return (
-                                      <g key={`pred-${prediction.media_id}-${predictionIndex}`}>
-                                        <polygon
-                                          points={path}
-                                          fill="none"
-                                          stroke={prediction.color || "#f97316"}
-                                          strokeDasharray="6 5"
-                                          strokeWidth={Math.max(1.25, Math.max(frame.width, frame.height) * 0.0025)}
-                                          vectorEffect="non-scaling-stroke"
-                                        />
-                                        <text
-                                          x={points[0] ?? 0}
-                                          y={Math.max(10, (points[1] ?? 0) - 3)}
-                                          fill={prediction.color || "#f97316"}
-                                          fontSize={Math.max(frame.width, frame.height) * 0.028}
-                                          fontWeight={700}
-                                          paintOrder="stroke"
-                                          stroke="white"
-                                          strokeWidth={2}
-                                        >
-                                          {prediction.label} {Math.round(prediction.confidence * 100)}%
-                                        </text>
-                                      </g>
-                                    );
-                                  })}
                               </g>
                             )}
                           </svg>
@@ -2781,9 +2807,6 @@ export default function DatasetDetailClient({ id }: Props) {
                           <p className="truncate text-xs font-semibold text-stone-800">{frame.name}</p>
                           <p className="mt-0.5 text-[11px] font-medium text-stone-500">
                             {frame.annotations.length} labels
-                            {framePredictions.length > 0 ? (
-                              <span className="text-orange-600"> · {framePredictions.length} predictions</span>
-                            ) : null}
                           </p>
                         </div>
                       </Link>
