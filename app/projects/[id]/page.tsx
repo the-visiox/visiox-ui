@@ -196,6 +196,138 @@ function datasetStatus(d: Dataset): "Ready" | "In Progress" | "Importing" | "Imp
   return "In Progress";
 }
 
+function TrainingDatasetDialog({
+  datasets: projectDatasets,
+  selectedIds,
+  onToggle,
+  onClose,
+  onContinue,
+}: {
+  datasets: Dataset[];
+  selectedIds: number[];
+  onToggle: (datasetId: number) => void;
+  onClose: () => void;
+  onContinue: () => void;
+}) {
+  const selectedDatasets = projectDatasets.filter((dataset) => selectedIds.includes(dataset.id));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-stone-950/45 p-4 backdrop-blur-sm"
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="training-dataset-title"
+        className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl"
+      >
+        <div className="flex items-start justify-between border-b border-stone-100 px-6 py-5">
+          <div>
+            <h2 id="training-dataset-title" className="flex items-center gap-2 text-lg font-bold text-stone-900">
+              <BrainCircuit className="h-5 w-5 text-orange-500" /> Select training dataset
+            </h2>
+            <p className="mt-1 text-sm text-stone-500">Choose one or more datasets used for this training run.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close dataset selection"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="min-h-0 space-y-3 overflow-y-auto p-6">
+          {projectDatasets.map((dataset) => {
+            const status = datasetStatus(dataset);
+            const selected = selectedIds.includes(dataset.id);
+            const imageCount = dataset.image_count ?? dataset.media_count ?? 0;
+            return (
+              <button
+                key={dataset.id}
+                type="button"
+                disabled={!dataset.is_train_ready}
+                aria-pressed={selected}
+                onClick={() => onToggle(dataset.id)}
+                className={[
+                  "flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-colors",
+                  selected
+                    ? "border-orange-400 bg-orange-50 ring-2 ring-orange-500/15"
+                    : "border-stone-200 bg-white hover:border-orange-200 hover:bg-orange-50/40",
+                  "disabled:cursor-not-allowed disabled:bg-stone-50 disabled:opacity-55",
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+                    selected ? "bg-orange-500 text-white" : "bg-stone-100 text-stone-500",
+                  ].join(" ")}
+                >
+                  <DatabaseZap className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="truncate text-sm font-bold text-stone-900">{dataset.name}</span>
+                    <span className="shrink-0 rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
+                      v{dataset.version}
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-xs text-stone-500">
+                    {imageCount.toLocaleString()} images · {(dataset.annotated_count ?? 0).toLocaleString()} annotated
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="text-xs font-bold text-stone-500">{status}</span>
+                  <span
+                    className={[
+                      "flex h-5 w-5 items-center justify-center rounded-full border",
+                      selected
+                        ? "border-orange-500 bg-orange-500 text-white"
+                        : "border-stone-300 bg-white text-transparent",
+                    ].join(" ")}
+                  >
+                    <Check className="h-3 w-3" />
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+          {projectDatasets.some((dataset) => !dataset.is_train_ready) ? (
+            <p className="text-xs leading-relaxed text-stone-500">
+              Disabled datasets must be fully labeled, verified, and generated before training.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-stone-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-xl border border-stone-200 px-4 text-sm font-bold text-stone-700 transition-colors hover:bg-stone-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onContinue}
+            disabled={selectedDatasets.length === 0}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <BrainCircuit className="h-4 w-4" /> Continue with {selectedDatasets.length || 0}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 const ROLE_OPTIONS: { value: MemberRole; label: string; hint: string }[] = [
   { value: "viewer", label: "Viewer", hint: "Can view only" },
   { value: "member", label: "Member", hint: "Can edit & annotate" },
@@ -1340,6 +1472,8 @@ export default function ProjectDetailPage() {
   const [splitDrafts, setSplitDrafts] = useState<Record<number, { train: number; test: number }>>({});
   const [splittingDatasetId, setSplittingDatasetId] = useState<number | null>(null);
   const [exportDialog, setExportDialog] = useState<ExportDialogState | null>(null);
+  const [trainingDatasetDialogOpen, setTrainingDatasetDialogOpen] = useState(false);
+  const [selectedTrainingDatasetIds, setSelectedTrainingDatasetIds] = useState<number[]>([]);
   const [classList, setClassList] = useState<AnnotationClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
@@ -1683,6 +1817,30 @@ export default function ProjectDetailPage() {
           onClose={() => setExportDialog(null)}
         />
       ) : null}
+      <AnimatePresence>
+        {trainingDatasetDialogOpen ? (
+          <TrainingDatasetDialog
+            datasets={datasetList}
+            selectedIds={selectedTrainingDatasetIds}
+            onToggle={(datasetId) => {
+              setSelectedTrainingDatasetIds((current) =>
+                current.includes(datasetId)
+                  ? current.filter((currentId) => currentId !== datasetId)
+                  : [...current, datasetId],
+              );
+            }}
+            onClose={() => setTrainingDatasetDialogOpen(false)}
+            onContinue={() => {
+              if (selectedTrainingDatasetIds.length === 0) return;
+              setTrainingDatasetDialogOpen(false);
+              const selected = selectedTrainingDatasetIds.join(",");
+              router.push(
+                `/train?project=${project.id}&dataset=${selectedTrainingDatasetIds[0]}&datasets=${selected}`,
+              );
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
       <BlueprintGrid />
 
       <AnimatePresence>
@@ -1739,9 +1897,14 @@ export default function ProjectDetailPage() {
               disabled={!preferredTrainingDataset}
               onClick={() => {
                 if (!preferredTrainingDataset) return;
-                router.push("/train?project=" + project.id + "&dataset=" + preferredTrainingDataset.id);
+                if (datasetList.length === 1) {
+                  router.push(`/train?project=${project.id}&dataset=${preferredTrainingDataset.id}`);
+                  return;
+                }
+                setSelectedTrainingDatasetIds([preferredTrainingDataset.id]);
+                setTrainingDatasetDialogOpen(true);
               }}
-              title={preferredTrainingDataset ? "Train the latest approved dataset" : "Approve a fully labeled dataset first"}
+              title={preferredTrainingDataset ? "Choose a dataset to train" : "Approve a fully labeled dataset first"}
               className={[
                 "inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold",
                 "bg-stone-900 text-white shadow-lg transition-colors hover:bg-stone-800",

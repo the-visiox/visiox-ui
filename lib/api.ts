@@ -238,8 +238,15 @@ export interface TrainingJob {
   name: string;
   project: number;
   dataset: number | null;
+  dataset_ids: number[];
   architecture: number | null;
   architecture_name: string | null;
+  initialization_mode: "architecture" | "fine_tune";
+  parent_job: number | null;
+  parent_job_name: string | null;
+  base_model: number | null;
+  base_model_name: string | null;
+  class_schema: Array<{ id: number; name: string }>;
   status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled";
   hyperparams: Record<string, unknown>;
   error_message: string;
@@ -321,6 +328,72 @@ export interface ModelRegistry {
   created_at: string;
 }
 
+export interface AutoLabelModel {
+  id: number;
+  project: number;
+  name: string;
+  version: string;
+  family: string;
+  framework: string;
+  task_type: "object_detection" | "instance_segmentation";
+  capabilities: Array<"bbox" | "polygon">;
+  class_names: string[];
+  file_size: number;
+  status: "validating" | "ready" | "failed";
+  validation_error: string;
+  created_at: string;
+}
+
+export interface AutoLabelProvider {
+  id: string;
+  display_name: string;
+  description: string;
+  capabilities: Array<"bbox" | "polygon">;
+  models: string[];
+  parameters: Record<string, unknown>;
+}
+
+export type AutoLabelSource =
+  | { kind: "uploaded_model"; model_id: number }
+  | { kind: "provider"; provider: string; model: string; prompts: string[] };
+
+export interface AutoLabelPrediction {
+  type: "bbox" | "polygon";
+  class_label: number;
+  label: string;
+  confidence?: number | null;
+  data: { x?: number; y?: number; width?: number; height?: number; points?: number[] };
+}
+
+export interface AutoLabelPredictionResponse {
+  dataset: number;
+  frame: number;
+  media_id: number;
+  source: Record<string, unknown>;
+  predictions: AutoLabelPrediction[];
+  created_classes: Array<{ id: number; name: string; color: string }>;
+  unmapped_labels: string[];
+  summary: Record<string, unknown>;
+}
+
+export interface AutoLabelDatasetJob {
+  id: number;
+  dataset: number;
+  model: number;
+  model_name: string;
+  output_type: "bbox" | "polygon";
+  confidence: number;
+  status: "queued" | "running" | "done" | "error";
+  total: number;
+  done: number;
+  labeled_images: number;
+  saved_annotations: number;
+  skipped_predictions: number;
+  error: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DatasetModelLabelResponse {
   dataset: number;
   model: number;
@@ -336,6 +409,25 @@ export interface DatasetModelLabelResponse {
   };
 }
 
+export interface ModelPredictionPreviewResponse {
+  dataset: number;
+  model: number;
+  model_name: string;
+  model_version: string;
+  frame: number;
+  media_id: number;
+  predictions: Array<{
+    type: "bbox";
+    label: string;
+    class_label: number | null;
+    confidence?: number | null;
+    data: { x: number; y: number; width: number; height: number };
+  }>;
+  unmapped_labels: string[];
+  skipped_predictions: number;
+  summary: Record<string, unknown>;
+}
+
 export interface PaginatedResponse<T> {
   count: number;
   next: string | null;
@@ -345,11 +437,36 @@ export interface PaginatedResponse<T> {
 
 // ── Core fetch wrapper ─────────────────────────────────────────────────────
 
-let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
+function accessTokenExpiresSoon(token: string, minimumValidityMs = 30_000): boolean {
+  try {
+    const segment = token.split(".")[1];
+    if (!segment) return true;
+    const base64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now() + minimumValidityMs;
+  } catch {
+    return true;
+  }
+}
+
+function refreshAccessTokenOnce(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 export async function request<T>(path: string, options: RequestInit = {}, retryOn401 = true): Promise<T> {
-  const token = getAccessToken();
+  let token = getAccessToken();
+  if (token && retryOn401 && accessTokenExpiresSoon(token)) {
+    const refreshed = await refreshAccessTokenOnce();
+    if (refreshed) token = getAccessToken();
+  }
   const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string>),
@@ -374,15 +491,7 @@ export async function request<T>(path: string, options: RequestInit = {}, retryO
   }
 
   if (res.status === 401 && retryOn401) {
-    if (!isRefreshing) {
-      isRefreshing = true;
-      refreshPromise = tryRefresh().finally(() => {
-        isRefreshing = false;
-        refreshPromise = null;
-      });
-    }
-
-    const refreshed = await refreshPromise;
+    const refreshed = await refreshAccessTokenOnce();
     if (refreshed) {
       // Re-fetch token after refresh
       const newToken = getAccessToken();
@@ -441,7 +550,7 @@ async function requestAllPages<T>(path: string): Promise<T[]> {
   return results;
 }
 
-async function tryRefresh(): Promise<boolean> {
+export async function refreshAccessToken(): Promise<boolean> {
   const refresh = localStorage.getItem(TOKEN_KEYS.refresh);
   if (!refresh) return false;
   try {
@@ -787,6 +896,12 @@ export const datasets = {
       body: JSON.stringify({ media_ids: mediaIds }),
     });
   },
+  deleteFrame(id: number, frameNum: number) {
+    return request<{ deleted: number; media_id: number; frame: number; remaining: number }>(
+      `/api/v1/datasets/${id}/frames/${frameNum}/delete/`,
+      { method: "DELETE" },
+    );
+  },
   stats(id: number) {
     return request<DatasetStats>(`/api/v1/datasets/${id}/stats/`);
   },
@@ -943,7 +1058,10 @@ export const training = {
     project: number;
     name: string;
     dataset?: number;
+    dataset_ids?: number[];
     architecture?: number;
+    initialization_mode?: "architecture" | "fine_tune";
+    base_model?: number;
     hyperparams?: Record<string, unknown>;
   }) {
     return request<TrainingJob>("/api/v1/training-jobs/", { method: "POST", body: JSON.stringify(data) });
@@ -992,6 +1110,12 @@ export const deployments = {
       body: JSON.stringify(data),
     });
   },
+  previewFrame(registryId: number, data: { dataset: number; frame: number; confidence?: number }) {
+    return request<ModelPredictionPreviewResponse>(`/api/v1/registry/${registryId}/preview-frame/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
   createEndpoint(data: { registry_entry: number; name: string; confidence_threshold?: number }) {
     return request<InferenceEndpoint>("/api/v1/endpoints/", { method: "POST", body: JSON.stringify(data) });
   },
@@ -1005,6 +1129,51 @@ export const deployments = {
     return request<InferenceEndpoint>(`/api/v1/endpoints/${id}/`, {
       method: "PATCH",
       body: JSON.stringify({ status: "inactive" }),
+    });
+  },
+};
+
+export const autoLabel = {
+  listModels(projectId?: number) {
+    const query = projectId ? `?project=${projectId}` : "";
+    return requestAllPages<AutoLabelModel>(`/api/v1/auto-label/models/${query}`);
+  },
+  listProviders() {
+    return request<AutoLabelProvider[]>("/api/v1/auto-label/providers/");
+  },
+  uploadModel(data: { project: number; file: File }) {
+    const body = new FormData();
+    body.append("project", String(data.project));
+    body.append("model_file", data.file);
+    return request<AutoLabelModel>("/api/v1/auto-label/models/", { method: "POST", body });
+  },
+  startDatasetJob(
+    datasetId: number,
+    data: { model_id: number; output_type: "bbox" | "polygon"; confidence: number },
+  ) {
+    return request<AutoLabelDatasetJob>(`/api/v1/datasets/${datasetId}/auto-label/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  getDatasetJob(datasetId: number, jobId: number) {
+    return request<AutoLabelDatasetJob>(`/api/v1/datasets/${datasetId}/auto-label/jobs/${jobId}/`);
+  },
+  predictFrame(
+    datasetId: number,
+    frame: number,
+    data: {
+      source: AutoLabelSource;
+      output_type: "bbox" | "polygon";
+      confidence: number;
+      create_missing_classes: boolean;
+    },
+    signal?: AbortSignal,
+  ) {
+    return request<AutoLabelPredictionResponse>(`/api/v1/datasets/${datasetId}/frames/${frame}/predict/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      signal,
     });
   },
 };

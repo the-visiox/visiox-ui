@@ -2,11 +2,18 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
 import { CanvasStage, ErrorBanner, RightPane, TimelineBar, ToolPane, WorkspaceHeader } from "./AnnotateWorkspaceLayout";
 import { useAuth } from "@/lib/auth";
-import { datasets as visioxDatasets, resolveMediaUrl } from "@/lib/api";
+import {
+  datasets as visioxDatasets,
+  deployments,
+  resolveMediaUrl,
+  type AutoLabelDatasetJob,
+  type AutoLabelPredictionResponse,
+} from "@/lib/api";
 import type { ClassDto } from "@/lib/api/classes";
 import { createClassForProject, deleteClass, getClassesForProject } from "@/lib/api/classes";
 import { getDataset, getDatasetMedia } from "@/lib/api/datasets";
@@ -28,10 +35,13 @@ import { ApiError, getAccessToken } from "@/lib/api/client";
 import {
   AnnotationSession,
   apiShapesToEditor,
+  autoLabelPredictionsToEditor,
   editorToApiPayload,
   mergeProjectClassesWithProfile,
 } from "@/lib/annotation";
 import type { EditorShape, LabelDefinition } from "@/lib/annotation";
+
+const AutoLabelDialog = dynamic(() => import("@/components/annotate/AutoLabelDialog"), { ssr: false });
 
 function draftStorageKey(
   datasetId: number,
@@ -72,6 +82,9 @@ const PANE_WIDTH_STORAGE_KEY = "visiox-annotate-pane-widths";
 type MediaItem = { id: number; file_url?: string | null; filename?: string };
 
 const mediaListCache = new Map<number, MediaItem[]>();
+const datasetDetailCache = new Map<number, Awaited<ReturnType<typeof getDataset>>>();
+const projectClassesCache = new Map<number, ClassDto[]>();
+const datasetFrameRevision = new Map<number, number>();
 const preloadedUrlsCache = new Set<string>();
 const TOOL_PANE_DEFAULT = 64;
 const TOOL_PANE_MIN = 52;
@@ -82,6 +95,23 @@ const OBJECTS_PANE_MAX = 640;
 
 function clampPaneWidth(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function uniqueAutoLabelShapes(shapes: EditorShape[]) {
+  const seen = new Set<string>();
+  return shapes.filter((shape) => {
+    const geometry = shape.points?.length
+      ? shape.points
+      : [shape.x, shape.y, shape.width, shape.height];
+    const key = [
+      shape.classLabelId,
+      shape.shapeType,
+      ...geometry.map((value) => Math.round(value * 1000) / 1000),
+    ].join(":");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalizeHexColor(color: string): string {
@@ -137,6 +167,7 @@ function wrapIndex(oneBasedIdx: number, total: number): number {
 
 function broadcastClassesUpdated(projectId: number | null) {
   if (projectId == null || typeof window === "undefined") return;
+  projectClassesCache.delete(projectId);
   try {
     const ch = new BroadcastChannel("visiox-project-classes");
     ch.postMessage({ type: "classes-updated", projectId });
@@ -162,9 +193,21 @@ export default function AnnotatePageClient() {
   const mediaId = isNativeMode ? Number.NaN : Number(rawImageId);
   const jobIdParam = searchParams.get("jobId");
   const jobId = jobIdParam ? parseInt(jobIdParam, 10) : Number.NaN;
+  const compareModelParam = searchParams.get("compareModel");
+  const compareModelId = compareModelParam ? parseInt(compareModelParam, 10) : Number.NaN;
+  const requestedCompareConfidence = Number(searchParams.get("compareConfidence") ?? "0.25");
+  const compareConfidence = Number.isFinite(requestedCompareConfidence)
+    ? Math.min(1, Math.max(0, requestedCompareConfidence))
+    : 0.25;
+  const comparisonQuerySuffix = Number.isFinite(compareModelId)
+    ? `&compareModel=${compareModelId}&compareConfidence=${compareConfidence}`
+    : "";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingFrame, setDeletingFrame] = useState(false);
+  const [showDeleteFrameConfirm, setShowDeleteFrameConfirm] = useState(false);
+  const [frameRevision, setFrameRevision] = useState(() => datasetFrameRevision.get(datasetId) ?? 0);
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState("");
   const [labels, setLabels] = useState<LabelDefinition[]>([]);
@@ -205,6 +248,10 @@ export default function AnnotatePageClient() {
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [autoLabelOpen, setAutoLabelOpen] = useState(false);
+  const [predictionShapes, setPredictionShapes] = useState<EditorShape[]>([]);
+  const [predictionModelName, setPredictionModelName] = useState<string | undefined>();
+  const [predictionLoading, setPredictionLoading] = useState(false);
 
   const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
@@ -219,7 +266,7 @@ export default function AnnotatePageClient() {
     () => draftStorageKey(datasetId, rawImageId, isNativeMode, frameIndex, mediaId),
     [datasetId, rawImageId, isNativeMode, frameIndex, mediaId],
   );
-
+  const activeClassStorageKey = `visiox-annotate-active-class:dataset:${datasetId}`;
   const canUndo = sessionRef.current.canUndo;
   const canRedo = sessionRef.current.canRedo;
 
@@ -297,7 +344,7 @@ export default function AnnotatePageClient() {
 
   useLayoutEffect(() => {
     const previousDraftKey = previousDraftKeyRef.current;
-    if (previousDraftKey && previousDraftKey !== currentDraftKey) {
+    if (previousDraftKey && previousDraftKey !== currentDraftKey && !isLoadingRef.current) {
       persistDraft(previousDraftKey, shapesRef.current);
     }
     previousDraftKeyRef.current = currentDraftKey;
@@ -309,6 +356,15 @@ export default function AnnotatePageClient() {
   useEffect(() => {
     setAccessToken(getAccessToken());
   }, []);
+
+  useEffect(() => {
+    if (activeClassId <= 0 || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(activeClassStorageKey, String(activeClassId));
+    } catch {
+      // Ignore unavailable session storage.
+    }
+  }, [activeClassId, activeClassStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -385,15 +441,6 @@ export default function AnnotatePageClient() {
     let cancelled = false;
 
     async function load() {
-      if (typeof window !== "undefined" && shapesRef.current.length > 0) {
-        try {
-          const prevKey = sessionStorage.getItem("visiox-annotate-draft:active-key");
-          if (prevKey) persistDraft(prevKey, shapesRef.current);
-        } catch {
-          // ignore
-        }
-      }
-
       setError(null);
 
       try {
@@ -419,15 +466,25 @@ export default function AnnotatePageClient() {
       try {
         if (!Number.isFinite(datasetId)) throw new Error("Invalid dataset id.");
 
-        const ds = await getDataset(datasetId);
+        let ds = datasetDetailCache.get(datasetId);
+        if (!ds) {
+          ds = await getDataset(datasetId);
+          datasetDetailCache.set(datasetId, ds);
+        }
         setProjectId(ds.project);
-        const classesPromise = getClassesForProject(ds.project).catch((): ClassDto[] => []);
+        const cachedClasses = projectClassesCache.get(ds.project);
+        const classesPromise = cachedClasses
+          ? Promise.resolve(cachedClasses)
+          : getClassesForProject(ds.project).then((items) => {
+              projectClassesCache.set(ds.project, items);
+              return items;
+            });
         const annotationsPromise: Promise<Awaited<ReturnType<typeof getJobAnnotations>>> = !Number.isNaN(jobId)
           ? getJobAnnotations(jobId)
           : !isNativeMode && Number.isFinite(mediaId)
-            ? getMediaAnnotations(mediaId).catch(() => [])
+            ? getMediaAnnotations(mediaId)
             : isNativeMode
-              ? getFrameAnnotations(datasetId, frameIndex).catch(() => [])
+              ? getFrameAnnotations(datasetId, frameIndex)
               : Promise.resolve([]);
         const profilePromise: Promise<{ id: number; name: string; color: string }[]> = Number.isNaN(jobId)
           ? isNativeMode
@@ -443,7 +500,7 @@ export default function AnnotatePageClient() {
         let profileItems: { id: number; name: string; color: string }[] = [];
 
         if (isNativeMode) {
-          resolvedImageUrl = visioxDatasets.frameUrl(datasetId, frameIndex, "original");
+          resolvedImageUrl = `${visioxDatasets.frameUrl(datasetId, frameIndex, "original")}&revision=${frameRevision}`;
           setImageUrl(resolvedImageUrl);
           setMediaIndex(null);
           setMediaList([]);
@@ -499,7 +556,17 @@ export default function AnnotatePageClient() {
             : classes.map((item) => ({ id: item.id, name: item.name, color: item.color || "#f97316" }));
           setLabels(merged);
           savedLabelsJsonRef.current = JSON.stringify(merged);
-          setActiveClassId(merged[0]?.id ?? classes[0].id);
+          setActiveClassId((currentClassId) => {
+            let storedClassId = 0;
+            try {
+              storedClassId = Number(sessionStorage.getItem(activeClassStorageKey) ?? 0);
+            } catch {
+              // Ignore unavailable session storage.
+            }
+            if (merged.some((label) => label.id === currentClassId)) return currentClassId;
+            if (merged.some((label) => label.id === storedClassId)) return storedClassId;
+            return merged[0]?.id ?? classes[0].id;
+          });
           setNewLabelColor(nextLabelColor(merged));
         } else {
           setLabels([]);
@@ -510,7 +577,8 @@ export default function AnnotatePageClient() {
 
         const apiShapes = apiShapesToEditor(annotations);
         savedShapesJsonRef.current = JSON.stringify(apiShapes);
-        const draft = readDraft(currentDraftKey);
+        const shouldRestoreDraft = !isNativeMode || readDirtyFrames().includes(frameIndex);
+        const draft = shouldRestoreDraft ? readDraft(currentDraftKey) : { exists: false, shapes: [] };
         if (draft.exists) {
           _setShapes(sessionRef.current.hydrate(draft.shapes));
         } else if (apiShapes.length > 0) {
@@ -545,17 +613,68 @@ export default function AnnotatePageClient() {
       cancelled = true;
     };
   }, [
+    activeClassStorageKey,
     authReady,
     currentDraftKey,
     datasetId,
     frameIndex,
+    frameRevision,
     isNativeMode,
     jobId,
     mediaId,
     persistDraft,
     rawImageId,
     readDraft,
+    readDirtyFrames,
   ]);
+
+  useEffect(() => {
+    if (!isNativeMode || !Number.isFinite(compareModelId) || loading || !Number.isFinite(datasetId)) {
+      setPredictionShapes([]);
+      setPredictionModelName(undefined);
+      return;
+    }
+
+    let cancelled = false;
+    setPredictionLoading(true);
+    setPredictionShapes([]);
+    deployments.previewFrame(compareModelId, {
+      dataset: datasetId,
+      frame: frameIndex,
+      confidence: compareConfidence,
+    }).then((result) => {
+      if (cancelled) return;
+      const overlays = result.predictions.flatMap<EditorShape>((prediction, index) => {
+        if (prediction.class_label == null) return [];
+        return [{
+          clientId: `prediction-${result.model}-${result.media_id}-${index}`,
+          shapeType: "rectangle",
+          classLabelId: prediction.class_label,
+          x: prediction.data.x,
+          y: prediction.data.y,
+          width: prediction.data.width,
+          height: prediction.data.height,
+          confidence: typeof prediction.confidence === "number" ? prediction.confidence : undefined,
+          frame: result.frame,
+        }];
+      });
+      setPredictionShapes(overlays);
+      setPredictionModelName(`${result.model_name} ${result.model_version}`.trim());
+      if (result.unmapped_labels.length > 0) {
+        setError(`Prediction labels not found in this project: ${result.unmapped_labels.join(", ")}.`);
+      }
+    }).catch((reason) => {
+      if (cancelled) return;
+      setError(reason instanceof Error ? reason.message : "Could not load model predictions.");
+      setPredictionModelName("Prediction unavailable");
+    }).finally(() => {
+      if (!cancelled) setPredictionLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [compareConfidence, compareModelId, datasetId, frameIndex, isNativeMode, loading]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !imageUrl) return;
@@ -566,11 +685,11 @@ export default function AnnotatePageClient() {
       for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
         const idx = frameIndex + offset;
         if (idx >= totalFrames) break;
-        urls.push(visioxDatasets.frameUrl(datasetId, idx, "original"));
+        urls.push(`${visioxDatasets.frameUrl(datasetId, idx, "original")}&revision=${frameRevision}`);
       }
       for (let offset = 1; offset <= PRELOAD_BEHIND; offset += 1) {
         if (frameIndex - offset >= 0) {
-          urls.push(visioxDatasets.frameUrl(datasetId, frameIndex - offset, "original"));
+          urls.push(`${visioxDatasets.frameUrl(datasetId, frameIndex - offset, "original")}&revision=${frameRevision}`);
         }
       }
     } else if (mediaList.length && mediaIndex) {
@@ -601,7 +720,7 @@ export default function AnnotatePageClient() {
         const idx = frameIndex + offset;
         if (idx >= totalFrames) break;
         routeUrls.push(
-          `/datasets/${params.id}/annotate/native?frame=${idx}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`,
+          `/datasets/${params.id}/annotate/native?frame=${idx}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
         );
       }
     } else if (mediaList.length && mediaIndex) {
@@ -612,7 +731,20 @@ export default function AnnotatePageClient() {
       }
     }
     routeUrls.forEach((url) => router.prefetch(url));
-  }, [imageUrl, isNativeMode, datasetId, frameIndex, mediaList, mediaIndex, mediaTotal, params.id, router, jobIdParam]);
+  }, [
+    imageUrl,
+    isNativeMode,
+    datasetId,
+    frameIndex,
+    frameRevision,
+    mediaList,
+    mediaIndex,
+    mediaTotal,
+    params.id,
+    router,
+    jobIdParam,
+    comparisonQuerySuffix,
+  ]);
 
   const current = isNativeMode ? frameIndex + 1 : (mediaIndex ?? 1);
   const total = mediaTotal ?? 0;
@@ -638,10 +770,10 @@ export default function AnnotatePageClient() {
     if (!isNativeMode || mediaTotal == null || mediaTotal <= 0) return;
     if (frameIndex > mediaTotal - 1) {
       router.replace(
-        `/datasets/${params.id}/annotate/native?frame=${mediaTotal - 1}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`,
+        `/datasets/${params.id}/annotate/native?frame=${mediaTotal - 1}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
       );
     }
-  }, [isNativeMode, mediaTotal, frameIndex, params.id, jobIdParam, router]);
+  }, [comparisonQuerySuffix, isNativeMode, mediaTotal, frameIndex, params.id, jobIdParam, router]);
 
   const navigateTo = useCallback(
     (oneBasedIdx: number, options?: { wrap?: boolean }) => {
@@ -660,12 +792,13 @@ export default function AnnotatePageClient() {
       setPendingIndex(nextIndex);
       setScrubValue(null);
       setFrameInput(String(nextIndex));
-      persistDraft(currentDraftKey, shapesRef.current);
+      if (!isLoadingRef.current) persistDraft(currentDraftKey, shapesRef.current);
+      isLoadingRef.current = true;
       setLoading(true);
       if (isNativeMode) {
         const clamped = Math.max(0, nextIndex - 1);
         router.push(
-          `/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`,
+          `/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
         );
         return;
       }
@@ -673,7 +806,18 @@ export default function AnnotatePageClient() {
       if (!target) return;
       router.push(`/datasets/${params.id}/annotate/${target.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
     },
-    [current, currentDraftKey, isNativeMode, mediaList, params.id, persistDraft, router, total, jobIdParam],
+    [
+      comparisonQuerySuffix,
+      current,
+      currentDraftKey,
+      isNativeMode,
+      jobIdParam,
+      mediaList,
+      params.id,
+      persistDraft,
+      router,
+      total,
+    ],
   );
 
   const handleFrameInputCommit = () => {
@@ -690,7 +834,44 @@ export default function AnnotatePageClient() {
     }
   }, [current, navigateTo, scrubValue]);
 
+  const handleAutoLabelComplete = useCallback(async (job: AutoLabelDatasetJob) => {
+    if (!isNativeMode || !Number.isFinite(datasetId)) return;
+    try {
+      const rows = await getFrameAnnotations(datasetId, frameIndex);
+      const generated = uniqueAutoLabelShapes(
+        apiShapesToEditor(rows).filter(
+          (shape) => shape.source === "auto_label" && shape.autoLabelModelId === job.model,
+        ),
+      );
+      _setShapes(sessionRef.current.update((current) => [
+        ...current.filter((shape) => shape.source !== "auto_label"),
+        ...generated,
+      ]));
+      setActiveRightTab("objects");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not refresh current-frame labels.");
+    }
+  }, [datasetId, frameIndex, isNativeMode]);
+
+  const handleFrameAutoLabelComplete = useCallback((result: AutoLabelPredictionResponse) => {
+    if (result.frame !== frameIndex) {
+      setError("Auto Label finished for a different frame. Run it again on the current frame.");
+      return;
+    }
+    const generated = uniqueAutoLabelShapes(autoLabelPredictionsToEditor(result));
+    _setShapes(sessionRef.current.update((current) => [
+      ...current.filter((shape) => shape.source !== "auto_label"),
+      ...generated,
+    ]));
+    setSelectedShapeId(generated[0]?.clientId ?? null);
+    setActiveRightTab("objects");
+  }, [frameIndex]);
+
   const handleSave = useCallback(async () => {
+    if (loading || isLoadingRef.current) {
+      setError("Wait for the current frame to finish loading before saving.");
+      return false;
+    }
     const tokenNow = getAccessToken();
     if (!tokenNow) {
       setError("Login required to save. In demo mode annotations are kept in-memory only.");
@@ -838,6 +1019,7 @@ export default function AnnotatePageClient() {
     isNativeMode,
     jobId,
     labels,
+    loading,
     mediaId,
     mediaTotal,
     persistDraft,
@@ -846,9 +1028,7 @@ export default function AnnotatePageClient() {
     shapes,
   ]);
 
-  const handleDiscard = useCallback(() => {
-    // Drop every unsaved draft for this dataset so nothing is restored on return.
-    isLoadingRef.current = true;
+  const clearDatasetDrafts = useCallback(() => {
     const prefix = `visiox-annotate-draft:dataset:${datasetId}:`;
     for (const key of Object.keys(draftCacheRef.current)) {
       if (key.startsWith(prefix)) delete draftCacheRef.current[key];
@@ -865,6 +1045,81 @@ export default function AnnotatePageClient() {
         // ignore storage failures
       }
     }
+  }, [datasetId, dirtyFramesKey]);
+
+  const requestDeleteFrame = useCallback(() => {
+    const hasUnsavedChanges =
+      shapesDifferFromSaved() ||
+      JSON.stringify(labels) !== savedLabelsJsonRef.current ||
+      readDirtyFrames().length > 0;
+    if (hasUnsavedChanges) {
+      setError("Save or undo annotation changes before deleting a frame.");
+      return;
+    }
+    setError(null);
+    setShowDeleteFrameConfirm(true);
+  }, [labels, readDirtyFrames, shapesDifferFromSaved]);
+
+  const handleDeleteFrame = useCallback(async () => {
+    if (!isNativeMode || deletingFrame) return;
+    setDeletingFrame(true);
+    setError(null);
+    try {
+      const result = await visioxDatasets.deleteFrame(datasetId, frameIndex);
+      const revision = (datasetFrameRevision.get(datasetId) ?? frameRevision) + 1;
+      datasetFrameRevision.set(datasetId, revision);
+      datasetDetailCache.delete(datasetId);
+      mediaListCache.delete(datasetId);
+
+      isLoadingRef.current = true;
+      previousDraftKeyRef.current = null;
+      clearDatasetDrafts();
+      savedShapesJsonRef.current = "[]";
+      _setShapes(sessionRef.current.hydrate([]));
+      setMediaTotal(result.remaining);
+      setShowDeleteFrameConfirm(false);
+
+      if (result.remaining === 0) {
+        router.replace(`/datasets/${params.id}`);
+        return;
+      }
+
+      const nextFrameIndex = Math.min(frameIndex, result.remaining - 1);
+      setLoading(true);
+      setFrameRevision(revision);
+      if (nextFrameIndex !== frameIndex) {
+        router.replace(
+          `/datasets/${params.id}/annotate/native?frame=${nextFrameIndex}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
+        );
+      }
+    } catch (reason) {
+      setError(
+        reason instanceof ApiError
+          ? reason.body || reason.message
+          : reason instanceof Error
+            ? reason.message
+            : "Could not delete this frame.",
+      );
+    } finally {
+      setDeletingFrame(false);
+    }
+  }, [
+    clearDatasetDrafts,
+    comparisonQuerySuffix,
+    datasetId,
+    deletingFrame,
+    frameIndex,
+    frameRevision,
+    isNativeMode,
+    jobIdParam,
+    params.id,
+    router,
+  ]);
+
+  const handleDiscard = useCallback(() => {
+    // Drop every unsaved draft for this dataset so nothing is restored on return.
+    isLoadingRef.current = true;
+    clearDatasetDrafts();
     // Reset the current frame back to its last-saved state.
     try {
       _setShapes(sessionRef.current.hydrate(JSON.parse(savedShapesJsonRef.current)));
@@ -873,7 +1128,7 @@ export default function AnnotatePageClient() {
     }
     setShowExitConfirm(false);
     router.push(`/datasets/${params.id}`);
-  }, [datasetId, dirtyFramesKey, params.id, router]);
+  }, [clearDatasetDrafts, params.id, router]);
 
   useEffect(() => {
     if (!openClassMenuId) return;
@@ -984,6 +1239,7 @@ export default function AnnotatePageClient() {
     setError(null);
     try {
       const refreshed = await getClassesForProject(projectId);
+      projectClassesCache.set(projectId, refreshed);
       setUsedClassIds(new Set(refreshed.filter((c) => (c.annotation_count ?? 0) > 0).map((c) => c.id)));
       const synced = refreshed.map((item) => ({
         id: item.id,
@@ -1025,6 +1281,7 @@ export default function AnnotatePageClient() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (autoLabelOpen || showDeleteFrameConfirm || showExitConfirm) return;
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
@@ -1034,6 +1291,53 @@ export default function AnnotatePageClient() {
       }
       const key = e.key.toLowerCase();
       if (e.ctrlKey || e.metaKey) {
+        if (key === "c") {
+          const selected = shapes.find(
+            (shape) => shape.clientId === selectedShapeId && shape.shapeType === "rectangle",
+          );
+          if (selected) {
+            e.preventDefault();
+            try {
+              sessionStorage.setItem(
+                `visiox-annotation-bbox-clipboard:${datasetId}`,
+                JSON.stringify(selected),
+              );
+            } catch {
+              // Ignore unavailable session storage.
+            }
+          }
+          return;
+        }
+        if (key === "v") {
+          e.preventDefault();
+          try {
+            const raw = sessionStorage.getItem(`visiox-annotation-bbox-clipboard:${datasetId}`);
+            if (!raw) return;
+            const copied = JSON.parse(raw) as EditorShape;
+            if (copied.shapeType !== "rectangle") return;
+            const pasted: EditorShape = {
+              ...copied,
+              clientId: `paste-${Date.now()}`,
+              serverId: undefined,
+              source: "manual",
+              confidence: undefined,
+              autoLabelSource: undefined,
+              autoLabelModelId: undefined,
+              autoLabelProvider: undefined,
+              autoLabelEngineName: undefined,
+              frame: 0,
+            };
+            _setShapes(sessionRef.current.update((currentShapes) => [...currentShapes, pasted]));
+            setSelectedShapeId(pasted.clientId);
+            if (labels.some((label) => label.id === pasted.classLabelId)) {
+              setActiveClassId(pasted.classLabelId);
+            }
+            setActiveRightTab("objects");
+          } catch {
+            // Ignore invalid or unavailable clipboard data.
+          }
+          return;
+        }
         if (key === "z" && !e.shiftKey) {
           e.preventDefault();
           undo();
@@ -1050,24 +1354,78 @@ export default function AnnotatePageClient() {
         }
         return;
       }
-      if (key === "arrowleft") {
+      if (key === "a" || key === "arrowleft") {
         e.preventDefault();
         navigateTo(current - 1, { wrap: true });
-      } else if (key === "arrowright") {
+      } else if (key === "d" || key === "arrowright") {
         e.preventDefault();
         navigateTo(current + 1, { wrap: true });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, navigateTo, handleSave]);
+  }, [
+    autoLabelOpen,
+    current,
+    datasetId,
+    handleSave,
+    labels,
+    navigateTo,
+    selectedShapeId,
+    shapes,
+    showDeleteFrameConfirm,
+    showExitConfirm,
+  ]);
 
   const changeShapeClass = useCallback((shapeId: string, classId: number) => {
     setShapes((prev) => prev.map((item) => (item.clientId === shapeId ? { ...item, classLabelId: classId } : item)));
+    setActiveClassId(classId);
   }, []);
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
+      {showDeleteFrameConfirm && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-frame-title"
+            aria-describedby="delete-frame-description"
+            className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 text-red-600">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 10v6m4-6v6" />
+              </svg>
+            </div>
+            <h2 id="delete-frame-title" className="mt-4 text-lg font-bold text-stone-900">
+              Delete frame {frameIndex + 1}?
+            </h2>
+            <p id="delete-frame-description" className="mt-2 text-sm leading-6 text-stone-500">
+              This permanently removes the image and all of its annotations from the dataset. This action cannot be
+              undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteFrameConfirm(false)}
+                disabled={deletingFrame}
+                className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteFrame}
+                disabled={deletingFrame}
+                className="inline-flex min-w-32 items-center justify-center rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingFrame ? "Deleting..." : "Delete frame"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showExitConfirm && (
         <div
           className={["fixed inset-0 z-[200] flex items-center justify-center bg-black/40", "backdrop-blur-sm"].join(
@@ -1190,6 +1548,7 @@ export default function AnnotatePageClient() {
         jobId={jobId}
         canSaveToApi={canSaveToApi}
         saving={saving}
+        saveDisabled={loading}
         canUndo={canUndo}
         canRedo={canRedo}
         onBack={() => {
@@ -1204,9 +1563,32 @@ export default function AnnotatePageClient() {
         onUndo={undo}
         onRedo={redo}
         onSave={handleSave}
+        onDeleteFrame={isNativeMode ? requestDeleteFrame : undefined}
+        deletingFrame={deletingFrame}
+        deleteFrameDisabled={loading || saving || !canSaveToApi || total <= 0}
+        onAutoLabel={isNativeMode ? () => setAutoLabelOpen(true) : undefined}
+        autoLabelDisabled={projectId == null || loading}
+        autoLabelTitle={
+          projectId != null && !loading
+            ? "Auto Label current frame or entire dataset"
+            : isLoggedIn
+              ? "Waiting for dataset information"
+              : "Sign in to use Auto Label"
+        }
       />
 
       <ErrorBanner message={error} />
+
+      <AutoLabelDialog
+        open={autoLabelOpen}
+        datasetId={datasetId}
+        frameIndex={frameIndex}
+        projectId={projectId}
+        labels={labels}
+        onClose={() => setAutoLabelOpen(false)}
+        onDatasetComplete={handleAutoLabelComplete}
+        onFrameComplete={handleFrameAutoLabelComplete}
+      />
 
       <main className="flex min-h-0 flex-grow overflow-hidden">
         <ToolPane
@@ -1224,6 +1606,9 @@ export default function AnnotatePageClient() {
           labels={labels}
           activeClassId={activeClassId}
           shapes={shapes}
+          predictionShapes={predictionShapes}
+          predictionModelName={predictionModelName}
+          predictionLoading={predictionLoading}
           activeTool={activeTool}
           polygonVertexCount={polygonVertexCount}
           hiddenShapeIds={hiddenShapeIds}

@@ -94,7 +94,11 @@ visiox/             ← Django backend (auth, projects, datasets, training, depl
 | `Esc` | Cancel | — |
 | `Ctrl+Z` | Undo | — |
 | `Ctrl+Y` | Redo | — |
+| `Ctrl+C` | Copy selected bounding box | — |
+| `Ctrl+V` | Paste bounding box, including across frames | — |
 | `Ctrl+scroll` | Zoom | — |
+| `A` | Previous image/frame | — |
+| `D` | Next image/frame | — |
 
 Additional tools: `c` → cuboid, `t` → tag (defined in `lib/annotation/types.ts`).
 

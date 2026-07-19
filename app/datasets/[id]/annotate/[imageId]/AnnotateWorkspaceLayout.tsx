@@ -24,6 +24,7 @@ import {
   Plus,
   Redo2,
   Save,
+  Sparkles,
   Spline,
   Square,
   Tag,
@@ -201,12 +202,19 @@ export function WorkspaceHeader({
   jobId,
   canSaveToApi,
   saving,
+  saveDisabled = false,
   canUndo,
   canRedo,
   onBack,
   onUndo,
   onRedo,
   onSave,
+  onAutoLabel,
+  onDeleteFrame,
+  deletingFrame = false,
+  deleteFrameDisabled = false,
+  autoLabelDisabled = false,
+  autoLabelTitle = "Auto Label current frame",
 }: {
   datasetId: string | string[] | undefined;
   imageId: string | string[] | undefined;
@@ -215,12 +223,19 @@ export function WorkspaceHeader({
   jobId: number;
   canSaveToApi: boolean;
   saving: boolean;
+  saveDisabled?: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onBack: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onSave: () => void;
+  onAutoLabel?: () => void;
+  onDeleteFrame?: () => void;
+  deletingFrame?: boolean;
+  deleteFrameDisabled?: boolean;
+  autoLabelDisabled?: boolean;
+  autoLabelTitle?: string;
 }) {
   const modeText = isNativeMode ? ` · Frame ${frameIndex + 1}` : ` · Media ${imageId}`;
   const saveText = !Number.isNaN(jobId) ? ` · Job ${jobId}` : canSaveToApi ? " · Direct" : " · Demo";
@@ -257,7 +272,7 @@ export function WorkspaceHeader({
           <button
             type="button"
             onClick={onSave}
-            disabled={saving}
+            disabled={saving || saveDisabled}
             title="Save (Ctrl+S)"
             className={[
               "flex h-7 w-7 items-center justify-center pt-0.5 rounded-lg text-stone-400 transition",
@@ -296,6 +311,32 @@ export function WorkspaceHeader({
             <Redo2 className="h-5 w-5" />
           </button>
         </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {onDeleteFrame ? (
+          <button
+            type="button"
+            onClick={onDeleteFrame}
+            disabled={deleteFrameDisabled || deletingFrame}
+            title="Delete current frame"
+            aria-label="Delete current frame"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+          >
+            {deletingFrame ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          </button>
+        ) : null}
+        {onAutoLabel ? (
+          <button
+            type="button"
+            onClick={onAutoLabel}
+            disabled={autoLabelDisabled}
+            title={autoLabelTitle}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-sm font-bold text-orange-700 transition-colors hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400 sm:px-4"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">Auto Label</span>
+          </button>
+        ) : null}
       </div>
     </nav>
   );
@@ -463,6 +504,9 @@ export function CanvasStage({
   labels,
   activeClassId,
   shapes,
+  predictionShapes = [],
+  predictionModelName,
+  predictionLoading = false,
   activeTool,
   polygonVertexCount,
   hiddenShapeIds,
@@ -479,6 +523,9 @@ export function CanvasStage({
   labels: LabelDefinition[];
   activeClassId: number;
   shapes: EditorShape[];
+  predictionShapes?: EditorShape[];
+  predictionModelName?: string;
+  predictionLoading?: boolean;
   activeTool: Tool;
   polygonVertexCount: number;
   hiddenShapeIds: string[];
@@ -493,6 +540,13 @@ export function CanvasStage({
     <div
       className={["relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch", "overflow-hidden"].join(" ")}
     >
+      {predictionModelName || predictionLoading ? (
+        <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-xl border border-violet-200 bg-white/95 px-3 py-2 text-xs font-bold text-violet-700 shadow-sm backdrop-blur-sm">
+          {predictionLoading
+            ? "Running model prediction…"
+            : `Solid: Ground truth · Dashed: ${predictionModelName} (${predictionShapes.length})`}
+        </div>
+      ) : null}
       {loading ? (
         <div className="absolute inset-4 z-10 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-stone-500">
@@ -505,7 +559,7 @@ export function CanvasStage({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.45 }}
-          className="absolute inset-0"
+          className="absolute inset-0 overflow-hidden"
         >
           <AnnotationEditor
             key={currentDraftKey}
@@ -514,6 +568,8 @@ export function CanvasStage({
             activeClassId={activeClassId}
             onActiveClassIdChange={onActiveClassIdChange}
             shapes={shapes}
+            predictionShapes={predictionShapes}
+            predictionModelName={predictionModelName}
             onShapesChange={onShapesChange}
             activeTool={activeTool}
             onToolChange={onToolChange}
@@ -1244,6 +1300,11 @@ function ObjectRow({
           >
             <Pin className="h-3.5 w-3.5" />
           </ObjectIconButton>
+          {shape.source === "auto_label" ? (
+            <span title={shape.autoLabelEngineName} className="rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-black text-orange-700">
+              AI{typeof shape.confidence === "number" ? ` ${Math.round(shape.confidence * 100)}%` : ""}
+            </span>
+          ) : null}
           <span className="font-mono text-xs text-stone-400">{objectSummary(shape)}</span>
         </div>
       </div>

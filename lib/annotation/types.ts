@@ -26,7 +26,12 @@ export type EditorShape = {
   height: number;
   points?: number[];
   serverId?: number;
-  source?: "manual" | "imported";
+  source?: "manual" | "imported" | "auto_label";
+  confidence?: number;
+  autoLabelSource?: "uploaded_model" | "provider";
+  autoLabelModelId?: number;
+  autoLabelProvider?: string;
+  autoLabelEngineName?: string;
   frame?: number;
 };
 

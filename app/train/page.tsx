@@ -374,30 +374,51 @@ interface NewJobModalProps {
   projectList: Project[];
   datasetList: Dataset[];
   architectures: ModelArchitecture[];
+  trainingJobs: TrainingJob[];
+  registeredModels: ModelRegistry[];
   onClose: () => void;
   onCreated: (job: TrainingJob) => void;
   initialProjectId?: number;
   initialDatasetId?: number;
+  initialDatasetIds?: number[];
+  initialArchitectureId?: number;
+  initialBaseModelId?: number;
 }
 
 function NewJobModal({
   projectList,
   datasetList,
   architectures,
+  trainingJobs,
+  registeredModels,
   onClose,
   onCreated,
   initialProjectId,
   initialDatasetId,
+  initialDatasetIds,
+  initialArchitectureId,
+  initialBaseModelId,
 }: NewJobModalProps) {
-  const initialDataset = datasetList.find((dataset) => dataset.id === initialDatasetId);
+  const normalizedInitialDatasetIds = initialDatasetIds?.length
+    ? initialDatasetIds
+    : initialDatasetId
+      ? [initialDatasetId]
+      : [];
+  const initialDataset = datasetList.find((dataset) => dataset.id === normalizedInitialDatasetIds[0]);
   const initialProject = initialProjectId ?? initialDataset?.project ?? projectList[0]?.id;
-  const [name, setName] = useState("");
+  const initialSourceModel = registeredModels.find((model) => model.id === initialBaseModelId);
+  const initialSourceJob = trainingJobs.find((job) => job.id === initialSourceModel?.training_job);
+  const [name, setName] = useState(initialBaseModelId ? `${initialSourceJob?.name ?? "Training run"} Fine-tune` : "");
   const [projectId, setProjectId] = useState<number | "">(initialProject ?? "");
-  const [datasetId, setDatasetId] = useState<number | "">(
-    initialDatasetId ?? datasetList.find((dataset) => dataset.project === initialProject)?.id ?? "",
+  const [datasetIds, setDatasetIds] = useState<number[]>(
+    normalizedInitialDatasetIds.length
+      ? normalizedInitialDatasetIds
+      : datasetList.find((dataset) => dataset.project === initialProject)?.id
+        ? [datasetList.find((dataset) => dataset.project === initialProject)!.id]
+        : [],
   );
   const [archId, setArchId] = useState<number | "">(
-    architectures.find(
+    initialArchitectureId ?? architectures.find(
       (architecture) =>
         architecture.task_type === projectList.find((project) => project.id === initialProject)?.task_type,
     )?.id ?? "",
@@ -411,16 +432,36 @@ function NewJobModal({
   const availableDatasets = datasetList
     .filter((dataset) => dataset.project === projectId)
     .toSorted((a, b) => Number(b.is_train_ready) - Number(a.is_train_ready) || b.version - a.version);
-  const selectedDataset = datasetList.find((dataset) => dataset.id === datasetId);
+  const selectedDatasets = datasetList.filter((dataset) => datasetIds.includes(dataset.id));
+  const selectedDataset = selectedDatasets[0];
+  const selectedImageCount = selectedDatasets.reduce(
+    (total, dataset) => total + (dataset.image_count ?? dataset.media_count ?? 0),
+    0,
+  );
+  const [initializationMode, setInitializationMode] = useState<"architecture" | "fine_tune">(
+    initialBaseModelId ? "fine_tune" : "architecture",
+  );
+  const [baseModelId, setBaseModelId] = useState<number | "">(initialBaseModelId ?? "");
+  const selectedAnnotatedCount = selectedDatasets.reduce(
+    (total, dataset) => total + (dataset.annotated_count ?? 0),
+    0,
+  );
+  const selectedDatasetsReady =
+    selectedDatasets.length > 0 && selectedDatasets.every((dataset) => dataset.is_train_ready);
   const selectedProject = projectList.find((project) => project.id === projectId);
   const availableArchitectures = architectures.filter(
     (architecture) => architecture.task_type === selectedProject?.task_type,
   );
+  const availableBaseModels = registeredModels.filter((model) => {
+    const sourceJob = trainingJobs.find((job) => job.id === model.training_job);
+    return model.format === "pytorch" && Boolean(model.model_file || model.artifact_url) &&
+      sourceJob?.status === "completed" && sourceJob.project === projectId;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!projectId || !datasetId || !archId) {
-      setError("Select a project, dataset version, and model architecture.");
+    if (!projectId || datasetIds.length === 0 || !archId || (initializationMode === "fine_tune" && !baseModelId)) {
+      setError("Select a project, at least one dataset, and a model architecture.");
       return;
     }
     setSaving(true);
@@ -429,8 +470,11 @@ function NewJobModal({
       const job = await training.createJob({
         project: projectId as number,
         name,
-        dataset: datasetId ? (datasetId as number) : undefined,
+        dataset: datasetIds[0],
+        dataset_ids: datasetIds,
         architecture: archId ? (archId as number) : undefined,
+        initialization_mode: initializationMode,
+        base_model: initializationMode === "fine_tune" ? (baseModelId as number) : undefined,
         hyperparams: {
           epochs: parseInt(epochs),
           lr: parseFloat(lr),
@@ -510,7 +554,8 @@ function NewJobModal({
                 const nextProject = Number(e.target.value);
                 const nextProjectRecord = projectList.find((project) => project.id === nextProject);
                 setProjectId(nextProject);
-                setDatasetId(datasetList.find((dataset) => dataset.project === nextProject)?.id ?? "");
+                const firstDataset = datasetList.find((dataset) => dataset.project === nextProject);
+                setDatasetIds(firstDataset ? [firstDataset.id] : []);
                 setArchId(
                   architectures.find((architecture) => architecture.task_type === nextProjectRecord?.task_type)?.id ?? "",
                 );
@@ -528,30 +573,115 @@ function NewJobModal({
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="training-dataset"
-              className={["block text-[10px] font-bold text-stone-400 uppercase tracking-widest", "mb-2"].join(" ")}
-            >
-              Dataset
-            </label>
-            <select
-              id="training-dataset"
-              name="training-dataset"
-              value={datasetId}
-              onChange={(e) => setDatasetId(Number(e.target.value))}
-              className={[
-                "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm",
-                "focus-visible:ring-2 focus-visible:ring-orange-500/30",
-              ].join(" ")}
-            >
-              <option value="">Select a dataset version</option>
-              {availableDatasets.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.is_train_ready ? "✓ Ready" : String(d.labeling_progress ?? 0) + "% labeled"} · {d.name} · v{d.version}
-                </option>
+          <fieldset>
+            <legend className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-stone-400">
+              Datasets ({datasetIds.length} selected)
+            </legend>
+            <div className="grid max-h-48 gap-2 overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50 p-2 sm:grid-cols-2">
+              {availableDatasets.map((dataset) => {
+                const selected = datasetIds.includes(dataset.id);
+                return (
+                  <button
+                    key={dataset.id}
+                    type="button"
+                    disabled={!dataset.is_train_ready}
+                    aria-pressed={selected}
+                    onClick={() => {
+                      setDatasetIds((current) =>
+                        current.includes(dataset.id)
+                          ? current.filter((datasetId) => datasetId !== dataset.id)
+                          : [...current, dataset.id],
+                      );
+                    }}
+                    className={[
+                      "flex min-w-0 items-center gap-3 rounded-xl border p-3 text-left transition-colors",
+                      selected
+                        ? "border-orange-400 bg-orange-50"
+                        : "border-stone-200 bg-white hover:border-orange-200",
+                      "disabled:cursor-not-allowed disabled:opacity-50",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border",
+                        selected
+                          ? "border-orange-500 bg-orange-500 text-white"
+                          : "border-stone-300 bg-white text-transparent",
+                      ].join(" ")}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold text-stone-800">{dataset.name}</span>
+                      <span className="block text-[11px] text-stone-500">
+                        v{dataset.version} · {dataset.is_train_ready ? "Ready" : `${dataset.labeling_progress ?? 0}% labeled`}
+                      </span>
+                    </span>
+                  </button>
+                );
+                setInitializationMode("architecture");
+                setBaseModelId("");
+              })}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-stone-400">
+              Initialization
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {([
+                ["architecture", "Architecture checkpoint", "Start from the selected architecture weights."],
+                ["fine_tune", "Fine-tune completed model", "Continue learning from a previous best.pt."],
+              ] as const).map(([value, label, description]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={initializationMode === value}
+                  onClick={() => {
+                    setInitializationMode(value);
+                    if (value === "architecture") setBaseModelId("");
+                  }}
+                  className={[
+                    "rounded-xl border p-3 text-left transition-colors",
+                    initializationMode === value
+                      ? "border-orange-400 bg-orange-50"
+                      : "border-stone-200 bg-white hover:border-orange-200",
+                  ].join(" ")}
+                >
+                  <span className="block text-sm font-bold text-stone-800">{label}</span>
+                  <span className="mt-1 block text-xs leading-5 text-stone-500">{description}</span>
+                </button>
               ))}
-            </select>
-          </div>
+            </div>
+          </fieldset>
+          {initializationMode === "fine_tune" ? (
+            <div>
+              <label htmlFor="training-base-model" className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-stone-400">
+                Source model
+              </label>
+              <select
+                id="training-base-model"
+                value={baseModelId}
+                required
+                onChange={(event) => {
+                  const nextModelId = Number(event.target.value);
+                  setBaseModelId(nextModelId);
+                  const sourceModel = registeredModels.find((model) => model.id === nextModelId);
+                  const sourceJob = trainingJobs.find((job) => job.id === sourceModel?.training_job);
+                  if (sourceJob?.architecture) setArchId(sourceJob.architecture);
+                }}
+                className="w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm focus-visible:ring-2 focus-visible:ring-orange-500/30"
+              >
+                <option value="">Select a completed model</option>
+                {availableBaseModels.map((model) => (
+                  <option key={model.id} value={model.id}>{model.name} · {model.version}</option>
+                ))}
+              </select>
+              {availableBaseModels.length === 0 ? (
+                <p className="mt-2 text-xs text-amber-700">This project has no completed PyTorch model with best.pt.</p>
+              ) : null}
+            </div>
+          ) : null}
           <div>
             <label htmlFor="training-architecture"
               className={["block text-[10px] font-bold text-stone-400 uppercase tracking-widest", "mb-2"].join(" ")}
@@ -563,6 +693,7 @@ function NewJobModal({
               name="training-architecture"
               value={archId}
               onChange={(e) => setArchId(Number(e.target.value))}
+              disabled={initializationMode === "fine_tune" && Boolean(baseModelId)}
               className={[
                 "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm",
                 "focus-visible:ring-2 focus-visible:ring-orange-500/30",
@@ -580,19 +711,19 @@ function NewJobModal({
             <div className="grid grid-cols-3 gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-4">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Images</p>
-                <p className="mt-1 text-lg font-bold text-stone-900">{selectedDataset.image_count ?? selectedDataset.media_count}</p>
+                <p className="mt-1 text-lg font-bold text-stone-900">{selectedImageCount.toLocaleString()}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Annotated</p>
-                <p className="mt-1 text-lg font-bold text-stone-900">{selectedDataset.annotated_count ?? "—"}</p>
+                <p className="mt-1 text-lg font-bold text-stone-900">{selectedAnnotatedCount.toLocaleString()}</p>
               </div>
-              <div className={["flex items-center justify-end gap-2 text-xs font-bold", selectedDataset.is_train_ready ? "text-emerald-600" : "text-amber-600"].join(" ")}>
-                {selectedDataset.is_train_ready ? <CheckCircle2 aria-hidden="true" className="h-4 w-4" /> : <AlertCircle aria-hidden="true" className="h-4 w-4" />}
-                {selectedDataset.is_train_ready ? "Ready to train" : String(selectedDataset.labeling_progress ?? 0) + "% labeled"}
+              <div className={["flex items-center justify-end gap-2 text-xs font-bold", selectedDatasetsReady ? "text-emerald-600" : "text-amber-600"].join(" ")}>
+                {selectedDatasetsReady ? <CheckCircle2 aria-hidden="true" className="h-4 w-4" /> : <AlertCircle aria-hidden="true" className="h-4 w-4" />}
+                {selectedDatasetsReady ? `${selectedDatasets.length} ready` : "Review selection"}
               </div>
             </div>
           ) : null}
-          {selectedDataset && !selectedDataset.is_train_ready ? (
+          {selectedDataset && !selectedDatasetsReady ? (
             <p className="-mt-2 text-xs leading-5 text-amber-700">
               {selectedDataset.is_label_complete
                 ? "This dataset is fully labeled. Verify it from the Project page before training."
@@ -692,7 +823,7 @@ function NewJobModal({
             </button>
             <button
               type="submit"
-              disabled={saving || !name || !projectId || !datasetId || !archId || !selectedDataset?.is_train_ready}
+              disabled={saving || !name || !projectId || datasetIds.length === 0 || !archId || !selectedDatasetsReady || (initializationMode === "fine_tune" && !baseModelId)}
               className={[
                 "flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold text-sm shadow-lg",
                 "shadow-orange-500/20 transition-[transform,background-color] hover:bg-orange-600 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50",
@@ -740,8 +871,15 @@ export default function TrainPage() {
   const [pageError, setPageError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [summarySplit, setSummarySplit] = useState<SummarySplit>("train");
-  const [trainingTarget, setTrainingTarget] = useState<{ projectId?: number; datasetId?: number }>({});
+  const [trainingTarget, setTrainingTarget] = useState<{
+    projectId?: number;
+    datasetId?: number;
+    datasetIds?: number[];
+    architectureId?: number;
+    baseModelId?: number;
+  }>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const experimentIdByJobRef = useRef<Record<number, number>>({});
   const deepLinkHandledRef = useRef(false);
 
   const loadData = useCallback(async (background = false) => {
@@ -774,12 +912,20 @@ export default function TrainPage() {
         const params = new URLSearchParams(window.location.search);
         const projectParam = params.get("project");
         const datasetParam = params.get("dataset");
+        const datasetsParam = params.get("datasets");
         const projectId = projectParam ? Number(projectParam) : undefined;
         const datasetId = datasetParam ? Number(datasetParam) : undefined;
-        if (Number.isInteger(projectId) || Number.isInteger(datasetId)) {
+        const datasetIds = datasetsParam
+          ? datasetsParam
+              .split(",")
+              .map(Number)
+              .filter((value) => Number.isInteger(value) && value > 0)
+          : [];
+        if (Number.isInteger(projectId) || Number.isInteger(datasetId) || datasetIds.length > 0) {
           setTrainingTarget({
             projectId: Number.isInteger(projectId) ? projectId : undefined,
             datasetId: Number.isInteger(datasetId) ? datasetId : undefined,
+            datasetIds,
           });
           setShowModal(true);
         }
@@ -793,7 +939,8 @@ export default function TrainPage() {
     return () => window.clearTimeout(timer);
   }, [loadData]);
 
-  // Poll metrics every 2 s for the selected running job
+  // Active runs refresh every 5 s. Once the experiment exists, reuse its id so
+  // each cycle does not request the same experiment list again.
   const selectedJobId = selectedJob?.id;
   const selectedJobStatus = selectedJob?.status;
 
@@ -801,14 +948,25 @@ export default function TrainPage() {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!selectedJobId) return;
     let cancelled = false;
+    let inFlight = false;
 
     const fetchMetrics = async () => {
+      if (inFlight) return;
+      inFlight = true;
       const jobId = selectedJobId;
       setMetricsLoadingJobId(jobId);
       try {
-        const exps = await training.getExperiments(jobId);
-        if (exps.length > 0) {
-          const m = await training.getMetrics(exps[0].id);
+        let experimentId = experimentIdByJobRef.current[jobId];
+        if (!experimentId) {
+          const experiments = await training.getExperiments(jobId);
+          experimentId = experiments[0]?.id;
+          if (experimentId) experimentIdByJobRef.current[jobId] = experimentId;
+        }
+        const [m, updated] = await Promise.all([
+          experimentId ? training.getMetrics(experimentId) : Promise.resolve([]),
+          training.getJob(jobId),
+        ]);
+        if (experimentId) {
           if (cancelled) return;
           setMetrics(m);
           setMetricsByJobId((current) => ({ ...current, [jobId]: m }));
@@ -817,8 +975,6 @@ export default function TrainPage() {
           setMetrics([]);
           setMetricsByJobId((current) => ({ ...current, [jobId]: [] }));
         }
-        // Refresh job status
-        const updated = await training.getJob(jobId);
         if (cancelled) return;
         setSelectedJob(updated);
         setJobs((prev) => prev.map((j) => (j.id === updated.id ? updated : j)));
@@ -827,6 +983,7 @@ export default function TrainPage() {
           setPageError("Live metrics are temporarily unavailable. VisioX will retry automatically.");
         }
       } finally {
+        inFlight = false;
         if (!cancelled) {
           setMetricsLoadingJobId((current) => (current === jobId ? null : current));
         }
@@ -835,7 +992,7 @@ export default function TrainPage() {
 
     fetchMetrics();
     if (["queued", "running"].includes(selectedJobStatus ?? "")) {
-      pollRef.current = setInterval(fetchMetrics, 2000);
+      pollRef.current = setInterval(fetchMetrics, 5000);
     }
     return () => {
       cancelled = true;
@@ -1208,10 +1365,15 @@ export default function TrainPage() {
             projectList={projectList}
             datasetList={datasetList}
             architectures={architectures}
+            trainingJobs={jobs}
+            registeredModels={registeredModels}
             onClose={() => setShowModal(false)}
             onCreated={handleJobCreated}
             initialProjectId={trainingTarget.projectId}
             initialDatasetId={trainingTarget.datasetId}
+            initialDatasetIds={trainingTarget.datasetIds}
+            initialArchitectureId={trainingTarget.architectureId}
+            initialBaseModelId={trainingTarget.baseModelId}
           />
         )}
         {zoomedChartConfig ? (
@@ -1303,7 +1465,10 @@ export default function TrainPage() {
             </button>
             <button
               type="button"
-              onClick={() => setShowModal(true)}
+              onClick={() => {
+                setTrainingTarget({});
+                setShowModal(true);
+              }}
               className={[
                 "flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
                 "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
@@ -1590,7 +1755,13 @@ export default function TrainPage() {
                         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                           <div className="min-w-0">
                             <h3 className="flex items-center gap-3 text-sm font-bold text-stone-900"><BarChart3 className="h-5 w-5 text-violet-500" />Training Summary</h3>
-                            <p className="mt-1 pl-8 text-xs font-medium text-stone-500">{summaryReady ? "Training completed successfully." : "This summary will be updated automatically when training completes."}</p>
+                            <p className="mt-1 pl-8 text-xs font-medium text-stone-500">
+                              {selectedJob?.initialization_mode === "fine_tune"
+                                ? `Fine-tuned from ${selectedJob.base_model_name ?? selectedJob.parent_job_name ?? "a completed model"}.`
+                                : summaryReady
+                                  ? "Training completed successfully."
+                                  : "This summary will be updated automatically when training completes."}
+                            </p>
                           </div>
                           <div className="flex rounded-xl border border-stone-200 bg-stone-100 p-1" aria-label="Training summary split">
                             {(["train", "valid", "test"] as SummarySplit[]).map((split) => (
@@ -1652,14 +1823,32 @@ export default function TrainPage() {
                           <h3 className="flex items-center gap-3 text-sm font-bold text-stone-900"><Wrench className="h-5 w-5 text-violet-500" />Tools</h3>
                           <div className="mt-3 grid gap-3 sm:grid-cols-2">
                             {confusionMatrixUrl ? <a href={confusionMatrixUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-violet-200 px-3 text-xs font-bold text-violet-600 transition hover:bg-violet-50"><Grid3X3 className="h-4 w-4" />Confusion Matrix</a> : <div className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl border border-violet-100 px-3 text-xs font-bold text-violet-400"><Grid3X3 className="h-4 w-4" />View Confusion Matrix</div>}
-                            {selectedJob?.dataset ? (
+                            {selectedJob?.dataset && selectedRegistry?.id ? (
                               <Link
-                                href={`/datasets/${selectedJob.dataset}`}
+                                href={`/datasets/${selectedJob.dataset}/annotate/native?frame=0&compareModel=${selectedRegistry.id}&compareConfidence=0.25`}
                                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold text-violet-600 transition-colors hover:bg-violet-50"
                               >
                                 <ImageIcon className="h-4 w-4" />Try Model
                               </Link>
                             ) : <div className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-violet-100 px-3 text-xs font-bold text-violet-400"><ImageIcon className="h-4 w-4" />Try Model on Image Browser</div>}
+                            {summaryReady && selectedRegistry?.id ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTrainingTarget({
+                                    projectId: selectedJob.project,
+                                    datasetId: selectedJob.dataset ?? undefined,
+                                    datasetIds: selectedJob.dataset_ids,
+                                    architectureId: selectedJob.architecture ?? undefined,
+                                    baseModelId: selectedRegistry.id,
+                                  });
+                                  setShowModal(true);
+                                }}
+                                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-700 transition-colors hover:bg-orange-100"
+                              >
+                                <RotateCcw className="h-4 w-4" />Continue Training
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       </div>

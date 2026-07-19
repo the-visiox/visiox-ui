@@ -7,6 +7,7 @@ import Footer from "@/components/Footer";
 import Sidebar from "@/components/platform/Sidebar";
 import { useAuth } from "@/lib/auth";
 import { getAccessToken } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
 // Routes that belong to the authenticated platform workspace hubs.
 const PLATFORM_ROUTES = [
@@ -49,6 +50,14 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   // ── Auth / login pages — no chrome ─────────────────────────────
   if (isBareRoute(pathname)) {
     return <div className="min-h-screen bg-[#1c1917]">{children}</div>;
+  }
+
+  if (isPlatformRoute(pathname) && !authReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fcfaf7]" role="status" aria-label="Restoring session">
+        <Loader2 aria-hidden="true" className="h-7 w-7 animate-spin text-orange-500 motion-reduce:animate-none" />
+      </div>
+    );
   }
 
   // ── Annotation terminal (datasets … / annotate / …) ──────────

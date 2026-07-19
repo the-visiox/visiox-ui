@@ -2,12 +2,23 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { auth as authApi, saveTokens, clearTokens, TOKEN_KEYS, API_BASE_URL } from "./api";
+import {
+  auth as authApi,
+  saveTokens,
+  clearTokens,
+  refreshAccessToken,
+  TOKEN_KEYS,
+  API_BASE_URL,
+} from "./api";
 
 function isTokenValid(token: string): boolean {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return payload.exp * 1000 > Date.now();
+    const segment = token.split(".")[1];
+    if (!segment) return false;
+    const base64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof payload.exp === "number" && payload.exp * 1000 > Date.now();
   } catch {
     return false;
   }
@@ -61,23 +72,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    const initializeTimer = window.setTimeout(() => {
+    let cancelled = false;
+    const initialize = async () => {
       const stored = localStorage.getItem(TOKEN_KEYS.user);
       const token = localStorage.getItem(TOKEN_KEYS.access);
-      if (stored && token && isTokenValid(token)) {
+      const refresh = localStorage.getItem(TOKEN_KEYS.refresh);
+      let hasValidSession = Boolean(token && isTokenValid(token));
+
+      if (!hasValidSession && refresh) {
+        hasValidSession = await refreshAccessToken();
+      }
+      if (cancelled) return;
+
+      if (stored && hasValidSession) {
         try {
           setUser(JSON.parse(stored));
           setIsLoggedIn(true);
         } catch {
           /* ignore */
         }
-      } else if (token && !isTokenValid(token)) {
+      } else if (!hasValidSession) {
         clearTokens();
       }
       setAuthReady(true);
-    }, 0);
+    };
 
-    return () => window.clearTimeout(initializeTimer);
+    void initialize();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = async (email: string, password: string) => {

@@ -17,6 +17,8 @@ interface AnnotationEditorProps {
   activeClassId: number;
   onActiveClassIdChange: (classId: number) => void;
   shapes: EditorShape[];
+  predictionShapes?: EditorShape[];
+  predictionModelName?: string;
   onShapesChange: React.Dispatch<React.SetStateAction<EditorShape[]>>;
   activeTool: Tool;
   onToolChange: (tool: Tool) => void;
@@ -87,6 +89,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   activeClassId,
   onActiveClassIdChange,
   shapes,
+  predictionShapes = [],
+  predictionModelName = "Model",
   onShapesChange,
   activeTool,
   onToolChange,
@@ -432,6 +436,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         setNewBox(null);
         return;
       }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === "v") onToolChange("select");
       if (k === "n") onToolChange("rectangle");
@@ -440,7 +445,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       if (k === "k") onToolChange("points");
       if (k === "c") onToolChange("cuboid");
       if (k === "t") onToolChange("tag");
-      if (e.key === "Delete" || e.key === "Backspace" || k === "d") {
+      if (e.key === "Delete" || e.key === "Backspace") {
         const target = selectedId ?? hoveredId;
         if (target) {
           e.preventDefault();
@@ -463,6 +468,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     (clientId: string, e: KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (activeTool !== "select") return;
       e.cancelBubble = true;
+      if (!(e.evt instanceof MouseEvent) || e.evt.button === 0) setContextMenu(null);
       commitSelectedId(clientId);
     },
     [activeTool, commitSelectedId],
@@ -619,7 +625,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     ],
   );
 
-  const handleStageMouseDown = () => {
+  const handleStageMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    if (e.evt.button === 0) setContextMenu(null);
     /*
      * Tool actions live in handleStageClick so shape drags, which suppress
      * click, do not accidentally trigger drawing actions.
@@ -655,6 +662,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       height,
     };
     onShapesChange((prev) => [...prev, box]);
+    commitSelectedId(box.clientId);
     setNewBox(null);
     onToolChange("select");
   };
@@ -829,6 +837,55 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 listening
               />
             )}
+
+            {predictionShapes.map((shape) => {
+              const stroke = getShapeColor(shape.classLabelId);
+              const label = getShapeLabel(shape.classLabelId);
+              const confidence = typeof shape.confidence === "number"
+                ? ` ${Math.round(shape.confidence * 100)}%`
+                : "";
+              const caption = `${predictionModelName} · ${label}${confidence}`;
+              const captionHeight = 20 / safeLayerScale;
+              const captionWidth = Math.max(86, caption.length * 6.5 + 16) / safeLayerScale;
+              const captionY = Math.max(0, shape.y - captionHeight);
+              return (
+                <Group key={shape.clientId} listening={false}>
+                  <Rect
+                    x={shape.x}
+                    y={shape.y}
+                    width={shape.width}
+                    height={shape.height}
+                    stroke={stroke}
+                    strokeWidth={2 / safeLayerScale}
+                    dash={[8 / safeLayerScale, 5 / safeLayerScale]}
+                    opacity={0.95}
+                    listening={false}
+                  />
+                  <Rect
+                    x={shape.x}
+                    y={captionY}
+                    width={captionWidth}
+                    height={captionHeight}
+                    fill="#ffffff"
+                    stroke={stroke}
+                    strokeWidth={1 / safeLayerScale}
+                    dash={[5 / safeLayerScale, 3 / safeLayerScale]}
+                    cornerRadius={5 / safeLayerScale}
+                    opacity={0.95}
+                    listening={false}
+                  />
+                  <Text
+                    x={shape.x + 7 / safeLayerScale}
+                    y={captionY + 5 / safeLayerScale}
+                    text={caption}
+                    fontSize={10 / safeLayerScale}
+                    fontStyle="bold"
+                    fill={stroke}
+                    listening={false}
+                  />
+                </Group>
+              );
+            })}
 
             {shapes.map((shape) => {
               if (hiddenShapeIds.includes(shape.clientId)) return null;
