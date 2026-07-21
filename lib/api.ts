@@ -181,6 +181,11 @@ export interface DatasetImportAccepted {
   job: DatasetImportJob;
 }
 
+export interface VideoExtractionConfig {
+  enabled: boolean;
+  target: number;
+}
+
 export interface DatasetSplitSummary {
   train: { raw: number; augmented: number };
   val: { raw: number; augmented: number };
@@ -231,6 +236,13 @@ export interface ModelArchitecture {
   backbone: string;
   task_type: string;
   description: string;
+  default_config: {
+    architecture?: string;
+    checkpoint?: string;
+    size?: "n" | "s" | "m" | "l" | "x";
+  } & Record<string, unknown>;
+  is_builtin: boolean;
+  is_active: boolean;
 }
 
 export interface TrainingJob {
@@ -711,6 +723,7 @@ export const teams = {
 export interface AnnotationClass {
   id: number;
   project: number;
+  index: number;
   name: string;
   color: string;
   attributes: Record<string, unknown>;
@@ -733,6 +746,12 @@ export const annotationClasses = {
   },
   delete(id: number) {
     return request<void>(`/api/v1/classes/${id}/`, { method: "DELETE" });
+  },
+  reorder(projectId: number, classIds: number[]) {
+    return request<AnnotationClass[]>("/api/v1/classes/reorder/", {
+      method: "POST",
+      body: JSON.stringify({ project: projectId, class_ids: classIds }),
+    });
   },
 };
 
@@ -879,12 +898,15 @@ export const datasets = {
     id: number,
     files: File[],
     format: "images" | "yolo26" | "coco",
-    options?: { replaceExisting?: boolean },
+    options?: { replaceExisting?: boolean; videoExtraction?: VideoExtractionConfig },
   ) {
     const form = new FormData();
     for (const file of files) form.append("files", file);
     form.append("format", format);
     if (options?.replaceExisting) form.append("replace_existing", "true");
+    if (options?.videoExtraction?.enabled) {
+      form.append("video_extraction", JSON.stringify(options.videoExtraction));
+    }
     return request<DatasetImportAccepted>(
       `/api/v1/datasets/${id}/start-import/`,
       { method: "POST", body: form },
@@ -1045,8 +1067,9 @@ export const dataverse = {
 // ── Training ───────────────────────────────────────────────────────────────
 
 export const training = {
-  listArchitectures() {
-    return request<PaginatedResponse<ModelArchitecture>>("/api/v1/architectures/");
+  listArchitectures(options: { includeInactive?: boolean } = {}) {
+    const query = options.includeInactive ? "?include_inactive=true" : "";
+    return request<PaginatedResponse<ModelArchitecture>>(`/api/v1/architectures/${query}`);
   },
   listJobs() {
     return request<PaginatedResponse<TrainingJob>>("/api/v1/training-jobs/");

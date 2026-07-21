@@ -385,6 +385,27 @@ interface NewJobModalProps {
   initialBaseModelId?: number;
 }
 
+const MODEL_SIZE_ORDER = ["n", "s", "m", "l", "x"] as const;
+const MODEL_SIZE_LABELS: Record<string, string> = {
+  n: "Nano",
+  s: "Small",
+  m: "Medium",
+  l: "Large",
+  x: "Extra Large",
+};
+
+function architectureFamilyLabel(architecture: ModelArchitecture): string {
+  const family = architecture.default_config?.architecture ?? architecture.backbone;
+  if (family === "yolov11") return "YOLO11";
+  if (family === "yolo26") return "YOLO26";
+  if (family === "yolov10") return "YOLOv10";
+  return family.toUpperCase();
+}
+
+function architectureSize(architecture: ModelArchitecture): string {
+  return architecture.default_config?.size ?? "n";
+}
+
 function NewJobModal({
   projectList,
   datasetList,
@@ -420,6 +441,7 @@ function NewJobModal({
   const [archId, setArchId] = useState<number | "">(
     initialArchitectureId ?? architectures.find(
       (architecture) =>
+        architecture.is_active &&
         architecture.task_type === projectList.find((project) => project.id === initialProject)?.task_type,
     )?.id ?? "",
   );
@@ -450,12 +472,32 @@ function NewJobModal({
     selectedDatasets.length > 0 && selectedDatasets.every((dataset) => dataset.is_train_ready);
   const selectedProject = projectList.find((project) => project.id === projectId);
   const availableArchitectures = architectures.filter(
-    (architecture) => architecture.task_type === selectedProject?.task_type,
-  );
+    (architecture) => architecture.is_active && architecture.task_type === selectedProject?.task_type,
+  ).toSorted((left, right) => {
+    const familyOrder = architectureFamilyLabel(left).localeCompare(architectureFamilyLabel(right));
+    if (familyOrder !== 0) return familyOrder;
+    return MODEL_SIZE_ORDER.indexOf(architectureSize(left) as (typeof MODEL_SIZE_ORDER)[number])
+      - MODEL_SIZE_ORDER.indexOf(architectureSize(right) as (typeof MODEL_SIZE_ORDER)[number]);
+  });
+  const selectedArchitecture = architectures.find((architecture) => architecture.id === archId);
+  const selectedArchitectureFamily = selectedArchitecture?.backbone ?? "";
+  const architectureFamilies = initializationMode === "fine_tune" && baseModelId && selectedArchitecture
+    ? [selectedArchitecture]
+    : Array.from(
+        new Map(availableArchitectures.map((architecture) => [architecture.backbone, architecture])).values(),
+      );
+  const availableSizes = initializationMode === "fine_tune" && baseModelId && selectedArchitecture
+    ? [selectedArchitecture]
+    : availableArchitectures.filter(
+        (architecture) => architecture.backbone === selectedArchitectureFamily,
+      );
+  const activeBackbones = new Set(availableArchitectures.map((architecture) => architecture.backbone));
   const availableBaseModels = registeredModels.filter((model) => {
     const sourceJob = trainingJobs.find((job) => job.id === model.training_job);
+    const sourceArchitecture = architectures.find((architecture) => architecture.id === sourceJob?.architecture);
     return model.format === "pytorch" && Boolean(model.model_file || model.artifact_url) &&
-      sourceJob?.status === "completed" && sourceJob.project === projectId;
+      sourceJob?.status === "completed" && sourceJob.project === projectId &&
+      Boolean(sourceArchitecture && activeBackbones.has(sourceArchitecture.backbone));
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -533,7 +575,7 @@ function NewJobModal({
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Example: YOLOv8 PPE Run 1…"
+              placeholder="Example: YOLO26 Small PPE Run 1…"
               className={[
                 "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm",
                 "focus-visible:ring-2 focus-visible:ring-orange-500/30",
@@ -556,8 +598,11 @@ function NewJobModal({
                 setProjectId(nextProject);
                 const firstDataset = datasetList.find((dataset) => dataset.project === nextProject);
                 setDatasetIds(firstDataset ? [firstDataset.id] : []);
+                setBaseModelId("");
                 setArchId(
-                  architectures.find((architecture) => architecture.task_type === nextProjectRecord?.task_type)?.id ?? "",
+                  architectures.find(
+                    (architecture) => architecture.is_active && architecture.task_type === nextProjectRecord?.task_type,
+                  )?.id ?? "",
                 );
               }}
               required
@@ -678,34 +723,64 @@ function NewJobModal({
                 ))}
               </select>
               {availableBaseModels.length === 0 ? (
-                <p className="mt-2 text-xs text-amber-700">This project has no completed PyTorch model with best.pt.</p>
+                <p className="mt-2 text-xs text-amber-700">This project has no supported completed PyTorch model with best.pt.</p>
               ) : null}
             </div>
           ) : null}
-          <div>
-            <label htmlFor="training-architecture"
-              className={["block text-[10px] font-bold text-stone-400 uppercase tracking-widest", "mb-2"].join(" ")}
-            >
-              Architecture
-            </label>
-            <select
-              id="training-architecture"
-              name="training-architecture"
-              value={archId}
-              onChange={(e) => setArchId(Number(e.target.value))}
-              disabled={initializationMode === "fine_tune" && Boolean(baseModelId)}
-              className={[
-                "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm",
-                "focus-visible:ring-2 focus-visible:ring-orange-500/30",
-              ].join(" ")}
-            >
-              <option value="">Select an architecture</option>
-              {availableArchitectures.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} ({a.backbone})
-                </option>
-              ))}
-            </select>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="training-architecture-family"
+                className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-stone-400"
+              >
+                Architecture
+              </label>
+              <select
+                id="training-architecture-family"
+                name="training-architecture-family"
+                value={selectedArchitectureFamily}
+                onChange={(event) => {
+                  const firstSize = availableArchitectures.find(
+                    (architecture) => architecture.backbone === event.target.value,
+                  );
+                  setArchId(firstSize?.id ?? "");
+                }}
+                disabled={initializationMode === "fine_tune" && Boolean(baseModelId)}
+                className="w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:opacity-60"
+              >
+                <option value="">Select architecture</option>
+                {architectureFamilies.map((architecture) => (
+                  <option key={architecture.backbone} value={architecture.backbone}>
+                    {architectureFamilyLabel(architecture)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="training-model-size"
+                className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-stone-400"
+              >
+                Model size
+              </label>
+              <select
+                id="training-model-size"
+                name="training-model-size"
+                value={archId}
+                onChange={(event) => setArchId(Number(event.target.value))}
+                disabled={!selectedArchitectureFamily || (initializationMode === "fine_tune" && Boolean(baseModelId))}
+                className="w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:opacity-60"
+              >
+                <option value="">Select size</option>
+                {availableSizes.map((architecture) => {
+                  const size = architectureSize(architecture);
+                  const checkpoint = architecture.default_config?.checkpoint ?? architecture.name;
+                  return (
+                    <option key={architecture.id} value={architecture.id}>
+                      {MODEL_SIZE_LABELS[size] ?? size.toUpperCase()} ({checkpoint})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
           {selectedDataset ? (
             <div className="grid grid-cols-3 gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-4">
@@ -885,13 +960,15 @@ export default function TrainPage() {
   const loadData = useCallback(async (background = false) => {
       if (background) setRefreshing(true);
       setPageError("");
-      const [jobsRes, projRes, dsRes, archRes, registryRes] = await Promise.allSettled([
-        training.listJobs(),
+      const jobsPromise = training.listJobs();
+      const supportingDataPromise = Promise.allSettled([
         projects.list(),
         datasets.list(),
-        training.listArchitectures(),
-        deployments.listAllRegistry(),
+        training.listArchitectures({ includeInactive: true }),
       ]);
+      const registryResultPromise = Promise.allSettled([deployments.listAllRegistry()]);
+
+      const [jobsRes] = await Promise.allSettled([jobsPromise]);
       if (jobsRes.status === "fulfilled") {
         const list = jobsRes.value.results;
         setJobs(list);
@@ -903,10 +980,14 @@ export default function TrainPage() {
       } else {
         setPageError("Couldn’t load training jobs. Check the API connection, then try again.");
       }
+      // Training runs are the primary page content. Render them without waiting
+      // for the slower form options and model registry requests.
+      setLoading(false);
+
+      const [projRes, dsRes, archRes] = await supportingDataPromise;
       if (projRes.status === "fulfilled") setProjectList(projRes.value.results);
       if (dsRes.status === "fulfilled") setDatasetList(dsRes.value.results);
       if (archRes.status === "fulfilled") setArchitectures(archRes.value.results);
-      if (registryRes.status === "fulfilled") setRegisteredModels(registryRes.value);
       if (!deepLinkHandledRef.current) {
         deepLinkHandledRef.current = true;
         const params = new URLSearchParams(window.location.search);
@@ -930,7 +1011,8 @@ export default function TrainPage() {
           setShowModal(true);
         }
       }
-      setLoading(false);
+      const [registryRes] = await registryResultPromise;
+      if (registryRes.status === "fulfilled") setRegisteredModels(registryRes.value);
       setRefreshing(false);
   }, []);
 

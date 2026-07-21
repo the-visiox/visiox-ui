@@ -22,6 +22,8 @@ import {
   Wand2,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   BrainCircuit,
   FileArchive,
   FileText,
@@ -29,6 +31,8 @@ import {
   CircleHelp,
   DatabaseZap,
   BookOpen,
+  Film,
+  Sparkles,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
@@ -49,6 +53,7 @@ import {
   type MemberRole,
   type Project,
   type TeamMember,
+  type VideoExtractionConfig,
 } from "@/lib/api";
 
 const STATUS_DOT: Record<string, string> = {
@@ -95,6 +100,27 @@ const DATASET_UPLOAD_RULES: Record<
     multiple: false,
   },
 };
+
+const VIDEO_EXTENSIONS = [".avi", ".m4v", ".mkv", ".mov", ".mp4", ".webm"];
+const IMAGE_EXTENSIONS = [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"];
+
+const DEFAULT_VIDEO_EXTRACTION: VideoExtractionConfig = {
+  enabled: true,
+  target: 200,
+};
+
+function fileHasExtension(file: File, extensions: string[]): boolean {
+  const lowerName = file.name.toLowerCase();
+  return extensions.some((extension) => lowerName.endsWith(extension));
+}
+
+function isVideoUpload(file: File): boolean {
+  return file.type.startsWith("video/") || fileHasExtension(file, VIDEO_EXTENSIONS);
+}
+
+function isImageUpload(file: File): boolean {
+  return file.type.startsWith("image/") || fileHasExtension(file, IMAGE_EXTENSIONS);
+}
 
 const DATASET_IMPORT_HINTS: Record<
   DatasetImportHint,
@@ -790,6 +816,7 @@ function CreateDatasetModal({
   const [error, setError] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [videoExtraction, setVideoExtraction] = useState<VideoExtractionConfig>(DEFAULT_VIDEO_EXTRACTION);
 
   const [uploadProgress, setUploadProgress] = useState({
     current: 0,
@@ -801,6 +828,9 @@ function CreateDatasetModal({
   const selectedUploadRule = DATASET_UPLOAD_RULES[selectedHintKey];
   const archiveImport = selectedHintKey !== "images";
   const archiveFormat = selectedHintKey === "images" ? null : selectedHintKey;
+  const videoFiles = files.filter(isVideoUpload);
+  const imageFiles = files.filter(isImageUpload);
+  const configureVideoExtraction = !archiveImport && videoFiles.length > 0;
 
   useEffect(() => {
     if (!formatMenuOpen) return;
@@ -828,7 +858,7 @@ function CreateDatasetModal({
   }
 
   function isMediaFile(file: File) {
-    return file.type.startsWith("image/") || file.type.startsWith("video/");
+    return isImageUpload(file) || isVideoUpload(file);
   }
 
   function addFiles(incoming: FileList | File[]) {
@@ -885,6 +915,10 @@ function CreateDatasetModal({
       setError(`The selected ${selectedImportOption.label} file must be a .zip archive.`);
       return;
     }
+    if (configureVideoExtraction && imageFiles.length > 0) {
+      setError("Upload videos separately from image files to extract diverse frames.");
+      return;
+    }
 
     setSaving(true);
 
@@ -897,7 +931,12 @@ function CreateDatasetModal({
 
       if (files.length > 0) {
         setUploadProgress({ current: 0, total: files.length });
-        const importResponse = await datasets.startImport(created.id, files, archiveFormat ?? "images");
+        const importResponse = await datasets.startImport(created.id, files, archiveFormat ?? "images", {
+          videoExtraction:
+            configureVideoExtraction
+              ? videoExtraction
+              : undefined,
+        });
         created = importResponse.dataset;
         setUploadProgress({ current: files.length, total: files.length });
       }
@@ -1259,9 +1298,9 @@ function CreateDatasetModal({
                           {archiveImport ? (
                             <FileArchive className="h-4 w-4 text-orange-500" />
                           ) : (
-                            <ImageIcon
-                              className={`h-4 w-4 ${f.type.startsWith("video/") ? "text-stone-400" : "text-orange-400"}`}
-                            />
+                            isVideoUpload(f)
+                              ? <Film className="h-4 w-4 text-orange-500" />
+                              : <ImageIcon className="h-4 w-4 text-orange-400" />
                           )}
                         </div>
 
@@ -1300,6 +1339,53 @@ function CreateDatasetModal({
                 </div>
               )}
             </div>
+
+            {configureVideoExtraction ? (
+              <section className="mt-4 rounded-2xl border border-orange-200 bg-orange-50/40 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="flex min-w-0 gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600 ring-1 ring-orange-100">
+                      <Sparkles className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-stone-900">Diverse video frame extraction</h3>
+                      <p className="mt-1 text-xs leading-5 text-stone-500">
+                        Compare color, layout and edge details across the full timeline, then keep visually
+                        different frames. No object detection is used.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="w-full sm:w-44">
+                    <span className="mb-1.5 block text-xs font-bold text-stone-700">Images per video</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={2000}
+                      value={videoExtraction.target}
+                      disabled={saving}
+                      onChange={(event) => setVideoExtraction((current) => ({
+                        ...current,
+                        target: Math.max(1, Math.min(2000, Number(event.target.value) || 1)),
+                      }))}
+                      className="h-10 w-full rounded-xl border border-orange-200 bg-white px-3 text-sm font-semibold tabular-nums text-stone-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 disabled:opacity-60"
+                    />
+                  </label>
+                </div>
+
+                {imageFiles.length > 0 ? (
+                  <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                    Frame extraction accepts videos only. Remove the {imageFiles.length} selected image file{imageFiles.length > 1 ? "s" : ""}.
+                  </p>
+                ) : null}
+
+                <p className="mt-4 border-t border-orange-100 pt-3 text-xs text-stone-500">
+                  Output: approximately <strong className="tabular-nums text-stone-800">{(
+                    videoFiles.length * videoExtraction.target
+                  ).toLocaleString()}</strong> diverse images across {videoFiles.length} video
+                  {videoFiles.length > 1 ? "s" : ""}. Processing continues in the dataset worker after upload.
+                </p>
+              </section>
+            ) : null}
           </div>
 
               </div>
@@ -1475,6 +1561,8 @@ export default function ProjectDetailPage() {
   const [trainingDatasetDialogOpen, setTrainingDatasetDialogOpen] = useState(false);
   const [selectedTrainingDatasetIds, setSelectedTrainingDatasetIds] = useState<number[]>([]);
   const [classList, setClassList] = useState<AnnotationClass[]>([]);
+  const [deletingClassId, setDeletingClassId] = useState<number | null>(null);
+  const [classOrderSaving, setClassOrderSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -1502,6 +1590,65 @@ export default function ProjectDetailPage() {
       setClassList([]);
     }
   }, [projectIdNum]);
+
+  const handleDeleteClass = useCallback(async (annotationClass: AnnotationClass) => {
+    if (annotationClass.annotation_count > 0 || deletingClassId !== null) return;
+    const ok = await confirm({
+      title: "Delete class",
+      message: `Delete class "${annotationClass.name}"?`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setDeletingClassId(annotationClass.id);
+    setClassList((current) => current
+      .filter((item) => item.id !== annotationClass.id)
+      .map((item, index) => ({ ...item, index })));
+    try {
+      await annotationClasses.delete(annotationClass.id);
+      broadcastClassChange(projectIdNum);
+    } catch (err) {
+      await loadClasses();
+      await confirm({
+        title: "Delete failed",
+        message: err instanceof Error ? err.message : "Could not delete class",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    } finally {
+      setDeletingClassId(null);
+    }
+  }, [confirm, deletingClassId, loadClasses, projectIdNum]);
+
+  const handleMoveClass = useCallback(async (classId: number, direction: -1 | 1) => {
+    if (classOrderSaving || deletingClassId !== null) return;
+    const currentIndex = classList.findIndex((item) => item.id === classId);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= classList.length) return;
+
+    const previous = classList;
+    const reordered = [...classList];
+    [reordered[currentIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[currentIndex]];
+    const optimistic = reordered.map((item, index) => ({ ...item, index }));
+    setClassList(optimistic);
+    setClassOrderSaving(true);
+    try {
+      const saved = await annotationClasses.reorder(projectIdNum, optimistic.map((item) => item.id));
+      setClassList(saved);
+      broadcastClassChange(projectIdNum);
+    } catch (err) {
+      setClassList(previous);
+      await confirm({
+        title: "Could not change class order",
+        message: err instanceof Error ? err.message : "Please reload and try again.",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    } finally {
+      setClassOrderSaving(false);
+    }
+  }, [classList, classOrderSaving, confirm, deletingClassId, projectIdNum]);
 
   const loadMembers = useCallback(async (teamId: number | null) => {
     if (teamId == null) {
@@ -1975,6 +2122,7 @@ export default function ProjectDetailPage() {
                 </div>
                 <div className="min-w-0">
                   <h2 className="text-sm font-bold text-stone-900 leading-tight">Class management</h2>
+                  <p className="text-[11px] text-stone-400">Index defines the class order used by models.</p>
                 </div>
               </div>
             </div>
@@ -2009,6 +2157,16 @@ export default function ProjectDetailPage() {
                 </button>
               )}
 
+              {deletingClassId !== null ? (
+                <span
+                  role="status"
+                  className="inline-flex items-center gap-1.5 px-2 text-xs font-semibold text-stone-500"
+                >
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-500" aria-hidden="true" />
+                  Deleting class…
+                </span>
+              ) : null}
+
               {classList.length === 0 ? (
                 <span className="text-xs text-stone-400">
                   No classes yet — add one for consistent labels when annotating.
@@ -2022,6 +2180,12 @@ export default function ProjectDetailPage() {
                       "py-1 pl-2 pr-1",
                     ].join(" ")}
                   >
+                    <span
+                      className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md bg-orange-50 px-1 text-[10px] font-bold tabular-nums text-orange-700"
+                      title={`Model class index ${c.index}`}
+                    >
+                      {c.index}
+                    </span>
                     <span
                       className="h-3 w-3 shrink-0 rounded-full ring-1 ring-black/5"
                       style={{ backgroundColor: c.color }}
@@ -2039,6 +2203,26 @@ export default function ProjectDetailPage() {
                     <span className="inline-flex shrink-0 items-center">
                       <button
                         type="button"
+                        disabled={c.index === 0 || classOrderSaving || deletingClassId !== null}
+                        onClick={() => void handleMoveClass(c.id, -1)}
+                        className="rounded-md p-1 text-stone-400 transition-colors hover:bg-orange-50 hover:text-orange-700 disabled:cursor-not-allowed disabled:text-stone-200 disabled:hover:bg-transparent"
+                        title="Move class to a lower model index"
+                        aria-label={`Move ${c.name} to index ${c.index - 1}`}
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={c.index === classList.length - 1 || classOrderSaving || deletingClassId !== null}
+                        onClick={() => void handleMoveClass(c.id, 1)}
+                        className="rounded-md p-1 text-stone-400 transition-colors hover:bg-orange-50 hover:text-orange-700 disabled:cursor-not-allowed disabled:text-stone-200 disabled:hover:bg-transparent"
+                        title="Move class to a higher model index"
+                        aria-label={`Move ${c.name} to index ${c.index + 1}`}
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           setEditingClass(c);
                           setClassModalOpen(true);
@@ -2053,33 +2237,10 @@ export default function ProjectDetailPage() {
                       </button>
                       <button
                         type="button"
-                        disabled={c.annotation_count > 0}
-                        onClick={() => {
-                          if (c.annotation_count > 0) return;
-                          void (async () => {
-                            const ok = await confirm({
-                              title: "Delete class",
-                              message: `Delete class “${c.name}”?`,
-                              confirmLabel: "Delete",
-                              danger: true,
-                            });
-                            if (!ok) return;
-                            try {
-                              await annotationClasses.delete(c.id);
-                              broadcastClassChange(project!.id);
-                              await loadClasses();
-                            } catch (err) {
-                              await confirm({
-                                title: "Delete failed",
-                                message: err instanceof Error ? err.message : "Could not delete class",
-                                confirmLabel: "OK",
-                                hideCancel: true,
-                              });
-                            }
-                          })();
-                        }}
+                        disabled={c.annotation_count > 0 || deletingClassId !== null}
+                        onClick={() => void handleDeleteClass(c)}
                         className={`rounded-md p-1 transition-colors ${
-                          c.annotation_count > 0
+                          c.annotation_count > 0 || deletingClassId !== null
                             ? "cursor-not-allowed text-stone-200"
                             : "text-stone-400 hover:bg-red-50 hover:text-red-600"
                         }`}

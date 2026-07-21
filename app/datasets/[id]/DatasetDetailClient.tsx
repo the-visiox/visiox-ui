@@ -75,13 +75,13 @@ interface Props {
 type ModelRunConfig = {
   modelId: number | "";
   confidence: number;
-  scope: "page" | "dataset";
 };
+
+type ImageClassFilter = "all" | "unlabeled" | `class:${number}`;
 
 const DEFAULT_MODEL_RUN_CONFIG: ModelRunConfig = {
   modelId: "",
   confidence: 0.25,
-  scope: "page",
 };
 
 function mediaDisplayName(media: Media): string {
@@ -143,10 +143,11 @@ function pointsToPath(points: number[]): string {
   return pairs.join(" ");
 }
 
-function originalMediaIds(frames: BrowserData["frames"]): number[] {
-  return frames
-    .filter((frame) => !frame.augmented && typeof frame.media_id === "number")
-    .map((frame) => frame.media_id as number);
+function frameMatchesClassFilter(frame: BrowserData["frames"][number], filter: ImageClassFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "unlabeled") return frame.annotations.length === 0;
+  const classId = Number(filter.slice("class:".length));
+  return frame.annotations.some((annotation) => annotation.label_id === classId);
 }
 
 const CARD = "bg-white rounded-2xl border border-stone-200";
@@ -503,6 +504,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [annotatedCountApi, setAnnotatedCountApi] = useState<number | null>(null);
   const [mediaCountApi, setMediaCountApi] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [browserLoading, setBrowserLoading] = useState(true);
   const [error, setError] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -512,10 +514,9 @@ export default function DatasetDetailClient({ id }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [browserTab, setBrowserTab] = useState<"original" | "augmented">("original");
+  const [imageClassFilter, setImageClassFilter] = useState<ImageClassFilter>("all");
   const [registeredModels, setRegisteredModels] = useState<ModelRegistry[]>([]);
   const [modelRunConfig, setModelRunConfig] = useState<ModelRunConfig>(DEFAULT_MODEL_RUN_CONFIG);
-  const [runningModel, setRunningModel] = useState(false);
-  const [modelRunMessage, setModelRunMessage] = useState("");
   const [modelRunError, setModelRunError] = useState("");
   const [showAnnotationLabels, setShowAnnotationLabels] = useState(true);
   const [currentDatasetSection, setCurrentDatasetSection] = useState<1 | 2>(1);
@@ -547,14 +548,17 @@ export default function DatasetDetailClient({ id }: Props) {
   const [allClasses, setAllClasses] = useState<AnnotationClass[]>([]);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
-  const refreshStatsAndBrowser = useCallback(async () => {
-    const [dsResult, statsResult, browserResult, mediaResult, registryResult] = await Promise.allSettled([
+  const refreshStatsAndBrowser = useCallback(async (overviewOnly = false) => {
+    // Start independent requests together, but do not let the large browser
+    // payload block the dataset overview from rendering.
+    const overviewPromise = Promise.allSettled([
       datasets.get(numericId),
       datasets.stats(numericId),
-      datasets.browser(numericId),
-      datasets.media(numericId),
-      deployments.listRegistry(),
     ]);
+    let browserPromise = overviewOnly ? null : datasets.browser(numericId);
+    let registryPromise = overviewOnly ? null : deployments.listRegistry();
+
+    const [dsResult, statsResult] = await overviewPromise;
     if (dsResult.status === "fulfilled") {
       setDatasetDetail(dsResult.value);
       if (dsResult.value.split_config) {
@@ -587,23 +591,58 @@ export default function DatasetDetailClient({ id }: Props) {
           .catch(() => {});
       }
     }
-    if (browserResult.status === "fulfilled") {
-      const browser = browserResult.value;
-      const media = mediaResult.status === "fulfilled" ? mediaResult.value : [];
-      setBrowserData(buildBrowserDataWithMediaFallback(browser, media, numericId));
-    } else if (mediaResult.status === "fulfilled" && mediaResult.value.some((item) => item.type === "image")) {
-      setBrowserData(buildMediaFallbackBrowserData(mediaResult.value, numericId));
-    }
-    if (registryResult.status === "fulfilled") {
-      setRegisteredModels(registryResult.value.results);
+
+    // The overview is enough to render the page shell and statistics. Images,
+    // annotations, and model options continue loading in the background.
+    if (dsResult.status === "fulfilled" || statsResult.status === "fulfilled") setLoading(false);
+
+    const importStillActive = dsResult.status === "fulfilled"
+      && dsResult.value.latest_import_job != null
+      && ["queued", "running"].includes(dsResult.value.latest_import_job.status);
+    if (overviewOnly && importStillActive) return;
+
+    // A polling request that observes completion performs one final full
+    // refresh so newly extracted video frames appear without a page reload.
+    browserPromise ??= datasets.browser(numericId);
+    registryPromise ??= deployments.listRegistry();
+
+    const browserTask = (async () => {
+      try {
+        const browser = await browserPromise;
+        if (browser.frames.length > 0) {
+          setBrowserData(browser);
+          return;
+        }
+
+        // Compatibility fallback for older backends that return an empty
+        // browser payload even though image media exists.
+        const media = await datasets.media(numericId);
+        setBrowserData(buildBrowserDataWithMediaFallback(browser, media, numericId));
+      } catch {
+        try {
+          const media = await datasets.media(numericId);
+          if (media.some((item) => item.type === "image")) {
+            setBrowserData(buildMediaFallbackBrowserData(media, numericId));
+          }
+        } catch {
+          if (dsResult.status === "rejected" && statsResult.status === "rejected") {
+            setError("Failed to load dataset data");
+          }
+        }
+      } finally {
+        setBrowserLoading(false);
+      }
+    })();
+
+    const registryTask = registryPromise.then((registryResult) => {
+      setRegisteredModels(registryResult.results);
       setModelRunConfig((current) => {
         if (current.modelId) return current;
-        return { ...current, modelId: registryResult.value.results[0]?.id || "" };
+        return { ...current, modelId: registryResult.results[0]?.id || "" };
       });
-    }
-    if (dsResult.status === "rejected" && statsResult.status === "rejected" && browserResult.status === "rejected") {
-      setError("Failed to load dataset data");
-    }
+    }).catch(() => {});
+
+    await Promise.all([browserTask, registryTask]);
   }, [numericId]);
 
   const latestImportJob = datasetDetail?.latest_import_job ?? null;
@@ -613,7 +652,7 @@ export default function DatasetDetailClient({ id }: Props) {
     if (!hasActiveImport) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        void refreshStatsAndBrowser();
+        void refreshStatsAndBrowser(true);
       }
     }, 2500);
     return () => window.clearInterval(timer);
@@ -732,6 +771,8 @@ export default function DatasetDetailClient({ id }: Props) {
       }
     }
     setLoading(true);
+    setBrowserLoading(true);
+    setBrowserData(null);
     setError("");
     load();
     return () => {
@@ -826,7 +867,10 @@ export default function DatasetDetailClient({ id }: Props) {
     && savedSplit.test === splitRatios.test
     && (savedSplit.strategy ?? "random") === splitStrategy,
   );
-  const activeFrames = allFrames.filter((f) => (browserTab === "augmented" ? f.augmented : !f.augmented));
+  const activeFrames = allFrames.filter(
+    (frame) => (browserTab === "augmented" ? frame.augmented : !frame.augmented)
+      && frameMatchesClassFilter(frame, imageClassFilter),
+  );
   const totalPages = Math.max(1, Math.ceil(activeFrames.length / BATCH_SIZE));
   const safePage = Math.min(currentPage, totalPages);
   const pageOffset = (safePage - 1) * BATCH_SIZE;
@@ -855,7 +899,10 @@ export default function DatasetDetailClient({ id }: Props) {
   const selectMediaRangeByFrameIndex = useCallback(
     (from: number, to: number) => {
       if (!browserData?.frames.length) return;
-      const frames = browserData.frames.filter((f) => (browserTab === "augmented" ? f.augmented : !f.augmented));
+      const frames = browserData.frames.filter(
+        (frame) => (browserTab === "augmented" ? frame.augmented : !frame.augmented)
+          && frameMatchesClassFilter(frame, imageClassFilter),
+      );
       const lo = Math.min(from, to);
       const hi = Math.max(from, to);
       const ids: number[] = [];
@@ -865,7 +912,7 @@ export default function DatasetDetailClient({ id }: Props) {
       }
       setSelectedMediaIds(ids);
     },
-    [browserData, browserTab],
+    [browserData, browserTab, imageClassFilter],
   );
 
   const allSelectableSelected =
@@ -906,49 +953,25 @@ export default function DatasetDetailClient({ id }: Props) {
     }
   };
 
-  const handleRunModel = async () => {
-    const { modelId, confidence, scope } = modelRunConfig;
+  const handleTryModel = () => {
+    const { modelId, confidence } = modelRunConfig;
     if (!modelId || isNaN(numericId)) {
       setModelRunError("Select a trained model first.");
       return;
     }
-    const visibleOriginalMediaIds = originalMediaIds(visibleFrames);
-    const mediaIds = selectedMediaIds.length > 0
-      ? selectedMediaIds
-      : scope === "dataset" ? originalMediaIds(activeFrames) : visibleOriginalMediaIds;
-    if (mediaIds.length === 0) {
-      setModelRunError("No original images are available for model inference.");
+    const selectedFrame = activeFrames.find(
+      (frame) => typeof frame.media_id === "number" && selectedMediaIds.includes(frame.media_id),
+    );
+    const targetFrame = selectedFrame ?? visibleFrames[0];
+    if (!targetFrame) {
+      setModelRunError("No original image is available for model preview.");
       return;
     }
-    const accepted = await confirm({
-      title: "Label with model",
-      message: [
-        `Run the selected model on ${mediaIds.length} image(s) with ${Math.round(confidence * 100)}% confidence?`,
-        "Previous labels from this model will be replaced; manual annotations are kept.",
-      ].join(" "),
-      confirmLabel: "Label images",
-    });
-    if (!accepted) return;
-
-    setRunningModel(true);
     setModelRunError("");
-    setModelRunMessage("");
-    try {
-      const result = await deployments.labelDataset(modelId, {
-        dataset: numericId,
-        media_ids: mediaIds,
-        confidence,
-      });
-      setModelRunMessage(
-        `Saved ${INTEGER_FORMATTER.format(result.saved_annotations)} labels across `
-          + `${INTEGER_FORMATTER.format(result.labeled_images)} images.`,
-      );
-      await refreshStatsAndBrowser();
-    } catch (err) {
-      setModelRunError(err instanceof Error ? err.message : "Model inference failed.");
-    } finally {
-      setRunningModel(false);
-    }
+    router.push(
+      `/datasets/${numericId}/annotate/native?frame=${targetFrame.frame}`
+        + `&compareModel=${modelId}&compareConfidence=${confidence}`,
+    );
   };
 
   const handleUploadFiles = async (
@@ -2394,7 +2417,20 @@ export default function DatasetDetailClient({ id }: Props) {
             document.body,
           )}
 
-        {totalImages === 0 && (
+        {browserLoading && !browserData ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="order-1 flex min-h-40 items-center justify-center rounded-2xl border border-stone-200 bg-white"
+          >
+            <div className="text-center">
+              <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-orange-500" aria-hidden="true" />
+              <p className="text-sm font-medium text-stone-500">Loading images and annotations...</p>
+            </div>
+          </div>
+        ) : null}
+
+        {totalImages === 0 && !browserLoading && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -2475,6 +2511,7 @@ export default function DatasetDetailClient({ id }: Props) {
             {browserOpen && <div className="border-t border-stone-100 bg-stone-50/40 px-6 pb-6 pt-5">
             {/* ── Original / Augmented tabs ── */}
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex w-fit items-center gap-1 rounded-xl bg-stone-100 p-1">
               {[
                 { key: "original" as const, label: "Original", count: originalCount },
@@ -2504,6 +2541,32 @@ export default function DatasetDetailClient({ id }: Props) {
                   </span>
                 </button>
               ))}
+            </div>
+            <label className="relative">
+              <span className="sr-only">Filter images by class</span>
+              <Tag
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+              />
+              <select
+                value={imageClassFilter}
+                onChange={(event) => {
+                  setImageClassFilter(event.target.value as ImageClassFilter);
+                  setCurrentPage(1);
+                  setSelectedMediaIds([]);
+                  anchorFrameIndexRef.current = null;
+                }}
+                className="h-10 min-w-44 rounded-xl border border-stone-200 bg-white pl-9 pr-8 text-sm font-bold text-stone-700"
+              >
+                <option value="all">All classes</option>
+                <option value="unlabeled">Unlabeled</option>
+                {(allClasses.length > 0 ? allClasses : browserData.labels).map((annotationClass) => (
+                  <option key={annotationClass.id} value={`class:${annotationClass.id}`}>
+                    {annotationClass.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             </div>
             {(selectableMediaIds.length > 0 || selectedMediaIds.length > 0) && (
               <div className="relative z-10 flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
@@ -2569,28 +2632,14 @@ export default function DatasetDetailClient({ id }: Props) {
                   className="no-number-spinner h-10 w-24 rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm font-bold"
                   aria-label="Confidence"
                 />
-                <select
-                  value={modelRunConfig.scope}
-                  onChange={(event) => setModelRunConfig((current) => ({
-                    ...current,
-                    scope: event.target.value as ModelRunConfig["scope"],
-                  }))}
-                  disabled={selectedMediaIds.length > 0}
-                  className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700 disabled:opacity-50"
-                  aria-label="Image scope"
-                  title={selectedMediaIds.length ? "Selected images take priority" : undefined}
-                >
-                  <option value="page">Current page</option>
-                  <option value="dataset">Entire dataset</option>
-                </select>
                 <button
                   type="button"
-                  onClick={() => void handleRunModel()}
-                  disabled={runningModel || !modelRunConfig.modelId || browserTab !== "original"}
+                  onClick={handleTryModel}
+                  disabled={!modelRunConfig.modelId || browserTab !== "original" || activeFrames.length === 0}
                   className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-bold text-white disabled:opacity-40"
                 >
-                  {runningModel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  Run Model
+                  <Wand2 className="h-4 w-4" />
+                  Try Model
                 </button>
               </div>
               <button
@@ -2612,12 +2661,6 @@ export default function DatasetDetailClient({ id }: Props) {
                 {modelRunError}
               </div>
             ) : null}
-            {modelRunMessage ? (
-              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-                {modelRunMessage}
-              </div>
-            ) : null}
-
             {activeFrames.length === 0 ? (
               <div
                 className={[
@@ -2626,10 +2669,21 @@ export default function DatasetDetailClient({ id }: Props) {
                 ].join(" ")}
               >
                 <p className="text-sm font-medium text-stone-400">
-                  {browserTab === "augmented"
+                  {imageClassFilter !== "all"
+                    ? "No images match the selected class filter."
+                    : browserTab === "augmented"
                     ? 'No augmented images yet. Use "Generate Dataset" below to create some.'
                     : "No original images yet. Upload images to get started."}
                 </p>
+                {imageClassFilter !== "all" ? (
+                  <button
+                    type="button"
+                    onClick={() => setImageClassFilter("all")}
+                    className="mt-3 h-9 rounded-xl border border-stone-200 bg-white px-4 text-xs font-bold text-stone-600 transition-colors hover:bg-stone-50"
+                  >
+                    Clear class filter
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">

@@ -3,6 +3,7 @@ import { apiFetch } from "./client";
 export type ClassDto = {
   id: number;
   project: number;
+  index: number;
   name: string;
   color: string;
   /** Total annotations using this class across the whole project. */
