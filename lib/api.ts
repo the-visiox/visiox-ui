@@ -181,9 +181,20 @@ export interface DatasetImportAccepted {
   job: DatasetImportJob;
 }
 
+export interface DatasetPreparedImport extends DatasetImportAccepted {
+  direct_upload: boolean;
+  uploads?: Array<{
+    index: number;
+    name: string;
+    url: string;
+    headers: Record<string, string>;
+  }>;
+}
+
 export interface VideoExtractionConfig {
   enabled: boolean;
   target: number;
+  min_frame_difference: number;
 }
 
 export interface DatasetSplitSummary {
@@ -898,19 +909,106 @@ export const datasets = {
     id: number,
     files: File[],
     format: "images" | "yolo26" | "coco",
-    options?: { replaceExisting?: boolean; videoExtraction?: VideoExtractionConfig },
+    options?: {
+      replaceExisting?: boolean;
+      videoExtraction?: VideoExtractionConfig;
+      onUploadProgress?: (uploadedBytes: number, totalBytes: number) => void;
+    },
   ) {
-    const form = new FormData();
-    for (const file of files) form.append("files", file);
-    form.append("format", format);
-    if (options?.replaceExisting) form.append("replace_existing", "true");
-    if (options?.videoExtraction?.enabled) {
-      form.append("video_extraction", JSON.stringify(options.videoExtraction));
-    }
-    return request<DatasetImportAccepted>(
-      `/api/v1/datasets/${id}/start-import/`,
-      { method: "POST", body: form },
-    );
+    const multipartImport = () => {
+      const form = new FormData();
+      for (const file of files) form.append("files", file);
+      form.append("format", format);
+      if (options?.replaceExisting) form.append("replace_existing", "true");
+      if (options?.videoExtraction?.enabled) {
+        form.append("video_extraction", JSON.stringify(options.videoExtraction));
+      }
+      return request<DatasetImportAccepted>(
+        `/api/v1/datasets/${id}/start-import/`,
+        { method: "POST", body: form },
+      );
+    };
+
+    const uploadFile = (
+      upload: NonNullable<DatasetPreparedImport["uploads"]>[number],
+      file: File,
+      onProgress: (loaded: number) => void,
+    ) => new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", upload.url);
+      for (const [name, value] of Object.entries(upload.headers)) xhr.setRequestHeader(name, value);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress(event.loaded);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress(file.size);
+          resolve();
+          return;
+        }
+        reject(new Error(`Direct upload failed for ${file.name} (${xhr.status}).`));
+      };
+      xhr.onerror = () => reject(new Error(`Direct upload failed for ${file.name}. Check MinIO CORS and network access.`));
+      xhr.send(file);
+    });
+
+    const directImport = async () => {
+      const prepared = await request<DatasetPreparedImport>(
+        `/api/v1/datasets/${id}/prepare-import/`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            format,
+            replace_existing: options?.replaceExisting ?? false,
+            video_extraction: options?.videoExtraction,
+            files: files.map((file) => ({
+              name: file.name,
+              size: file.size,
+              content_type: file.type || "application/octet-stream",
+            })),
+          }),
+        },
+      );
+      if (!prepared.direct_upload || !prepared.uploads) return multipartImport();
+
+      const totalBytes = files.reduce((total, file) => total + file.size, 0);
+      const uploadedBytes = new Array(files.length).fill(0) as number[];
+      const uploadsByIndex = new Map(prepared.uploads.map((upload) => [upload.index, upload]));
+      const reportProgress = (index: number, loaded: number) => {
+        uploadedBytes[index] = loaded;
+        options?.onUploadProgress?.(
+          uploadedBytes.reduce((total, value) => total + value, 0),
+          totalBytes,
+        );
+      };
+
+      let nextIndex = 0;
+      const uploadWorker = async () => {
+        while (nextIndex < files.length) {
+          const index = nextIndex++;
+          const upload = uploadsByIndex.get(index);
+          if (!upload) throw new Error(`Missing upload URL for ${files[index].name}.`);
+          await uploadFile(upload, files[index], (loaded) => reportProgress(index, loaded));
+        }
+      };
+
+      try {
+        const concurrency = Math.min(3, files.length);
+        await Promise.all(Array.from({ length: concurrency }, () => uploadWorker()));
+        return await request<DatasetImportAccepted>(
+          `/api/v1/datasets/${id}/import-jobs/${prepared.job.id}/commit/`,
+          { method: "POST" },
+        );
+      } catch (error) {
+        await request(
+          `/api/v1/datasets/${id}/import-jobs/${prepared.job.id}/abort/`,
+          { method: "POST" },
+        ).catch(() => undefined);
+        throw error;
+      }
+    };
+
+    return directImport();
   },
   deleteMedia(id: number, mediaIds: number[]) {
     return request<{ deleted: number; ids: number[] }>(`/api/v1/datasets/${id}/media/`, {

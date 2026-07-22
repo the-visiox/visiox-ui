@@ -6,6 +6,7 @@ export type DatasetDto = {
   name: string;
   description?: string | null;
   media_count?: number;
+  image_count?: number;
 };
 
 export type MediaDto = {

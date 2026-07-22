@@ -472,6 +472,24 @@ export default function AnnotatePageClient() {
           datasetDetailCache.set(datasetId, ds);
         }
         setProjectId(ds.project);
+
+        const nativeFrameTotal = ds.image_count ?? ds.media_count ?? 0;
+        if (isNativeMode) {
+          setMediaTotal(nativeFrameTotal);
+          if (nativeFrameTotal <= 0) {
+            router.replace(`/datasets/${params.id}`);
+            return;
+          }
+          if (frameIndex >= nativeFrameTotal) {
+            const lastFrameIndex = nativeFrameTotal - 1;
+            setPendingIndex(nativeFrameTotal);
+            router.replace(
+              `/datasets/${params.id}/annotate/native?frame=${lastFrameIndex}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
+            );
+            return;
+          }
+        }
+
         const cachedClasses = projectClassesCache.get(ds.project);
         const classesPromise = cachedClasses
           ? Promise.resolve(cachedClasses)
@@ -517,7 +535,7 @@ export default function AnnotatePageClient() {
           classes = loadedClasses;
           annotations = loadedAnnotations;
           profileItems = loadedProfile;
-          setMediaTotal(ds.media_count ?? null);
+          setMediaTotal(nativeFrameTotal);
         } else {
           let list = mediaListCache.get(datasetId) ?? null;
           if (!list) {
@@ -591,10 +609,10 @@ export default function AnnotatePageClient() {
         setError(
           e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Failed to load dataset.",
         );
-        setImageUrl(demoUrl);
-        setLabels([...DEMO_LABELS]);
-        savedLabelsJsonRef.current = JSON.stringify(DEMO_LABELS);
-        setActiveClassId(1);
+        setImageUrl("");
+        setLabels([]);
+        savedLabelsJsonRef.current = "[]";
+        setActiveClassId(0);
         setMediaIndex(null);
         setMediaTotal(null);
         setMediaList([]);
@@ -616,16 +634,20 @@ export default function AnnotatePageClient() {
     activeClassStorageKey,
     authReady,
     currentDraftKey,
+    comparisonQuerySuffix,
     datasetId,
     frameIndex,
     frameRevision,
     isNativeMode,
     jobId,
+    jobIdParam,
     mediaId,
+    params.id,
     persistDraft,
     rawImageId,
     readDraft,
     readDirtyFrames,
+    router,
   ]);
 
   useEffect(() => {

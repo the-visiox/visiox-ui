@@ -33,6 +33,7 @@ import {
   BookOpen,
   Film,
   Sparkles,
+  Minimize2,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
@@ -65,6 +66,13 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 type DatasetImportHint = "images" | "yolo26" | "coco";
+
+type BackgroundDatasetUpload = {
+  dataset: Dataset;
+  percent: number | null;
+  status: "uploading" | "error";
+  error?: string;
+};
 
 const DATASET_IMPORT_OPTIONS: Array<{ value: DatasetImportHint; label: string }> = [
   { value: "images", label: "Images" },
@@ -107,6 +115,7 @@ const IMAGE_EXTENSIONS = [".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tif
 const DEFAULT_VIDEO_EXTRACTION: VideoExtractionConfig = {
   enabled: true,
   target: 200,
+  min_frame_difference: 0.15,
 };
 
 function fileHasExtension(file: File, extensions: string[]): boolean {
@@ -799,11 +808,15 @@ function CreateDatasetModal({
   project,
   importHint,
   onClose,
+  onDatasetInitialized,
+  onUploadStateChange,
   onCreated,
 }: {
   project: Project;
   importHint: DatasetImportHint;
   onClose: () => void;
+  onDatasetInitialized: (dataset: Dataset) => void;
+  onUploadStateChange: (datasetId: number, state: BackgroundDatasetUpload | null) => void;
   onCreated: (d: Dataset) => void;
 }) {
   const [selectedHintKey, setSelectedHintKey] = useState<DatasetImportHint>(importHint);
@@ -822,6 +835,7 @@ function CreateDatasetModal({
     current: 0,
     total: 0,
   });
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formatMenuRef = useRef<HTMLDivElement>(null);
@@ -921,29 +935,58 @@ function CreateDatasetModal({
     }
 
     setSaving(true);
+    let created: Dataset | null = null;
 
     try {
-      let created = await datasets.create({
+      created = await datasets.create({
         project: project.id,
         name,
         description,
       });
+      onDatasetInitialized(created);
 
       if (files.length > 0) {
+        const uploadingDataset = created;
         setUploadProgress({ current: 0, total: files.length });
+        setUploadPercent(null);
+        onUploadStateChange(uploadingDataset.id, {
+          dataset: uploadingDataset,
+          percent: 0,
+          status: "uploading",
+        });
         const importResponse = await datasets.startImport(created.id, files, archiveFormat ?? "images", {
           videoExtraction:
             configureVideoExtraction
               ? videoExtraction
               : undefined,
+          onUploadProgress: (uploadedBytes, totalBytes) => {
+            if (totalBytes <= 0) return;
+            const percent = Math.round(uploadedBytes * 100 / totalBytes);
+            setUploadPercent(percent);
+            onUploadStateChange(uploadingDataset.id, {
+              dataset: uploadingDataset,
+              percent,
+              status: "uploading",
+            });
+          },
         });
         created = importResponse.dataset;
+        onUploadStateChange(uploadingDataset.id, null);
         setUploadProgress({ current: files.length, total: files.length });
       }
 
       onCreated(created);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create dataset");
+      const message = err instanceof Error ? err.message : "Failed to create dataset";
+      setError(message);
+      if (created) {
+        onUploadStateChange(created.id, {
+          dataset: created,
+          percent: uploadPercent,
+          status: "error",
+          error: message,
+        });
+      }
 
       setSaving(false);
 
@@ -951,6 +994,7 @@ function CreateDatasetModal({
         current: 0,
         total: 0,
       });
+      setUploadPercent(null);
     }
   };
 
@@ -958,7 +1002,7 @@ function CreateDatasetModal({
     if (!saving) return "Create Dataset";
 
     if (uploadProgress.total > 0) {
-      return "Starting import...";
+      return uploadPercent == null ? "Uploading file..." : `Uploading ${uploadPercent}%`;
     }
 
     return "Creating...";
@@ -993,9 +1037,9 @@ function CreateDatasetModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={saving}
             aria-label="Close new dataset modal"
-            className="rounded-xl p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:opacity-50"
+            title={saving ? "Continue this upload in the background" : undefined}
+            className="rounded-xl p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30"
           >
             <X className="h-6 w-6" />
           </button>
@@ -1336,6 +1380,27 @@ function CreateDatasetModal({
                       </div>
                     ))}
                   </div>
+                  {saving && uploadPercent != null ? (
+                    <div className="mt-3" role="status" aria-live="polite">
+                      <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-stone-500">
+                        <span>Uploading directly to storage</span>
+                        <span className="tabular-nums text-orange-600">{uploadPercent}%</span>
+                      </div>
+                      <div
+                        role="progressbar"
+                        aria-label="Dataset upload progress"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={uploadPercent}
+                        className="h-1.5 overflow-hidden rounded-full bg-orange-100"
+                      >
+                        <div
+                          className="h-full rounded-full bg-orange-500 transition-[width] duration-200"
+                          style={{ width: `${uploadPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1355,21 +1420,46 @@ function CreateDatasetModal({
                       </p>
                     </div>
                   </div>
-                  <label className="w-full sm:w-44">
-                    <span className="mb-1.5 block text-xs font-bold text-stone-700">Images per video</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={2000}
-                      value={videoExtraction.target}
-                      disabled={saving}
-                      onChange={(event) => setVideoExtraction((current) => ({
-                        ...current,
-                        target: Math.max(1, Math.min(2000, Number(event.target.value) || 1)),
-                      }))}
-                      className="h-10 w-full rounded-xl border border-orange-200 bg-white px-3 text-sm font-semibold tabular-nums text-stone-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 disabled:opacity-60"
-                    />
-                  </label>
+                  <div className="grid w-full shrink-0 gap-3 sm:w-auto sm:grid-cols-2">
+                    <label className="w-full sm:w-44">
+                      <span className="mb-1.5 block text-xs font-bold text-stone-700">Images per video</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={2000}
+                        value={videoExtraction.target}
+                        disabled={saving}
+                        onChange={(event) => setVideoExtraction((current) => ({
+                          ...current,
+                          target: Math.max(1, Math.min(2000, Number(event.target.value) || 1)),
+                        }))}
+                        className="h-10 w-full rounded-xl border border-orange-200 bg-white px-3 text-sm font-semibold tabular-nums text-stone-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 disabled:opacity-60"
+                      />
+                    </label>
+                    <label className="w-full sm:w-44">
+                      <span className="mb-1.5 block text-xs font-bold text-stone-700">Minimum difference</span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={Math.round(videoExtraction.min_frame_difference * 100)}
+                          disabled={saving}
+                          onChange={(event) => setVideoExtraction((current) => ({
+                            ...current,
+                            min_frame_difference: Math.max(
+                              0,
+                              Math.min(100, Number(event.target.value) || 0),
+                            ) / 100,
+                          }))}
+                          aria-describedby="video-difference-help"
+                          className="h-10 w-full rounded-xl border border-orange-200 bg-white px-3 pr-8 text-sm font-semibold tabular-nums text-stone-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 disabled:opacity-60"
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-400">%</span>
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
                 {imageFiles.length > 0 ? (
@@ -1379,7 +1469,10 @@ function CreateDatasetModal({
                 ) : null}
 
                 <p className="mt-4 border-t border-orange-100 pt-3 text-xs text-stone-500">
-                  Output: approximately <strong className="tabular-nums text-stone-800">{(
+                  <span id="video-difference-help">
+                    Frames less than {Math.round(videoExtraction.min_frame_difference * 100)}% different are removed.
+                  </span>{" "}
+                  Output: up to <strong className="tabular-nums text-stone-800">{(
                     videoFiles.length * videoExtraction.target
                   ).toLocaleString()}</strong> diverse images across {videoFiles.length} video
                   {videoFiles.length > 1 ? "s" : ""}. Processing continues in the dataset worker after upload.
@@ -1397,13 +1490,13 @@ function CreateDatasetModal({
             <button
               type="button"
               onClick={onClose}
-              disabled={saving}
               className={[
-                "h-11 rounded-xl border border-stone-200 bg-white px-7 text-sm font-bold text-stone-700 transition-colors",
-                "hover:bg-stone-50 disabled:opacity-50",
+                "flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-7",
+                "text-sm font-bold text-stone-700 transition-colors hover:bg-stone-50",
               ].join(" ")}
             >
-              Cancel
+              {saving ? <Minimize2 className="h-4 w-4" /> : null}
+              {saving ? "Run in background" : "Cancel"}
             </button>
 
             <button
@@ -1566,6 +1659,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [backgroundUploads, setBackgroundUploads] = useState<Record<number, BackgroundDatasetUpload>>({});
   const [classModalOpen, setClassModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<AnnotationClass | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -1580,6 +1674,18 @@ export default function ProjectDetailPage() {
   const datasetPromptHandledRef = useRef(false);
 
   const projectIdNum = id ? parseInt(id as string, 10) : NaN;
+
+  const hasBrowserUpload = Object.values(backgroundUploads).some((upload) => upload.status === "uploading");
+
+  useEffect(() => {
+    if (!hasBrowserUpload) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [hasBrowserUpload]);
 
   const loadClasses = useCallback(async () => {
     if (Number.isNaN(projectIdNum)) return;
@@ -1990,12 +2096,81 @@ export default function ProjectDetailPage() {
       </AnimatePresence>
       <BlueprintGrid />
 
+      <div className="fixed bottom-5 right-5 z-40 flex w-[min(24rem,calc(100vw-2.5rem))] flex-col gap-3" aria-live="polite">
+        {Object.values(backgroundUploads).map((upload) => (
+          <div
+            key={upload.dataset.id}
+            role={upload.status === "error" ? "alert" : "status"}
+            className={[
+              "rounded-2xl border bg-white p-4 shadow-xl shadow-stone-950/10",
+              upload.status === "error" ? "border-red-200" : "border-orange-200",
+            ].join(" ")}
+          >
+            <div className="flex items-start gap-3">
+              <div className={[
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                upload.status === "error" ? "bg-red-50 text-red-600" : "bg-orange-50 text-orange-600",
+              ].join(" ")}>
+                {upload.status === "uploading" ? <Loader2 className="h-5 w-5 animate-spin" /> : <X className="h-5 w-5" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-stone-900">{upload.dataset.name}</p>
+                <p className={[
+                  "mt-0.5 text-xs",
+                  upload.status === "error" ? "text-red-600" : "text-stone-500",
+                ].join(" ")}>
+                  {upload.status === "error"
+                    ? upload.error || "Upload failed."
+                    : `Uploading in background${upload.percent == null ? "..." : ` · ${upload.percent}%`}`}
+                </p>
+              </div>
+              {upload.status === "error" ? (
+                <button
+                  type="button"
+                  aria-label={`Dismiss upload error for ${upload.dataset.name}`}
+                  onClick={() => setBackgroundUploads((current) => {
+                    const next = { ...current };
+                    delete next[upload.dataset.id];
+                    return next;
+                  })}
+                  className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            {upload.status === "uploading" && upload.percent != null ? (
+              <div className="mt-3">
+                <div className="h-1.5 overflow-hidden rounded-full bg-orange-100">
+                  <div
+                    className="h-full rounded-full bg-orange-500 transition-[width] duration-200"
+                    style={{ width: `${upload.percent}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-[11px] text-stone-400">Keep this browser tab open until the upload finishes.</p>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
       <AnimatePresence>
         {showModal && (
           <CreateDatasetModal
             project={project}
             importHint={datasetImportHint}
             onClose={() => setShowModal(false)}
+            onDatasetInitialized={(dataset) => {
+              setDatasetList((current) => [dataset, ...current.filter((item) => item.id !== dataset.id)]);
+            }}
+            onUploadStateChange={(datasetId, state) => {
+              setBackgroundUploads((current) => {
+                const next = { ...current };
+                if (state) next[datasetId] = state;
+                else delete next[datasetId];
+                return next;
+              });
+            }}
             onCreated={(d) => {
               setDatasetList((current) => [d, ...current.filter((dataset) => dataset.id !== d.id)]);
               setShowModal(false);
@@ -2522,6 +2697,11 @@ export default function ProjectDetailPage() {
             const importProgress = importJob && importJob.total > 0
               ? Math.min(100, Math.round((importJob.done / importJob.total) * 100))
               : 0;
+            const isImporting = !!importJob && ["queued", "running"].includes(importJob.status);
+            const importFailed = importJob?.status === "error";
+            const annotated = dataset.annotated_count ?? 0;
+            const imageTotal = dataset.image_count ?? dataset.media_count;
+            const annotationProgress = imageTotal > 0 ? Math.round((annotated / imageTotal) * 100) : 0;
             return (
               <motion.div
                 key={dataset.id}
@@ -2558,30 +2738,6 @@ export default function ProjectDetailPage() {
                   >
                     <div className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} /> {status}
                   </div>
-                  {importJob && ["queued", "running"].includes(importJob.status) ? (
-                    <div className="absolute inset-x-3 bottom-3 rounded-xl border border-orange-100 bg-white/95 p-2.5 shadow-sm backdrop-blur">
-                      <div className="flex items-center justify-between gap-3 text-[10px] font-bold text-stone-700">
-                        <span>{importJob.status === "queued" ? "Waiting for worker" : "Importing files"}</span>
-                        <span className="tabular-nums text-orange-600">
-                          {importJob.total > 0 ? `${importJob.done}/${importJob.total}` : "Preparing"}
-                        </span>
-                      </div>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-orange-100">
-                        <div
-                          className="h-full rounded-full bg-orange-500 transition-[width] duration-500"
-                          style={{ width: `${importProgress}%` }}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  {dataset.latest_import_job?.status === "error" && dataset.latest_import_job.error ? (
-                    <div
-                      title={dataset.latest_import_job.error}
-                      className="absolute inset-x-3 bottom-3 line-clamp-2 rounded-lg bg-red-50/95 px-2.5 py-2 text-[10px] font-semibold leading-4 text-red-700 shadow-sm backdrop-blur"
-                    >
-                      {dataset.latest_import_job.error}
-                    </div>
-                  ) : null}
                 </div>
                 <div className="shrink-0 px-3 pt-2 pb-1">
                   <div className="flex items-center justify-between gap-1 mb-2">
@@ -2597,23 +2753,44 @@ export default function ProjectDetailPage() {
                       <CardMenu items={datasetMenuItems(dataset)} />
                     </div>
                   </div>
-                  {(() => {
-                    const annotated = dataset.annotated_count ?? 0;
-                    const total = dataset.image_count ?? dataset.media_count;
-                    const completed = annotated;
-                    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-                    return (
-                      <div className="mb-2">
-                        <div
-                          className={[
-                            "mb-1 flex items-center justify-between text-[10px] font-bold",
-                            "text-stone-400",
-                          ].join(" ")}
-                        >
-                          <span>
-                            <span className="text-stone-900">{completed}</span> / {total} images annotated
+                  <div className="mb-2 min-h-7">
+                    {isImporting && importJob ? (
+                      <div role="status" aria-label={`Importing ${dataset.name}`}>
+                        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold">
+                          <span className="truncate text-stone-500">
+                            {importJob.status === "queued" ? "Waiting for worker" : "Importing frames"}
                           </span>
-                          <span>{pct}%</span>
+                          <span className="shrink-0 tabular-nums text-orange-600">
+                            {importJob.total > 0 ? `${importJob.done}/${importJob.total}` : "Preparing"}
+                          </span>
+                        </div>
+                        <div
+                          role="progressbar"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={importProgress}
+                          className="h-1.5 w-full overflow-hidden rounded-full bg-orange-100"
+                        >
+                          <div
+                            className="h-full rounded-full bg-orange-500 transition-[width] duration-500"
+                            style={{ width: `${importProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : importFailed ? (
+                      <p
+                        title={importJob?.error || "Dataset import failed."}
+                        className="line-clamp-2 text-[10px] font-semibold leading-4 text-red-600"
+                      >
+                        {importJob?.error || "Dataset import failed."}
+                      </p>
+                    ) : (
+                      <div>
+                        <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-stone-400">
+                          <span>
+                            <span className="text-stone-900">{annotated}</span> / {imageTotal} images annotated
+                          </span>
+                          <span>{annotationProgress}%</span>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
                           <div
@@ -2621,12 +2798,12 @@ export default function ProjectDetailPage() {
                               "h-full rounded-full transition-[width] duration-500",
                               dataset.is_train_ready ? "bg-emerald-500" : "bg-orange-400",
                             ].join(" ")}
-                            style={{ width: `${pct}%` }}
+                            style={{ width: `${annotationProgress}%` }}
                           />
                         </div>
                       </div>
-                    );
-                  })()}
+                    )}
+                  </div>
                   {false && (() => {
                     const draft = splitDrafts[dataset.id] ?? {
                       train: dataset.split_config?.train ?? 70,
