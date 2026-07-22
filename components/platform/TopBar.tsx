@@ -26,9 +26,19 @@ export default function TopBar() {
     .toUpperCase();
 
   return (
-    <header className="fixed top-0 md:left-[272px] left-0 right-0 h-16 z-40 bg-[#fcfaf7]/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 md:px-8 gap-4">
+    <header
+      className={[
+        "fixed top-0 md:left-[272px] left-0 right-0 h-16 z-40 bg-[#fcfaf7]/80 backdrop-blur-md",
+        "border-b border-stone-200 flex items-center px-4 md:px-8 gap-4",
+      ].join(" ")}
+    >
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-stone-400 text-[10px] font-bold uppercase tracking-widest flex-1">
+      <div
+        className={[
+          "flex items-center gap-2 text-stone-400 text-[10px] font-bold uppercase",
+          "tracking-widest flex-1",
+        ].join(" ")}
+      >
         <Link href="/home" className="hover:text-stone-900 transition-colors">
           Workspace
         </Link>
@@ -42,18 +52,32 @@ export default function TopBar() {
         <input
           type="text"
           placeholder="Search anything…"
-          className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all w-52"
+          className={[
+            "pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs font-medium",
+            "focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all w-52",
+          ].join(" ")}
         />
       </div>
 
       {/* Notification */}
-      <button className="relative p-2 bg-white border border-stone-200 rounded-xl text-stone-500 hover:text-stone-900 transition-all">
+      <button
+        className={[
+          "relative p-2 bg-white border border-stone-200 rounded-xl text-stone-500",
+          "hover:text-stone-900 transition-all",
+        ].join(" ")}
+      >
         <Bell className="w-4 h-4" />
         <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-orange-400 rounded-full" />
       </button>
 
       {/* Avatar */}
-      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-100 via-amber-100 to-orange-200 flex items-center justify-center text-[10px] font-bold text-orange-800 cursor-pointer shadow hover:scale-110 transition-transform">
+      <div
+        className={[
+          "w-8 h-8 rounded-xl bg-gradient-to-br from-orange-100 via-amber-100 to-orange-200 flex",
+          "items-center justify-center text-[10px] font-bold text-orange-800 cursor-pointer shadow",
+          "hover:scale-110 transition-transform",
+        ].join(" ")}
+      >
         {initials}
       </div>
     </header>

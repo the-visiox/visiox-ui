@@ -28,14 +28,13 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 
 const navItems = [
-  { name: "Home",      icon: LayoutDashboard, href: "/home" },
-  { name: "Projects",  icon: FolderKanban,    href: "/projects" },
-  { name: "Dataverse", icon: Globe2,          href: "/dataverse" },
-  { name: "Train",     icon: Cpu,             href: "/train" },
-  { name: "Workflows", icon: Workflow,        href: "/workflows" },
-  { name: "Deploy",    icon: Send,            href: "/deploy" },
+  { name: "Home", icon: LayoutDashboard, href: "/home" },
+  { name: "Projects", icon: FolderKanban, href: "/projects" },
+  { name: "Dataverse", icon: Globe2, href: "/dataverse" },
+  { name: "Train", icon: Cpu, href: "/train" },
+  { name: "Workflows", icon: Workflow, href: "/workflows" },
+  { name: "Deploy", icon: Send, href: "/deploy" },
 ];
-
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -51,14 +50,29 @@ export default function Sidebar() {
     .toUpperCase();
 
   return (
-    <aside className="hidden md:flex w-68 h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-orange-100 flex flex-col border-r border-orange-200 fixed left-0 top-0 z-50">
+    <aside
+      className={[
+        "hidden md:flex w-68 h-screen bg-gradient-to-b from-orange-50 via-amber-50 to-orange-100",
+        "flex flex-col border-r border-orange-200 fixed left-0 top-0 z-50",
+      ].join(" ")}
+    >
       {/* Brand */}
       <div className="p-6 flex items-center gap-3 border-b border-orange-200">
-        <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-orange-200/60">
+        <div
+          className={[
+            "w-11 h-11 bg-white rounded-xl flex items-center justify-center shadow-lg",
+            "shadow-orange-200/60",
+          ].join(" ")}
+        >
           <Fingerprint className="text-orange-400 w-6 h-6" />
         </div>
         <span className="text-orange-950 font-bold text-2xl tracking-tight">VisioX</span>
-        <span className="ml-auto px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded-full border border-orange-200 uppercase tracking-widest">
+        <span
+          className={[
+            "ml-auto px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded-full",
+            "border border-orange-200 uppercase tracking-widest",
+          ].join(" ")}
+        >
           Beta
         </span>
       </div>
@@ -68,9 +82,7 @@ export default function Sidebar() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate text-lg font-bold text-orange-950">VisioX Workspace</p>
-              <p className="mt-1 truncate text-sm font-semibold text-orange-700/70">
-                Professional Plan - 1 Member
-              </p>
+              <p className="mt-1 truncate text-sm font-semibold text-orange-700/70">Professional Plan - 1 Member</p>
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-orange-400 transition group-hover:text-orange-600" />
           </div>
@@ -79,20 +91,19 @@ export default function Sidebar() {
 
       {/* Primary nav */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
-        <p className="text-xs font-bold text-orange-700/60 uppercase tracking-widest px-3 mb-3">
-          Development Hub
-        </p>
+        <p className="text-xs font-bold text-orange-700/60 uppercase tracking-widest px-3 mb-3">Development Hub</p>
         {navItems.map((item) => {
           const active = isActive(item.href);
           return (
             <Link
               key={item.name}
               href={item.href}
-              className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-150 ${
-                active
-                  ? "bg-white text-orange-700 ring-1 ring-orange-200 shadow-sm shadow-orange-200/50"
-                  : "text-orange-950/70 hover:bg-white/70 hover:text-orange-950"
-              }`}
+              className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl
+                transition-all duration-150 ${
+                  active
+                    ? "bg-white text-orange-700 ring-1 ring-orange-200 shadow-sm shadow-orange-200/50"
+                    : "text-orange-950/70 hover:bg-white/70 hover:text-orange-950"
+                }`}
             >
               <div className="flex items-center gap-3">
                 <item.icon
@@ -101,27 +112,38 @@ export default function Sidebar() {
                 <span className="text-lg font-medium">{item.name}</span>
               </div>
               {active && (
-                <motion.div
-                  layoutId="platform-active-indicator"
-                  className="w-1 h-3.5 bg-orange-300 rounded-full"
-                />
+                <motion.div layoutId="platform-active-indicator" className="w-1 h-3.5 bg-orange-300 rounded-full" />
               )}
             </Link>
           );
         })}
-
       </nav>
 
       {/* Bottom */}
       <div className="p-2 border-t border-orange-200 space-y-2">
-          <button className="w-full flex items-center gap-3 px-3 py-2.5 text-orange-950/65 hover:text-orange-950 hover:bg-white/70 rounded-xl transition-all text-base">
-            <Bell className="w-5 h-5" />
-            <span>Notifications</span>
-          </button>
+        <button
+          className={[
+            "w-full flex items-center gap-3 px-3 py-2.5 text-orange-950/65 hover:text-orange-950",
+            "hover:bg-white/70 rounded-xl transition-all text-base",
+          ].join(" ")}
+        >
+          <Bell className="w-5 h-5" />
+          <span>Notifications</span>
+        </button>
 
         <div className="relative group">
-          <button className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-all hover:bg-white/70 focus-visible:bg-white/70 focus-visible:outline-none">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-100 via-amber-100 to-orange-200 flex items-center justify-center text-xs font-bold text-orange-800 shadow">
+          <button
+            className={[
+              "w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-all",
+              "hover:bg-white/70 focus-visible:bg-white/70 focus-visible:outline-none",
+            ].join(" ")}
+          >
+            <div
+              className={[
+                "w-9 h-9 rounded-full bg-gradient-to-br from-orange-100 via-amber-100 to-orange-200 flex",
+                "items-center justify-center text-xs font-bold text-orange-800 shadow",
+              ].join(" ")}
+            >
               {initials}
             </div>
             <div className="flex-1 overflow-hidden">
@@ -130,10 +152,24 @@ export default function Sidebar() {
             <ChevronRight className="w-4 h-4 text-orange-500" />
           </button>
 
-          <div className="pointer-events-none absolute bottom-0 left-[calc(100%+8px)] z-[70] w-64 translate-y-2 opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100">
-            <div className="rounded-lg border border-stone-200 bg-white shadow-2xl shadow-slate-900/15">
+          <div
+            className={[
+              "pointer-events-none absolute bottom-0 left-[calc(100%+8px)] z-[70] w-64 translate-y-2",
+              "opacity-0 transition-all duration-150 group-hover:pointer-events-auto",
+              "group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:pointer-events-auto",
+              "group-focus-within:translate-y-0 group-focus-within:opacity-100",
+            ].join(" ")}
+          >
+            <div
+              className={["rounded-lg border border-stone-200 bg-white shadow-2xl", "shadow-slate-900/15"].join(" ")}
+            >
               <div className="flex items-center gap-3 p-4">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-100 via-amber-100 to-orange-200 flex items-center justify-center text-xs font-bold text-orange-800 shadow">
+                <div
+                  className={[
+                    "w-10 h-10 rounded-full bg-gradient-to-br from-orange-100 via-amber-100 to-orange-200",
+                    "flex items-center justify-center text-xs font-bold text-orange-800 shadow",
+                  ].join(" ")}
+                >
                   {initials}
                 </div>
                 <div className="min-w-0">
@@ -143,13 +179,21 @@ export default function Sidebar() {
               </div>
 
               <div className="border-t border-stone-200 py-2">
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                <button
+                  className={[
+                    "flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition",
+                    "hover:bg-stone-50 hover:text-stone-900",
+                  ].join(" ")}
+                >
                   <User className="h-4 w-4 text-stone-400" />
                   Account Settings
                 </button>
                 <button
                   onClick={logout}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900"
+                  className={[
+                    "flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition",
+                    "hover:bg-stone-50 hover:text-stone-900",
+                  ].join(" ")}
                 >
                   <LogOut className="h-4 w-4 text-stone-400" />
                   Sign Out
@@ -158,15 +202,31 @@ export default function Sidebar() {
 
               <div className="border-t border-stone-200 py-2">
                 <p className="px-4 pb-1 text-xs font-bold text-stone-800">Resources</p>
-                <Link href="/about/blog" className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                <Link
+                  href="/about/blog"
+                  className={[
+                    "flex items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition",
+                    "hover:bg-stone-50 hover:text-stone-900",
+                  ].join(" ")}
+                >
                   <FileText className="h-4 w-4 text-stone-400" />
                   Documentation
                 </Link>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                <button
+                  className={[
+                    "flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition",
+                    "hover:bg-stone-50 hover:text-stone-900",
+                  ].join(" ")}
+                >
                   <MessagesSquare className="h-4 w-4 text-stone-400" />
                   Community Forum
                 </button>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                <button
+                  className={[
+                    "flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition",
+                    "hover:bg-stone-50 hover:text-stone-900",
+                  ].join(" ")}
+                >
                   <FileText className="h-4 w-4 text-stone-400" />
                   Changelog
                 </button>
@@ -174,11 +234,21 @@ export default function Sidebar() {
 
               <div className="border-t border-stone-200 py-2">
                 <p className="px-4 pb-1 text-xs font-bold text-stone-800">Get Help</p>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                <button
+                  className={[
+                    "flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition",
+                    "hover:bg-stone-50 hover:text-stone-900",
+                  ].join(" ")}
+                >
                   <Pencil className="h-4 w-4 text-stone-400" />
                   Send Feedback
                 </button>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-50 hover:text-stone-900">
+                <button
+                  className={[
+                    "flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-600 transition",
+                    "hover:bg-stone-50 hover:text-stone-900",
+                  ].join(" ")}
+                >
                   <Bug className="h-4 w-4 text-stone-400" />
                   Report a Bug
                 </button>
@@ -189,22 +259,34 @@ export default function Sidebar() {
                 ].map((item) => (
                   <button
                     key={item.label}
-                    className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium text-stone-400"
+                    className={["flex w-full items-center gap-3 px-4 py-2 text-sm font-medium", "text-stone-400"].join(
+                      " ",
+                    )}
                     disabled
                   >
                     <item.icon className="h-4 w-4 text-stone-300" />
                     <span className="flex-1 text-left">{item.label}</span>
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                    <span
+                      className={[
+                        "flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100",
+                        "text-amber-600",
+                      ].join(" ")}
+                    >
                       <Lock className="h-3.5 w-3.5" />
                     </span>
                   </button>
                 ))}
+              </div>
             </div>
-          </div>
           </div>
         </div>
 
-        <button className="w-full flex items-center justify-center gap-2 rounded-xl border border-orange-300 bg-white/70 px-3 py-2.5 text-base font-bold text-orange-600 transition hover:bg-white">
+        <button
+          className={[
+            "w-full flex items-center justify-center gap-2 rounded-xl border border-orange-300",
+            "bg-white/70 px-3 py-2.5 text-base font-bold text-orange-600 transition hover:bg-white",
+          ].join(" ")}
+        >
           <Crown className="w-5 h-5" />
           Upgrade
         </button>

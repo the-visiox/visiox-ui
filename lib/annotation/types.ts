@@ -1,15 +1,8 @@
 /**
- * Canvas / editor types aligned with the VisioX annotation platform (CVAT-style).
+ * Canvas / editor types aligned with the VisioX annotation platform.
  */
 
-export type Tool =
-  | "select"
-  | "rectangle"
-  | "polygon"
-  | "polyline"
-  | "points"
-  | "cuboid"
-  | "tag";
+export type Tool = "select" | "rectangle" | "polygon" | "polyline" | "points" | "cuboid" | "tag";
 
 export const TOOL_SHORTCUTS: Record<string, Tool> = {
   n: "rectangle",
@@ -33,7 +26,12 @@ export type EditorShape = {
   height: number;
   points?: number[];
   serverId?: number;
-  source?: "manual" | "imported";
+  source?: "manual" | "imported" | "auto_label";
+  confidence?: number;
+  autoLabelSource?: "uploaded_model" | "provider";
+  autoLabelModelId?: number;
+  autoLabelProvider?: string;
+  autoLabelEngineName?: string;
   frame?: number;
 };
 

@@ -17,8 +17,15 @@ export default function Home() {
   const { isLoggedIn } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const ALL_PARTNERS = [
-    "nvidia", "intel", "apple", "google", "microsoft", // Primary
-    "yaskawa", "siemens", "abb", "bosch"               // Secondary
+    "nvidia",
+    "intel",
+    "apple",
+    "google",
+    "microsoft", // Primary
+    "yaskawa",
+    "siemens",
+    "abb",
+    "bosch", // Secondary
   ];
 
   const DEMO_IMAGES = [
@@ -28,8 +35,8 @@ export default function Home() {
       src: assetPath("/demo/surveillance.png"),
       boxes: [
         { id: 1, label: "OK", top: "28%", left: "19%", width: "16%", height: "44%", color: "#00ff4cff" },
-        { id: 2, label: "No PPE", top: "30%", left: "80%", width: "13%", height: "42%", color: "#ff0000ff" }
-      ]
+        { id: 2, label: "No PPE", top: "30%", left: "80%", width: "13%", height: "42%", color: "#ff0000ff" },
+      ],
     },
     {
       id: 2,
@@ -42,7 +49,7 @@ export default function Home() {
         { id: 4, label: "Apple", top: "30%", left: "30%", width: "7%", height: "12%", color: "#00ff4cff" },
         { id: 5, label: "Apple", top: "12%", left: "59%", width: "9%", height: "12%", color: "#00ff4cff" },
         { id: 6, label: "Apple", top: "57%", left: "2%", width: "8%", height: "11%", color: "#00ff4cff" },
-      ]
+      ],
     },
     {
       id: 3,
@@ -51,8 +58,8 @@ export default function Home() {
       boxes: [
         { id: 1, label: "Baseball", top: "48%", left: "51%", width: "17%", height: "23%", color: "#FBBF24" },
         { id: 2, label: "Baseball", top: "68%", left: "42%", width: "19%", height: "24%", color: "#FBBF24" },
-        { id: 3, label: "Baseball", top: "60%", left: "2%", width: "18%", height: "20%", color: "#FBBF24" }
-      ]
+        { id: 3, label: "Baseball", top: "60%", left: "2%", width: "18%", height: "20%", color: "#FBBF24" },
+      ],
     },
     {
       id: 4,
@@ -76,7 +83,7 @@ export default function Home() {
         { id: 15, label: "OK", top: "47.3%", left: "70.5%", width: "10.5%", height: "7%", color: "#00ff4cff" },
         { id: 16, label: "OK", top: "61.6%", left: "70.5%", width: "10.5%", height: "7%", color: "#00ff4cff" },
         { id: 17, label: "OK", top: "75.8%", left: "70.5%", width: "10.5%", height: "7%", color: "#00ff4cff" },
-      ]
+      ],
     },
     {
       id: 5,
@@ -89,9 +96,8 @@ export default function Home() {
         { id: 4, label: "Car", top: "68%", left: "70.5%", width: "15%", height: "20%", color: "#f63b3bff" },
         { id: 5, label: "Car", top: "10%", left: "75%", width: "8%", height: "15%", color: "#f63b3bff" },
         { id: 6, label: "Car", top: "10%", left: "75%", width: "8%", height: "15%", color: "#f63b3bff" },
-
-      ]
-    }
+      ],
+    },
   ];
 
   useEffect(() => {
@@ -107,24 +113,46 @@ export default function Home() {
   const slideNames = ["Hero", "Features", "Impact", "CTA", "Partners"];
 
   return (
-    <div className="h-screen overflow-y-scroll overflow-x-hidden md:snap-y md:snap-mandatory scroll-smooth relative w-full">
+    <div
+      className={[
+        "h-screen overflow-y-scroll overflow-x-hidden md:snap-y md:snap-mandatory scroll-smooth",
+        "relative w-full",
+      ].join(" ")}
+    >
       {/* Side Navigation Dots */}
-      <div className="fixed right-6 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-6 p-4 bg-white/5 backdrop-blur-md rounded-full border border-white/10 shadow-2xl">
-        <div className="absolute top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-orange-500/30 to-transparent" />
+      <div
+        className={[
+          "fixed right-6 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-6 p-4",
+          "bg-white/5 backdrop-blur-md rounded-full border border-white/10 shadow-2xl",
+        ].join(" ")}
+      >
+        <div
+          className={[
+            "absolute top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-orange-500/30",
+            "to-transparent",
+          ].join(" ")}
+        />
         {slideNames.map((name, index) => (
           <div key={index} className="relative group">
             <button
               onClick={() => {
                 const element = document.getElementById(`slide-${index}`);
-                element?.scrollIntoView({ behavior: 'smooth' });
+                element?.scrollIntoView({ behavior: "smooth" });
               }}
-              className={`w-3 h-3 rounded-full transition-all duration-500 relative z-10 ${activeSlide === index
-                ? 'bg-gradient-to-r from-[#FF7300] to-[#F1A222] scale-150 shadow-[0_0_15px_rgba(255,115,0,0.5)]'
-                : 'bg-stone-500 scale-100 hover:bg-orange-400'
-                }`}
+              className={`w-3 h-3 rounded-full transition-all duration-500 relative z-10 ${
+                activeSlide === index
+                  ? "bg-gradient-to-r from-[#FF7300] to-[#F1A222] scale-150 shadow-[0_0_15px_rgba(255,115,0,0.5)]"
+                  : "bg-stone-500 scale-100 hover:bg-orange-400"
+              }`}
               aria-label={`Go to slide ${name}`}
             />
-            <span className="absolute right-10 top-1/2 -translate-y-1/2 px-3 py-1 bg-stone-900 text-white text-[10px] font-bold tracking-widest uppercase rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-white/10">
+            <span
+              className={[
+                "absolute right-10 top-1/2 -translate-y-1/2 px-3 py-1 bg-stone-900 text-white text-[10px]",
+                "font-bold tracking-widest uppercase rounded-lg opacity-0 group-hover:opacity-100",
+                "transition-opacity pointer-events-none whitespace-nowrap border border-white/10",
+              ].join(" ")}
+            >
               {name}
             </span>
           </div>
@@ -140,46 +168,77 @@ export default function Home() {
         whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.5 }}
-        className="min-h-screen md:h-screen snap-start bg-[#fcfaf7] flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0"
+        className={[
+          "min-h-screen md:h-screen snap-start bg-[#fcfaf7] flex items-center justify-center px-6",
+          "lg:px-8 relative py-20 lg:py-0",
+        ].join(" ")}
       >
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 right-20 w-96 h-96 bg-orange-200/30 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-20 left-20 w-80 h-80 bg-stone-200/40 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+          <div
+            className={[
+              "absolute top-20 right-20 w-96 h-96 bg-orange-200/30 rounded-full",
+              "blur-3xl animate-pulse",
+            ].join(" ")}
+          ></div>
+          <div
+            className={[
+              "absolute bottom-20 left-20 w-80 h-80 bg-stone-200/40 rounded-full",
+              "blur-3xl animate-pulse",
+            ].join(" ")}
+            style={{ animationDelay: "1s" }}
+          ></div>
         </div>
 
         <div className="max-w-screen-2xl mx-auto w-full z-10 px-4 lg:px-12">
           <div className="grid lg:grid-cols-12 gap-12 lg:gap-20 items-center">
             {/* Left Content */}
             <div className="lg:col-span-5 space-y-8">
-              <Badge className="mt-8">
-                ✨ Next-Gen Visual Platform
-              </Badge>
+              <Badge className="mt-8">✨ Next-Gen Visual Platform</Badge>
 
               <h1 className="text-4xl lg:text-7xl font-bold leading-tight text-stone-900">
-                <span className="bg-gradient-to-r from-[#E66700] via-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">
+                <span
+                  className={[
+                    "bg-gradient-to-r from-[#E66700] via-[#FF7300] to-[#F1A222] bg-clip-text",
+                    "text-transparent",
+                  ].join(" ")}
+                >
                   Intelligent Computer Vision Platform
                 </span>
               </h1>
 
               <p className="text-lg lg:text-2xl text-stone-600 leading-relaxed max-w-xl">
-                Transform your visual data into actionable insights with our cutting-edge AI-powered annotation and analysis tools.
+                Transform your visual data into actionable insights with our cutting-edge AI-powered annotation and
+                analysis tools.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <Link href={isLoggedIn ? "/home" : "/login"} className="w-full sm:w-auto">
-                  <button className="group w-full sm:w-56 h-16 px-8 
-                                    bg-gradient-to-r from-orange-600 to-orange-400 
-                                    hover:scale-105 active:scale-95 hover:from-orange-400 hover:to-orange-300 
-                                    text-white rounded-2xl transition-all duration-300 font-semibold text-lg flex 
-                                    items-center justify-center gap-2 shadow-xl shadow-orange-500/30">
-                    <span>{isLoggedIn ? "Go to Workspace" : "Start Free Trial"}</span>
-                    <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <button
+                    className="group w-full sm:w-56 h-16 px-8
+                                    bg-gradient-to-r from-orange-600 to-orange-400
+                                    hover:scale-105 active:scale-95 hover:from-orange-400 hover:to-orange-300
+                                    text-white rounded-2xl transition-all duration-300 font-semibold text-lg flex
+                                    items-center justify-center gap-2 shadow-xl shadow-orange-500/30"
+                  >
+                    <span>{"Start Free Trial"}</span>
+                    <svg
+                      className="w-6 h-6 group-hover:translate-x-1 transition-transform"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
                   </button>
                 </Link>
 
-                <button className="w-full sm:w-56 h-16 px-8 bg-white hover:bg-gray-100 hover:scale-105 active:scale-95 text-stone-900 rounded-2xl transition-all duration-300 font-semibold text-lg border-2 border-stone-200 backdrop-blur-sm">
+                <button
+                  className={[
+                    "w-full sm:w-56 h-16 px-8 bg-white hover:bg-gray-100 hover:scale-105 active:scale-95",
+                    "text-stone-900 rounded-2xl transition-all duration-300 font-semibold text-lg border-2",
+                    "border-stone-200 backdrop-blur-sm",
+                  ].join(" ")}
+                >
                   Watch Demo
                 </button>
               </div>
@@ -187,24 +246,44 @@ export default function Home() {
 
             {/* Right Content - Demo Visual */}
             <div className="lg:col-span-7 relative">
-              <div className="relative bg-white rounded-3xl p-6 border-2 border-stone-200 shadow-2xl flex gap-6">
-
+              <div
+                className={[
+                  "relative bg-white rounded-3xl p-6 border-2 border-stone-200 shadow-2xl",
+                  "flex gap-6",
+                ].join(" ")}
+              >
                 {/* Side Navigation Images */}
-                <div className="hidden md:flex flex-col gap-3 justify-center border-r border-stone-100 pr-4">
+                <div
+                  className={["hidden md:flex flex-col gap-3 justify-center border-r border-stone-100", "pr-4"].join(
+                    " ",
+                  )}
+                >
                   {DEMO_IMAGES.map((img, idx) => (
                     <button
                       key={img.id}
                       onClick={() => setDemoIndex(idx)}
-                      className={`relative w-14 h-14 rounded-xl overflow-hidden border-2 transition-all duration-200 group ${idx === demoIndex
-                        ? 'border-orange-500 scale-110 shadow-lg shadow-orange-200'
-                        : 'border-stone-100 opacity-40 hover:opacity-100 hover:border-stone-300'
+                      className={`relative w-14 h-14 rounded-xl overflow-hidden border-2 transition-all
+                        duration-200 group ${
+                          idx === demoIndex
+                            ? "border-orange-500 scale-110 shadow-lg shadow-orange-200"
+                            : "border-stone-100 opacity-40 hover:opacity-100 hover:border-stone-300"
                         }`}
                     >
                       <img src={img.src} alt={img.title} className="w-full h-full object-cover" />
-                      <div className={`absolute inset-0 bg-orange-500/10 transition-opacity ${idx === demoIndex ? 'opacity-100' : 'opacity-0'}`} />
+                      <div
+                        className={[
+                          "absolute inset-0 bg-orange-500/10 transition-opacity",
+                          idx === demoIndex ? "opacity-100" : "opacity-0",
+                        ].join(" ")}
+                      />
 
                       {/* Tooltip */}
-                      <span className="absolute left-full ml-4 px-2 py-1 bg-stone-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none">
+                      <span
+                        className={[
+                          "absolute left-full ml-4 px-2 py-1 bg-stone-800 text-white text-[10px] rounded opacity-0",
+                          "group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none",
+                        ].join(" ")}
+                      >
                         {img.title}
                       </span>
                     </button>
@@ -216,7 +295,10 @@ export default function Home() {
                   <div
                     onMouseEnter={() => setIsPaused(true)}
                     onMouseLeave={() => setIsPaused(false)}
-                    className="bg-stone-100 rounded-2xl aspect-[4/3] relative overflow-hidden border-2 border-stone-200 group/demo"
+                    className={[
+                      "bg-stone-100 rounded-2xl aspect-[4/3] relative overflow-hidden border-2 border-stone-200",
+                      "group/demo",
+                    ].join(" ")}
                   >
                     <AnimatePresence mode="wait">
                       <motion.div
@@ -234,14 +316,19 @@ export default function Home() {
                         />
 
                         {/* Overlay Gradient for better label readability */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+                        <div
+                          className={[
+                            "absolute inset-0 bg-gradient-to-t from-black/20 to-transparent",
+                            "pointer-events-none",
+                          ].join(" ")}
+                        />
 
                         {DEMO_IMAGES[demoIndex].boxes.map((box, bIdx) => (
                           <motion.div
                             key={box.id}
                             initial={{ scale: 0, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            transition={{ delay: 0.3 + (bIdx * 0.1), type: "spring", stiffness: 100 }}
+                            transition={{ delay: 0.3 + bIdx * 0.1, type: "spring", stiffness: 100 }}
                             className="absolute border-2 rounded-lg shadow-[0_0_15px_rgba(0,0,0,0.2)]"
                             style={{
                               top: box.top,
@@ -249,11 +336,14 @@ export default function Home() {
                               width: box.width,
                               height: box.height,
                               borderColor: box.color,
-                              backgroundColor: `${box.color}10`
+                              backgroundColor: `${box.color}10`,
                             }}
                           >
                             <div
-                              className="absolute -top-7 left-0 px-2 py-1 rounded text-[10px] text-white font-bold shadow-lg backdrop-blur-sm"
+                              className={[
+                                "absolute -top-7 left-0 px-2 py-1 rounded text-[10px] text-white font-bold shadow-lg",
+                                "backdrop-blur-sm",
+                              ].join(" ")}
                               style={{ backgroundColor: box.color }}
                             >
                               {box.label}
@@ -266,13 +356,24 @@ export default function Home() {
                         ))}
 
                         {/* Scanline effect */}
-                        <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(139,92,246,0.05)_50%,transparent_100%)] bg-[size:100%_4px] h-20 w-full animate-scan pointer-events-none" />
+                        <div
+                          className={[
+                            "absolute inset-0",
+                            "bg-[linear-gradient(transparent_0%,rgba(139,92,246,0.05)_50%,transparent_100%)]",
+                            "bg-[size:100%_4px] h-20 w-full animate-scan pointer-events-none",
+                          ].join(" ")}
+                        />
                       </motion.div>
                     </AnimatePresence>
 
                     {/* Image Title Overlay */}
                     <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                      <div
+                        className={[
+                          "w-2 h-2 bg-green-500 rounded-full animate-pulse",
+                          "shadow-[0_0_8px_rgba(34,197,94,0.6)]",
+                        ].join(" ")}
+                      />
                       <span className="text-white text-xs font-bold tracking-wider uppercase drop-shadow-md">
                         {DEMO_IMAGES[demoIndex].title}
                       </span>
@@ -285,7 +386,12 @@ export default function Home() {
         </div>
 
         {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce">
+        <div
+          className={[
+            "absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center",
+            "gap-2 animate-bounce",
+          ].join(" ")}
+        >
           <span className="text-sm text-stone-500 font-medium">Scroll to explore</span>
           <svg className="w-6 h-6 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -302,84 +408,221 @@ export default function Home() {
         whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.5 }}
-        className="min-h-screen md:h-screen snap-start bg-[#fcfaf7] flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0"
+        className={[
+          "min-h-screen md:h-screen snap-start bg-[#fcfaf7] flex items-center justify-center px-6",
+          "lg:px-8 relative py-20 lg:py-0",
+        ].join(" ")}
       >
         <div className="max-w-7xl mx-auto w-full text-center">
           <div className="mb-6 lg:mb-10">
             <h2 className="text-3xl lg:text-6xl font-bold text-stone-900 mb-3 px-4">
-              <span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">Powerful</span> Features,
-              <span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent"> Advanced</span> Capabilities
+              <span
+                className={["bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text", "text-transparent"].join(" ")}
+              >
+                Powerful
+              </span>{" "}
+              Features,
+              <span
+                className={["bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text", "text-transparent"].join(" ")}
+              >
+                {" "}
+                Advanced
+              </span>{" "}
+              Capabilities
             </h2>
-            <p className="text-stone-600 text-lg lg:text-xl font-medium px-4">Everything you need for professional computer vision projects</p>
+            <p className="text-stone-600 text-lg lg:text-xl font-medium px-4">
+              Everything you need for professional computer vision projects
+            </p>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Capability 4 */}
-            <div className="bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105 transition-all duration-500 group">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all shadow-lg">
+            <div
+              className={[
+                "bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105",
+                "transition-all duration-500 group",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center",
+                  "justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all",
+                  "shadow-lg",
+                ].join(" ")}
+              >
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
               <h3 className="text-xl font-bold text-stone-900 mb-2">Lightning Fast</h3>
-              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">Process thousands of images with optimized performance and real-time collaboration.</p>
+              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">
+                Process thousands of images with optimized performance and real-time collaboration.
+              </p>
             </div>
 
             {/* Capability 5 */}
-            <div className="bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105 transition-all duration-500 group">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all shadow-lg">
+            <div
+              className={[
+                "bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105",
+                "transition-all duration-500 group",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center",
+                  "justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all",
+                  "shadow-lg",
+                ].join(" ")}
+              >
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={[
+                      "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618",
+                      "3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03",
+                      "9-11.622 0-1.042-.133-2.052-.382-3.016z",
+                    ].join(" ")}
+                  />
                 </svg>
               </div>
               <h3 className="text-xl font-bold text-stone-900 mb-2">Secure & Private</h3>
-              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">Enterprise-grade security with data encryption and compliance standards for all data.</p>
+              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">
+                Enterprise-grade security with data encryption and compliance standards for all data.
+              </p>
             </div>
 
             {/* Capability 6 */}
-            <div className="bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105 transition-all duration-500 group">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all shadow-lg">
+            <div
+              className={[
+                "bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105",
+                "transition-all duration-500 group",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center",
+                  "justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all",
+                  "shadow-lg",
+                ].join(" ")}
+              >
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={[
+                      "M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0",
+                      "002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829",
+                      "2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01",
+                    ].join(" ")}
+                  />
                 </svg>
               </div>
               <h3 className="text-xl font-bold text-stone-900 mb-2">Smart Annotation</h3>
-              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">AI-assisted tools that speed up your workflow with intelligent suggestions and auto-labeling.</p>
+              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">
+                AI-assisted tools that speed up your workflow with intelligent suggestions and auto-labeling.
+              </p>
             </div>
 
             {/* Capability 1 */}
-            <div className="bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105 transition-all duration-500 group">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all shadow-lg">
+            <div
+              className={[
+                "bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105",
+                "transition-all duration-500 group",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center",
+                  "justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all",
+                  "shadow-lg",
+                ].join(" ")}
+              >
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={[
+                      "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0",
+                      "012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2",
+                      "0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+                    ].join(" ")}
+                  />
                 </svg>
               </div>
               <h3 className="text-xl font-bold text-stone-900 mb-2">Real-time Analytics</h3>
-              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">Monitor and analyze visual data streams in real-time with ultra-low latency processing.</p>
+              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">
+                Monitor and analyze visual data streams in real-time with ultra-low latency processing.
+              </p>
             </div>
 
             {/* Capability 2 */}
-            <div className="bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105 transition-all duration-500 group">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all shadow-lg">
+            <div
+              className={[
+                "bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105",
+                "transition-all duration-500 group",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center",
+                  "justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all",
+                  "shadow-lg",
+                ].join(" ")}
+              >
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={[
+                      "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14",
+                      "0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10",
+                    ].join(" ")}
+                  />
                 </svg>
               </div>
               <h3 className="text-xl font-bold text-stone-900 mb-2">Multi-Modal Support</h3>
-              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">Seamlessly handle image, video, and 3D point cloud data within a single unified environment.</p>
+              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">
+                Seamlessly handle image, video, and 3D point cloud data within a single unified environment.
+              </p>
             </div>
 
             {/* Capability 3 */}
-            <div className="bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105 transition-all duration-500 group">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all shadow-lg">
+            <div
+              className={[
+                "bg-white border border-stone-200 rounded-3xl p-6 hover:shadow-xl hover:scale-105",
+                "transition-all duration-500 group",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "w-14 h-14 bg-gradient-to-br from-[#FF7300] to-[#F1A222] rounded-2xl flex items-center",
+                  "justify-center mb-5 mx-auto group-hover:scale-110 group-hover:rotate-6 transition-all",
+                  "shadow-lg",
+                ].join(" ")}
+              >
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={[
+                      "M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0",
+                      "0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0",
+                      "012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+                    ].join(" ")}
+                  />
                 </svg>
               </div>
               <h3 className="text-xl font-bold text-stone-900 mb-2">Global Scalability</h3>
-              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">Architected to support massive datasets and high-concurrency workflows for teams worldwide.</p>
+              <p className="text-stone-500 text-sm leading-relaxed line-clamp-2">
+                Architected to support massive datasets and high-concurrency workflows for teams worldwide.
+              </p>
             </div>
-
           </div>
         </div>
       </motion.section>
@@ -393,15 +636,22 @@ export default function Home() {
         whileInView={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.5 }}
-        className="min-h-screen md:h-screen snap-start bg-stone-900 flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0"
+        className={[
+          "min-h-screen md:h-screen snap-start bg-stone-900 flex items-center justify-center px-6",
+          "lg:px-8 relative py-20 lg:py-0",
+        ].join(" ")}
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-900/40 via-stone-900 to-black"></div>
+        <div
+          className={["absolute inset-0 bg-gradient-to-br from-orange-900/40 via-stone-900", "to-black"].join(" ")}
+        ></div>
         <div className="max-w-7xl mx-auto text-center z-10 w-full px-4">
           <div className="mb-8 lg:mb-16">
             <h2 className="text-4xl lg:text-8xl font-bold text-white mb-6">
               Global Scale,
               <br />
-              <span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">
+              <span
+                className={["bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text", "text-transparent"].join(" ")}
+              >
                 Proven Impact
               </span>
             </h2>
@@ -411,16 +661,49 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-20 px-8">
-            <div className="group p-10 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 hover:border-orange-500/50 transition-all duration-500">
-              <div className="text-7xl font-bold text-white mb-4 group-hover:scale-110 transition-transform">50K+</div>
+            <div
+              className={[
+                "group p-10 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10",
+                "hover:bg-white/10 hover:border-orange-500/50 transition-all duration-500",
+              ].join(" ")}
+            >
+              <div
+                className={["text-7xl font-bold text-white mb-4 group-hover:scale-110", "transition-transform"].join(
+                  " ",
+                )}
+              >
+                50K+
+              </div>
               <div className="text-lg text-orange-500/80 font-bold tracking-widest uppercase">Global Users</div>
             </div>
-            <div className="group p-10 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 hover:border-orange-500/50 transition-all duration-500">
-              <div className="text-7xl font-bold text-white mb-4 group-hover:scale-110 transition-transform">1M+</div>
+            <div
+              className={[
+                "group p-10 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10",
+                "hover:bg-white/10 hover:border-orange-500/50 transition-all duration-500",
+              ].join(" ")}
+            >
+              <div
+                className={["text-7xl font-bold text-white mb-4 group-hover:scale-110", "transition-transform"].join(
+                  " ",
+                )}
+              >
+                1M+
+              </div>
               <div className="text-lg text-orange-500/80 font-bold tracking-widest uppercase">Annotations</div>
             </div>
-            <div className="group p-10 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 hover:border-orange-500/50 transition-all duration-500">
-              <div className="text-7xl font-bold text-white mb-4 group-hover:scale-110 transition-transform">99.9</div>
+            <div
+              className={[
+                "group p-10 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10",
+                "hover:bg-white/10 hover:border-orange-500/50 transition-all duration-500",
+              ].join(" ")}
+            >
+              <div
+                className={["text-7xl font-bold text-white mb-4 group-hover:scale-110", "transition-transform"].join(
+                  " ",
+                )}
+              >
+                99.9
+              </div>
               <div className="text-lg text-orange-500/80 font-bold tracking-widest uppercase">% Uptime</div>
             </div>
           </div>
@@ -436,11 +719,24 @@ export default function Home() {
         whileInView={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.5 }}
-        className="min-h-screen md:h-screen snap-start bg-gradient-to-br from-[#FF7300] via-[#E66700] to-[#F1A222] flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0"
+        className={[
+          "min-h-screen md:h-screen snap-start bg-gradient-to-br from-[#FF7300] via-[#E66700]",
+          "to-[#F1A222] flex items-center justify-center px-6 lg:px-8 relative py-20 lg:py-0",
+        ].join(" ")}
       >
         <div className="absolute inset-0">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }}></div>
+          <div
+            className={["absolute top-1/4 left-1/4 w-96 h-96 bg-white/10 rounded-full blur-3xl", "animate-pulse"].join(
+              " ",
+            )}
+          ></div>
+          <div
+            className={[
+              "absolute bottom-1/4 right-1/4 w-80 h-80 bg-white/10 rounded-full",
+              "blur-3xl animate-pulse",
+            ].join(" ")}
+            style={{ animationDelay: "1.5s" }}
+          ></div>
         </div>
 
         <div className="max-w-5xl mx-auto text-center z-10 px-4">
@@ -449,17 +745,38 @@ export default function Home() {
             <br />
             get started?
           </h2>
-          <p className="text-xl lg:text-3xl text-white/90 mb-8 lg:mb-12 max-w-3xl mx-auto leading-relaxed">
+          <p
+            className={["text-xl lg:text-3xl text-white/90 mb-8 lg:mb-12 max-w-3xl mx-auto", "leading-relaxed"].join(
+              " ",
+            )}
+          >
             Join thousands of teams transforming their visual data into insights
           </p>
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
-            <button className="group w-full sm:w-64 h-20 px-10 bg-white hover:bg-stone-50 hover:scale-110 text-stone-900 rounded-2xl transition-all duration-300 font-bold text-xl flex items-center justify-center gap-2 shadow-2xl">
+            <button
+              className={[
+                "group w-full sm:w-64 h-20 px-10 bg-white hover:bg-stone-50 hover:scale-110",
+                "text-stone-900 rounded-2xl transition-all duration-300 font-bold text-xl flex",
+                "items-center justify-center gap-2 shadow-2xl",
+              ].join(" ")}
+            >
               <span>Start Free Trial</span>
-              <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg
+                className="w-6 h-6 group-hover:translate-x-1 transition-transform"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
             </button>
-            <button className="w-full sm:w-64 h-20 px-10 bg-white/10 hover:bg-white/20 backdrop-blur-lg hover:scale-110 active:scale-95 text-white rounded-2xl transition-all duration-300 font-bold text-xl border-2 border-white/30">
+            <button
+              className={[
+                "w-full sm:w-64 h-20 px-10 bg-white/10 hover:bg-white/20 backdrop-blur-lg hover:scale-110",
+                "active:scale-95 text-white rounded-2xl transition-all duration-300 font-bold text-xl",
+                "border-2 border-white/30",
+              ].join(" ")}
+            >
               Contact Sales
             </button>
           </div>
@@ -474,16 +791,19 @@ export default function Home() {
         whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: false, amount: 0.4 }}
-        className="min-h-screen md:h-screen snap-start bg-[#f5f2ed] flex flex-col pt-16 py-10 lg:py-0"
+        className={["min-h-screen md:h-screen snap-start bg-[#f5f2ed] flex flex-col pt-16", "py-10 lg:py-0"].join(" ")}
       >
         <div className="flex-grow flex items-center justify-center px-6 lg:px-8">
           <div className="max-w-7xl mx-auto w-full py-8 text-center">
-
             {/* Title */}
             <div className="mb-8">
               <h2 className="text-5xl lg:text-6xl font-bold text-stone-900 mb-4">
                 Trusted by{" "}
-                <span className="bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text text-transparent">
+                <span
+                  className={["bg-gradient-to-r from-[#FF7300] to-[#F1A222] bg-clip-text", "text-transparent"].join(
+                    " ",
+                  )}
+                >
                   leading partners
                 </span>
               </h2>
@@ -493,19 +813,34 @@ export default function Home() {
             </div>
 
             {/* Divider */}
-            <div className="w-24 h-[2px] bg-gradient-to-r from-transparent via-orange-400 to-transparent mx-auto mb-14" />
+            <div
+              className={[
+                "w-24 h-[2px] bg-gradient-to-r from-transparent via-orange-400 to-transparent mx-auto",
+                "mb-14",
+              ].join(" ")}
+            />
 
             {/* Partner Logo Roll */}
             <div className="relative mt-10 w-full overflow-hidden py-10">
               {/* Fade masks for left/right edges */}
-              <div className="absolute left-0 top-0 bottom-0 w-32 lg:w-48 bg-gradient-to-r from-[#f5f2ed] to-transparent z-10 pointer-events-none" />
-              <div className="absolute right-0 top-0 bottom-0 w-32 lg:w-48 bg-gradient-to-l from-[#f5f2ed] to-transparent z-10 pointer-events-none" />
+              <div
+                className={[
+                  "absolute left-0 top-0 bottom-0 w-32 lg:w-48 bg-gradient-to-r from-[#f5f2ed]",
+                  "to-transparent z-10 pointer-events-none",
+                ].join(" ")}
+              />
+              <div
+                className={[
+                  "absolute right-0 top-0 bottom-0 w-32 lg:w-48 bg-gradient-to-l from-[#f5f2ed]",
+                  "to-transparent z-10 pointer-events-none",
+                ].join(" ")}
+              />
 
               <motion.div
                 ref={containerRef}
                 className="flex whitespace-nowrap gap-16 lg:gap-24 items-center w-max"
                 animate={{
-                  x: ["-50%", "0%"]
+                  x: ["-50%", "0%"],
                 }}
                 onUpdate={(latest) => {
                   if (typeof latest.x !== "string" || !containerRef.current) return;
@@ -537,13 +872,15 @@ export default function Home() {
                     repeat: Infinity,
                     repeatType: "loop",
                     duration: 40,
-                    ease: "linear"
-                  }
+                    ease: "linear",
+                  },
                 }}
               >
                 {/* Repeated list for seamless loop */}
                 {[...ALL_PARTNERS, ...ALL_PARTNERS].map((logo, idx) => {
-                  const isActive = hoveredPartner ? hoveredPartner === logo : ALL_PARTNERS[autoHoveredPartnerIndex] === logo;
+                  const isActive = hoveredPartner
+                    ? hoveredPartner === logo
+                    : ALL_PARTNERS[autoHoveredPartnerIndex] === logo;
 
                   return (
                     <div
@@ -573,19 +910,25 @@ export default function Home() {
             {/* View Applications Button */}
             <div className="mt-20 flex justify-center">
               <Link href="/solutions">
-                <button className="group w-full sm:w-70 h-16 px-8 
-                                    bg-gradient-to-r from-orange-600 to-orange-400 
-                                    hover:scale-105 active:scale-95 hover:from-orange-400 hover:to-orange-300 
-                                    text-white rounded-2xl transition-all duration-300 font-semibold text-lg flex 
-                                    items-center justify-center gap-2 shadow-xl shadow-orange-500/30">
+                <button
+                  className="group w-full sm:w-70 h-16 px-8
+                                    bg-gradient-to-r from-orange-600 to-orange-400
+                                    hover:scale-105 active:scale-95 hover:from-orange-400 hover:to-orange-300
+                                    text-white rounded-2xl transition-all duration-300 font-semibold text-lg flex
+                                    items-center justify-center gap-2 shadow-xl shadow-orange-500/30"
+                >
                   <span>Explore Applications</span>
-                  <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    className="w-6 h-6 group-hover:translate-x-1 transition-transform"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
                 </button>
               </Link>
             </div>
-
           </div>
         </div>
 

@@ -93,7 +93,7 @@ Restart `pnpm dev` after changing env vars.
 pnpm install
 pnpm dev          # http://localhost:3000
 pnpm build
-pnpm lint
+pnpm lint         # Includes the 120-character code-line limit
 ```
 
 ## Project structure (high level)
@@ -117,11 +117,51 @@ Tất cả requests đến backend đi qua `lib/api.ts`. Backend dùng prefix `/
 | `auth` | Login, register, OAuth, logout, token refresh |
 | `projects` | CRUD project |
 | `teams` | Team, thành viên, invitation |
-| `datasets` | CRUD dataset, upload, augmentation, export, sync CVAT |
+| `datasets` | CRUD dataset, upload, augmentation, export |
 | `annotationClasses` | Labels của project |
 | `training` | Training jobs (`startJob` → PATCH `{"status":"queued"}`), experiments, metrics |
 | `deployments` | Model registry, inference endpoints (`startEndpoint` → PATCH `{"status":"active"}`) |
 | `dataverse` | Public datasets, chia sẻ (`shareProject` → POST `/api/v1/dataverse/`), fork |
+
+## GPU training metrics artifact
+
+When a GPU training run finishes, upload `metrics.json` and expose it in the training job `artifact_urls` with the key `metrics.json`.
+If available, also expose `training_log.json`; the Train page can use its epoch `metrics` events for charts and its `split_metrics` events as a fallback summary source.
+The Train page reads split-specific values from these artifacts for the `Train`, `Valid`, and `Test` summary tabs.
+
+Recommended `metrics.json` shape:
+
+```json
+{
+  "split_metrics": {
+    "train": {
+      "f1": 0.951,
+      "precision": 0.956,
+      "recall": 0.945,
+      "map50": 0.978,
+      "map50_95": 0.955
+    },
+    "valid": {
+      "f1": 0.934,
+      "precision": 0.941,
+      "recall": 0.927,
+      "map50": 0.962,
+      "map50_95": 0.931
+    },
+    "test": {
+      "f1": 0.918,
+      "precision": 0.925,
+      "recall": 0.911,
+      "map50": 0.947,
+      "map50_95": 0.904
+    }
+  }
+}
+```
+
+Values may be ratios (`0.951`) or percentages (`95.1`); the UI displays both as `95.10%`.
+The frontend also accepts split aliases such as `val`, `validation`, or `dev` for the Valid tab, nested `summary.split_metrics`, top-level `train`/`valid`/`test` objects, and flat keys such as `train_f1_score`, `valid_precision`, `test_map50`, and `test_map50_95`.
+Do not publish only global `f1_score`, `precision`, `recall`, `map50`, or `map50_95` if the three tabs should differ.
 
 ## Annotation workspace
 

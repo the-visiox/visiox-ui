@@ -2,18 +2,18 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import type { Tool } from "@/components/annotate/AnnotationEditor";
-import {
-  CanvasStage,
-  ErrorBanner,
-  RightPane,
-  TimelineBar,
-  ToolPane,
-  WorkspaceHeader,
-} from "./AnnotateWorkspaceLayout";
+import { CanvasStage, ErrorBanner, RightPane, TimelineBar, ToolPane, WorkspaceHeader } from "./AnnotateWorkspaceLayout";
 import { useAuth } from "@/lib/auth";
-import { datasets as visioxDatasets, resolveMediaUrl } from "@/lib/api";
+import {
+  datasets as visioxDatasets,
+  deployments,
+  resolveMediaUrl,
+  type AutoLabelDatasetJob,
+  type AutoLabelPredictionResponse,
+} from "@/lib/api";
 import type { ClassDto } from "@/lib/api/classes";
 import { createClassForProject, deleteClass, getClassesForProject } from "@/lib/api/classes";
 import { getDataset, getDatasetMedia } from "@/lib/api/datasets";
@@ -35,17 +35,20 @@ import { ApiError, getAccessToken } from "@/lib/api/client";
 import {
   AnnotationSession,
   apiShapesToEditor,
+  autoLabelPredictionsToEditor,
   editorToApiPayload,
   mergeProjectClassesWithProfile,
 } from "@/lib/annotation";
 import type { EditorShape, LabelDefinition } from "@/lib/annotation";
+
+const AutoLabelDialog = dynamic(() => import("@/components/annotate/AutoLabelDialog"), { ssr: false });
 
 function draftStorageKey(
   datasetId: number,
   imageId: string,
   isNativeMode: boolean,
   frameIndex: number,
-  mediaId: number
+  mediaId: number,
 ) {
   if (isNativeMode) return `visiox-annotate-draft:dataset:${datasetId}:frame:${frameIndex}`;
   return `visiox-annotate-draft:dataset:${datasetId}:media:${mediaId}:image:${imageId}`;
@@ -79,6 +82,9 @@ const PANE_WIDTH_STORAGE_KEY = "visiox-annotate-pane-widths";
 type MediaItem = { id: number; file_url?: string | null; filename?: string };
 
 const mediaListCache = new Map<number, MediaItem[]>();
+const datasetDetailCache = new Map<number, Awaited<ReturnType<typeof getDataset>>>();
+const projectClassesCache = new Map<number, ClassDto[]>();
+const datasetFrameRevision = new Map<number, number>();
 const preloadedUrlsCache = new Set<string>();
 const TOOL_PANE_DEFAULT = 64;
 const TOOL_PANE_MIN = 52;
@@ -91,6 +97,23 @@ function clampPaneWidth(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function uniqueAutoLabelShapes(shapes: EditorShape[]) {
+  const seen = new Set<string>();
+  return shapes.filter((shape) => {
+    const geometry = shape.points?.length
+      ? shape.points
+      : [shape.x, shape.y, shape.width, shape.height];
+    const key = [
+      shape.classLabelId,
+      shape.shapeType,
+      ...geometry.map((value) => Math.round(value * 1000) / 1000),
+    ].join(":");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function normalizeHexColor(color: string): string {
   return color.trim().toLowerCase();
 }
@@ -99,18 +122,27 @@ function hslToHex(hue: number, saturation: number, lightness: number): string {
   const s = saturation / 100;
   const l = lightness / 100;
   const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
   const m = l - c / 2;
   const [r, g, b] =
-    hue < 60 ? [c, x, 0] :
-    hue < 120 ? [x, c, 0] :
-    hue < 180 ? [0, c, x] :
-    hue < 240 ? [0, x, c] :
-    hue < 300 ? [x, 0, c] :
-    [c, 0, x];
+    hue < 60
+      ? [c, x, 0]
+      : hue < 120
+        ? [x, c, 0]
+        : hue < 180
+          ? [0, c, x]
+          : hue < 240
+            ? [0, x, c]
+            : hue < 300
+              ? [x, 0, c]
+              : [c, 0, x];
 
   return [r, g, b]
-    .map((channel) => Math.round((channel + m) * 255).toString(16).padStart(2, "0"))
+    .map((channel) =>
+      Math.round((channel + m) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
     .join("")
     .replace(/^/, "#");
 }
@@ -129,8 +161,20 @@ function nextLabelColor(labels: LabelDefinition[]): string {
 }
 function wrapIndex(oneBasedIdx: number, total: number): number {
   if (total <= 0) return 1;
-  const wrapped = ((oneBasedIdx - 1) % total + total) % total;
+  const wrapped = (((oneBasedIdx - 1) % total) + total) % total;
   return wrapped + 1;
+}
+
+function broadcastClassesUpdated(projectId: number | null) {
+  if (projectId == null || typeof window === "undefined") return;
+  projectClassesCache.delete(projectId);
+  try {
+    const ch = new BroadcastChannel("visiox-project-classes");
+    ch.postMessage({ type: "classes-updated", projectId });
+    ch.close();
+  } catch {
+    // BroadcastChannel not supported
+  }
 }
 
 export default function AnnotatePageClient() {
@@ -149,19 +193,34 @@ export default function AnnotatePageClient() {
   const mediaId = isNativeMode ? Number.NaN : Number(rawImageId);
   const jobIdParam = searchParams.get("jobId");
   const jobId = jobIdParam ? parseInt(jobIdParam, 10) : Number.NaN;
+  const compareModelParam = searchParams.get("compareModel");
+  const compareModelId = compareModelParam ? parseInt(compareModelParam, 10) : Number.NaN;
+  const requestedCompareConfidence = Number(searchParams.get("compareConfidence") ?? "0.25");
+  const compareConfidence = Number.isFinite(requestedCompareConfidence)
+    ? Math.min(1, Math.max(0, requestedCompareConfidence))
+    : 0.25;
+  const comparisonQuerySuffix = Number.isFinite(compareModelId)
+    ? `&compareModel=${compareModelId}&compareConfidence=${compareConfidence}`
+    : "";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingFrame, setDeletingFrame] = useState(false);
+  const [showDeleteFrameConfirm, setShowDeleteFrameConfirm] = useState(false);
+  const [frameRevision, setFrameRevision] = useState(() => datasetFrameRevision.get(datasetId) ?? 0);
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState("");
   const [labels, setLabels] = useState<LabelDefinition[]>([]);
+  // Class ids that have annotations somewhere in the project (any frame). Deleting
+  // such a class would cascade-delete those annotations, so its delete is blocked
+  // even on frames where it isn't used.
+  const [usedClassIds, setUsedClassIds] = useState<Set<number>>(new Set());
   const [activeClassId, setActiveClassId] = useState(0);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#E66700");
   const [labelBusyId, setLabelBusyId] = useState<number | "new" | null>(null);
-  const cachedMediaList =
-    !isNativeMode && Number.isFinite(datasetId) ? mediaListCache.get(datasetId) ?? null : null;
+  const cachedMediaList = !isNativeMode && Number.isFinite(datasetId) ? (mediaListCache.get(datasetId) ?? null) : null;
   const cachedMediaIndex =
     cachedMediaList && !isNativeMode && Number.isFinite(mediaId)
       ? (() => {
@@ -189,6 +248,10 @@ export default function AnnotatePageClient() {
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [autoLabelOpen, setAutoLabelOpen] = useState(false);
+  const [predictionShapes, setPredictionShapes] = useState<EditorShape[]>([]);
+  const [predictionModelName, setPredictionModelName] = useState<string | undefined>();
+  const [predictionLoading, setPredictionLoading] = useState(false);
 
   const sessionRef = useRef(new AnnotationSession());
   const shapesRef = useRef<EditorShape[]>([]);
@@ -196,13 +259,14 @@ export default function AnnotatePageClient() {
   const previousDraftKeyRef = useRef<string | null>(null);
   const draftCacheRef = useRef<Record<string, EditorShape[]>>({});
   const savedShapesJsonRef = useRef<string>("[]");
+  const savedLabelsJsonRef = useRef<string>("[]");
   shapesRef.current = shapes;
 
   const currentDraftKey = useMemo(
     () => draftStorageKey(datasetId, rawImageId, isNativeMode, frameIndex, mediaId),
-    [datasetId, rawImageId, isNativeMode, frameIndex, mediaId]
+    [datasetId, rawImageId, isNativeMode, frameIndex, mediaId],
   );
-
+  const activeClassStorageKey = `visiox-annotate-active-class:dataset:${datasetId}`;
   const canUndo = sessionRef.current.canUndo;
   const canRedo = sessionRef.current.canRedo;
 
@@ -220,31 +284,67 @@ export default function AnnotatePageClient() {
     }
   }, []);
 
-  const readDraft = useCallback(
-    (draftKey: string): { exists: boolean; shapes: EditorShape[] } => {
-      const cached = draftCacheRef.current[draftKey];
-      if (cached) {
-        return { exists: true, shapes: cached };
-      }
-      if (typeof window === "undefined") {
-        return { exists: false, shapes: [] };
-      }
+  const readDraft = useCallback((draftKey: string): { exists: boolean; shapes: EditorShape[] } => {
+    const cached = draftCacheRef.current[draftKey];
+    if (cached) {
+      return { exists: true, shapes: cached };
+    }
+    if (typeof window === "undefined") {
+      return { exists: false, shapes: [] };
+    }
+    try {
+      const rawDraft = sessionStorage.getItem(draftKey);
+      if (rawDraft === null) return { exists: false, shapes: [] };
+      const parsed = JSON.parse(rawDraft) as EditorShape[];
+      draftCacheRef.current[draftKey] = parsed;
+      return { exists: true, shapes: parsed };
+    } catch {
+      return { exists: false, shapes: [] };
+    }
+  }, []);
+
+  // Frames the user actually edited this session. Kept in sessionStorage so it
+  // survives remounts (re-entering the workspace) — unlike navigation drafts,
+  // which exist for every visited frame and must NOT all be re-saved.
+  const dirtyFramesKey = `visiox-annotate-dirty:dataset:${datasetId}`;
+  const readDirtyFrames = useCallback((): number[] => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(sessionStorage.getItem(dirtyFramesKey) ?? "[]") as number[];
+    } catch {
+      return [];
+    }
+  }, [dirtyFramesKey]);
+  const markFrameDirty = useCallback(
+    (fi: number) => {
+      if (typeof window === "undefined") return;
       try {
-        const rawDraft = sessionStorage.getItem(draftKey);
-        if (rawDraft === null) return { exists: false, shapes: [] };
-        const parsed = JSON.parse(rawDraft) as EditorShape[];
-        draftCacheRef.current[draftKey] = parsed;
-        return { exists: true, shapes: parsed };
+        const set = new Set<number>(readDirtyFrames());
+        set.add(fi);
+        sessionStorage.setItem(dirtyFramesKey, JSON.stringify([...set]));
       } catch {
-        return { exists: false, shapes: [] };
+        // ignore storage failures
       }
     },
-    []
+    [dirtyFramesKey, readDirtyFrames],
+  );
+  const clearFrameDirty = useCallback(
+    (fi: number) => {
+      if (typeof window === "undefined") return;
+      try {
+        const set = new Set<number>(readDirtyFrames());
+        set.delete(fi);
+        sessionStorage.setItem(dirtyFramesKey, JSON.stringify([...set]));
+      } catch {
+        // ignore storage failures
+      }
+    },
+    [dirtyFramesKey, readDirtyFrames],
   );
 
   useLayoutEffect(() => {
     const previousDraftKey = previousDraftKeyRef.current;
-    if (previousDraftKey && previousDraftKey !== currentDraftKey) {
+    if (previousDraftKey && previousDraftKey !== currentDraftKey && !isLoadingRef.current) {
       persistDraft(previousDraftKey, shapesRef.current);
     }
     previousDraftKeyRef.current = currentDraftKey;
@@ -256,6 +356,15 @@ export default function AnnotatePageClient() {
   useEffect(() => {
     setAccessToken(getAccessToken());
   }, []);
+
+  useEffect(() => {
+    if (activeClassId <= 0 || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(activeClassStorageKey, String(activeClassId));
+    } catch {
+      // Ignore unavailable session storage.
+    }
+  }, [activeClassId, activeClassStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -278,19 +387,44 @@ export default function AnnotatePageClient() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      localStorage.setItem(
-        PANE_WIDTH_STORAGE_KEY,
-        JSON.stringify({ tools: toolPaneWidth, objects: objectsPaneWidth })
-      );
+      localStorage.setItem(PANE_WIDTH_STORAGE_KEY, JSON.stringify({ tools: toolPaneWidth, objects: objectsPaneWidth }));
     } catch {
       // Ignore preference persistence failures.
     }
   }, [objectsPaneWidth, toolPaneWidth]);
 
+  // Compare the current shapes against their last-saved state at the API-payload
+  // level. This ignores editor-only fields and hydrate/draft round-trip quirks
+  // (key order, recomputed bbox, `points: undefined`) that otherwise read as a
+  // change even when nothing was edited.
+  const shapesDifferFromSaved = useCallback(() => {
+    let saved: EditorShape[] = [];
+    try {
+      saved = JSON.parse(savedShapesJsonRef.current) as EditorShape[];
+    } catch {
+      saved = [];
+    }
+    return JSON.stringify(editorToApiPayload(shapes)) !== JSON.stringify(editorToApiPayload(saved));
+  }, [shapes]);
+
   useEffect(() => {
     if (typeof window === "undefined" || isLoadingRef.current) return;
     persistDraft(currentDraftKey, shapes);
-  }, [currentDraftKey, persistDraft, shapes]);
+    if (!isNativeMode) return;
+    // Mark/clear this frame as edited based on whether it differs from its saved
+    // state — drives which frames Save sends to the server.
+    if (shapesDifferFromSaved()) markFrameDirty(frameIndex);
+    else clearFrameDirty(frameIndex);
+  }, [
+    clearFrameDirty,
+    currentDraftKey,
+    frameIndex,
+    isNativeMode,
+    markFrameDirty,
+    persistDraft,
+    shapes,
+    shapesDifferFromSaved,
+  ]);
 
   const undo = () => {
     const previous = sessionRef.current.undo();
@@ -307,15 +441,6 @@ export default function AnnotatePageClient() {
     let cancelled = false;
 
     async function load() {
-      if (typeof window !== "undefined" && shapesRef.current.length > 0) {
-        try {
-          const prevKey = sessionStorage.getItem("visiox-annotate-draft:active-key");
-          if (prevKey) persistDraft(prevKey, shapesRef.current);
-        } catch {
-          // ignore
-        }
-      }
-
       setError(null);
 
       try {
@@ -325,11 +450,13 @@ export default function AnnotatePageClient() {
       }
 
       const token = getAccessToken();
-      const demoUrl = `https://picsum.photos/seed/${isNativeMode ? `native-${datasetId}-f${frameIndex}` : rawImageId}/1200/800`;
+      const demoSeed = isNativeMode ? `native-${datasetId}-f${frameIndex}` : rawImageId;
+      const demoUrl = `https://picsum.photos/seed/${demoSeed}/1200/800`;
 
       if (!token) {
         setImageUrl(demoUrl);
         setLabels([...DEMO_LABELS]);
+        savedLabelsJsonRef.current = JSON.stringify(DEMO_LABELS);
         setActiveClassId(1);
         isLoadingRef.current = false;
         setLoading(false);
@@ -339,16 +466,43 @@ export default function AnnotatePageClient() {
       try {
         if (!Number.isFinite(datasetId)) throw new Error("Invalid dataset id.");
 
-        const ds = await getDataset(datasetId);
+        let ds = datasetDetailCache.get(datasetId);
+        if (!ds) {
+          ds = await getDataset(datasetId);
+          datasetDetailCache.set(datasetId, ds);
+        }
         setProjectId(ds.project);
-        const statsPromise = visioxDatasets.stats(datasetId).catch(() => null);
-        const classesPromise = getClassesForProject(ds.project).catch((): ClassDto[] => []);
+
+        const nativeFrameTotal = ds.image_count ?? ds.media_count ?? 0;
+        if (isNativeMode) {
+          setMediaTotal(nativeFrameTotal);
+          if (nativeFrameTotal <= 0) {
+            router.replace(`/datasets/${params.id}`);
+            return;
+          }
+          if (frameIndex >= nativeFrameTotal) {
+            const lastFrameIndex = nativeFrameTotal - 1;
+            setPendingIndex(nativeFrameTotal);
+            router.replace(
+              `/datasets/${params.id}/annotate/native?frame=${lastFrameIndex}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
+            );
+            return;
+          }
+        }
+
+        const cachedClasses = projectClassesCache.get(ds.project);
+        const classesPromise = cachedClasses
+          ? Promise.resolve(cachedClasses)
+          : getClassesForProject(ds.project).then((items) => {
+              projectClassesCache.set(ds.project, items);
+              return items;
+            });
         const annotationsPromise: Promise<Awaited<ReturnType<typeof getJobAnnotations>>> = !Number.isNaN(jobId)
           ? getJobAnnotations(jobId)
           : !isNativeMode && Number.isFinite(mediaId)
-            ? getMediaAnnotations(mediaId).catch(() => [])
+            ? getMediaAnnotations(mediaId)
             : isNativeMode
-              ? getFrameAnnotations(datasetId, frameIndex).catch(() => [])
+              ? getFrameAnnotations(datasetId, frameIndex)
               : Promise.resolve([]);
         const profilePromise: Promise<{ id: number; name: string; color: string }[]> = Number.isNaN(jobId)
           ? isNativeMode
@@ -364,7 +518,7 @@ export default function AnnotatePageClient() {
         let profileItems: { id: number; name: string; color: string }[] = [];
 
         if (isNativeMode) {
-          resolvedImageUrl = visioxDatasets.frameUrl(datasetId, frameIndex);
+          resolvedImageUrl = `${visioxDatasets.frameUrl(datasetId, frameIndex, "original")}&revision=${frameRevision}`;
           setImageUrl(resolvedImageUrl);
           setMediaIndex(null);
           setMediaList([]);
@@ -373,8 +527,7 @@ export default function AnnotatePageClient() {
           if (!cancelled) {
             setLoading(false);
           }
-          const [stats, loadedClasses, loadedAnnotations, loadedProfile] = await Promise.all([
-            statsPromise,
+          const [loadedClasses, loadedAnnotations, loadedProfile] = await Promise.all([
             classesPromise,
             annotationsPromise,
             profilePromise,
@@ -382,7 +535,7 @@ export default function AnnotatePageClient() {
           classes = loadedClasses;
           annotations = loadedAnnotations;
           profileItems = loadedProfile;
-          setMediaTotal(stats?.cvat?.size ?? ds.media_count ?? null);
+          setMediaTotal(nativeFrameTotal);
         } else {
           let list = mediaListCache.get(datasetId) ?? null;
           if (!list) {
@@ -397,7 +550,7 @@ export default function AnnotatePageClient() {
           setMediaIndex(idx >= 0 ? idx + 1 : null);
           setFrameInput(idx >= 0 ? String(idx + 1) : "1");
           setCurrentFilename(
-            (media as { filename?: string })?.filename ?? media?.file_url?.split("/").pop() ?? `media-${mediaId}`
+            (media as { filename?: string })?.filename ?? media?.file_url?.split("/").pop() ?? `media-${mediaId}`,
           );
           if (media?.file_url) resolvedImageUrl = resolveMediaUrl(media.file_url);
           setImageUrl(resolvedImageUrl);
@@ -413,20 +566,37 @@ export default function AnnotatePageClient() {
 
         if (cancelled) return;
 
+        setUsedClassIds(new Set(classes.filter((c) => (c.annotation_count ?? 0) > 0).map((c) => c.id)));
+
         if (classes.length) {
           const merged = profileItems.length
             ? mergeProjectClassesWithProfile(classes, profileItems)
             : classes.map((item) => ({ id: item.id, name: item.name, color: item.color || "#f97316" }));
           setLabels(merged);
-          setActiveClassId(merged[0]?.id ?? classes[0].id);
+          savedLabelsJsonRef.current = JSON.stringify(merged);
+          setActiveClassId((currentClassId) => {
+            let storedClassId = 0;
+            try {
+              storedClassId = Number(sessionStorage.getItem(activeClassStorageKey) ?? 0);
+            } catch {
+              // Ignore unavailable session storage.
+            }
+            if (merged.some((label) => label.id === currentClassId)) return currentClassId;
+            if (merged.some((label) => label.id === storedClassId)) return storedClassId;
+            return merged[0]?.id ?? classes[0].id;
+          });
+          setNewLabelColor(nextLabelColor(merged));
         } else {
           setLabels([]);
+          savedLabelsJsonRef.current = "[]";
           setActiveClassId(0);
+          setNewLabelColor(nextLabelColor([]));
         }
 
         const apiShapes = apiShapesToEditor(annotations);
         savedShapesJsonRef.current = JSON.stringify(apiShapes);
-        const draft = readDraft(currentDraftKey);
+        const shouldRestoreDraft = !isNativeMode || readDirtyFrames().includes(frameIndex);
+        const draft = shouldRestoreDraft ? readDraft(currentDraftKey) : { exists: false, shapes: [] };
         if (draft.exists) {
           _setShapes(sessionRef.current.hydrate(draft.shapes));
         } else if (apiShapes.length > 0) {
@@ -436,10 +606,13 @@ export default function AnnotatePageClient() {
         }
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Failed to load dataset.");
-        setImageUrl(demoUrl);
-        setLabels([...DEMO_LABELS]);
-        setActiveClassId(1);
+        setError(
+          e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Failed to load dataset.",
+        );
+        setImageUrl("");
+        setLabels([]);
+        savedLabelsJsonRef.current = "[]";
+        setActiveClassId(0);
         setMediaIndex(null);
         setMediaTotal(null);
         setMediaList([]);
@@ -457,7 +630,73 @@ export default function AnnotatePageClient() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, mediaId, persistDraft, rawImageId, readDraft]);
+  }, [
+    activeClassStorageKey,
+    authReady,
+    currentDraftKey,
+    comparisonQuerySuffix,
+    datasetId,
+    frameIndex,
+    frameRevision,
+    isNativeMode,
+    jobId,
+    jobIdParam,
+    mediaId,
+    params.id,
+    persistDraft,
+    rawImageId,
+    readDraft,
+    readDirtyFrames,
+    router,
+  ]);
+
+  useEffect(() => {
+    if (!isNativeMode || !Number.isFinite(compareModelId) || loading || !Number.isFinite(datasetId)) {
+      setPredictionShapes([]);
+      setPredictionModelName(undefined);
+      return;
+    }
+
+    let cancelled = false;
+    setPredictionLoading(true);
+    setPredictionShapes([]);
+    deployments.previewFrame(compareModelId, {
+      dataset: datasetId,
+      frame: frameIndex,
+      confidence: compareConfidence,
+    }).then((result) => {
+      if (cancelled) return;
+      const overlays = result.predictions.flatMap<EditorShape>((prediction, index) => {
+        if (prediction.class_label == null) return [];
+        return [{
+          clientId: `prediction-${result.model}-${result.media_id}-${index}`,
+          shapeType: "rectangle",
+          classLabelId: prediction.class_label,
+          x: prediction.data.x,
+          y: prediction.data.y,
+          width: prediction.data.width,
+          height: prediction.data.height,
+          confidence: typeof prediction.confidence === "number" ? prediction.confidence : undefined,
+          frame: result.frame,
+        }];
+      });
+      setPredictionShapes(overlays);
+      setPredictionModelName(`${result.model_name} ${result.model_version}`.trim());
+      if (result.unmapped_labels.length > 0) {
+        setError(`Prediction labels not found in this project: ${result.unmapped_labels.join(", ")}.`);
+      }
+    }).catch((reason) => {
+      if (cancelled) return;
+      setError(reason instanceof Error ? reason.message : "Could not load model predictions.");
+      setPredictionModelName("Prediction unavailable");
+    }).finally(() => {
+      if (!cancelled) setPredictionLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [compareConfidence, compareModelId, datasetId, frameIndex, isNativeMode, loading]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !imageUrl) return;
@@ -468,11 +707,11 @@ export default function AnnotatePageClient() {
       for (let offset = 1; offset <= PRELOAD_AHEAD; offset += 1) {
         const idx = frameIndex + offset;
         if (idx >= totalFrames) break;
-        urls.push(visioxDatasets.frameUrl(datasetId, idx));
+        urls.push(`${visioxDatasets.frameUrl(datasetId, idx, "original")}&revision=${frameRevision}`);
       }
       for (let offset = 1; offset <= PRELOAD_BEHIND; offset += 1) {
         if (frameIndex - offset >= 0) {
-          urls.push(visioxDatasets.frameUrl(datasetId, frameIndex - offset));
+          urls.push(`${visioxDatasets.frameUrl(datasetId, frameIndex - offset, "original")}&revision=${frameRevision}`);
         }
       }
     } else if (mediaList.length && mediaIndex) {
@@ -502,7 +741,9 @@ export default function AnnotatePageClient() {
       for (let offset = 1; offset <= ROUTE_PREFETCH_AHEAD; offset += 1) {
         const idx = frameIndex + offset;
         if (idx >= totalFrames) break;
-        routeUrls.push(`/datasets/${params.id}/annotate/native?frame=${idx}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
+        routeUrls.push(
+          `/datasets/${params.id}/annotate/native?frame=${idx}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
+        );
       }
     } else if (mediaList.length && mediaIndex) {
       for (let offset = 1; offset <= ROUTE_PREFETCH_AHEAD; offset += 1) {
@@ -512,18 +753,32 @@ export default function AnnotatePageClient() {
       }
     }
     routeUrls.forEach((url) => router.prefetch(url));
-  }, [imageUrl, isNativeMode, datasetId, frameIndex, mediaList, mediaIndex, mediaTotal, params.id, router, jobIdParam]);
+  }, [
+    imageUrl,
+    isNativeMode,
+    datasetId,
+    frameIndex,
+    frameRevision,
+    mediaList,
+    mediaIndex,
+    mediaTotal,
+    params.id,
+    router,
+    jobIdParam,
+    comparisonQuerySuffix,
+  ]);
 
-  const current = isNativeMode ? frameIndex + 1 : mediaIndex ?? 1;
+  const current = isNativeMode ? frameIndex + 1 : (mediaIndex ?? 1);
   const total = mediaTotal ?? 0;
-  const displayedValue =
-    scrubValue !== null ? scrubValue : pendingIndex !== null ? pendingIndex : current;
+  const displayedValue = scrubValue !== null ? scrubValue : pendingIndex !== null ? pendingIndex : current;
   const sliderMax = Math.max(1, total, current, pendingIndex ?? 0, scrubValue ?? 0, displayedValue);
   const sliderProgress = sliderMax <= 1 ? 0 : ((displayedValue - 1) / (sliderMax - 1)) * 100;
   const isLoggedIn = !!accessToken;
   const canSaveToApi =
     isLoggedIn &&
-    (!Number.isNaN(jobId) || (!isNativeMode && Number.isFinite(mediaId)) || (isNativeMode && Number.isFinite(datasetId)));
+    (!Number.isNaN(jobId) ||
+      (!isNativeMode && Number.isFinite(mediaId)) ||
+      (isNativeMode && Number.isFinite(datasetId)));
 
   useEffect(() => {
     if (pendingIndex !== null && pendingIndex === current) {
@@ -531,27 +786,60 @@ export default function AnnotatePageClient() {
     }
   }, [current, pendingIndex]);
 
+  // Clamp an out-of-range ?frame= URL (e.g. typed/stale link) to the last real
+  // frame so we never load or create drafts for a frame the dataset doesn't have.
+  useEffect(() => {
+    if (!isNativeMode || mediaTotal == null || mediaTotal <= 0) return;
+    if (frameIndex > mediaTotal - 1) {
+      router.replace(
+        `/datasets/${params.id}/annotate/native?frame=${mediaTotal - 1}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
+      );
+    }
+  }, [comparisonQuerySuffix, isNativeMode, mediaTotal, frameIndex, params.id, jobIdParam, router]);
+
   const navigateTo = useCallback(
     (oneBasedIdx: number, options?: { wrap?: boolean }) => {
       const totalItems = Math.max(1, total);
       const nextIndex = options?.wrap
         ? wrapIndex(oneBasedIdx, totalItems)
         : Math.max(1, Math.min(totalItems, oneBasedIdx));
+
+      if (nextIndex === current) {
+        setPendingIndex(null);
+        setScrubValue(null);
+        setFrameInput(String(current));
+        return;
+      }
+
       setPendingIndex(nextIndex);
       setScrubValue(null);
       setFrameInput(String(nextIndex));
-      persistDraft(currentDraftKey, shapesRef.current);
+      if (!isLoadingRef.current) persistDraft(currentDraftKey, shapesRef.current);
+      isLoadingRef.current = true;
       setLoading(true);
       if (isNativeMode) {
         const clamped = Math.max(0, nextIndex - 1);
-        router.push(`/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}`);
+        router.push(
+          `/datasets/${params.id}/annotate/native?frame=${clamped}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
+        );
         return;
       }
       const target = mediaList[nextIndex - 1];
       if (!target) return;
       router.push(`/datasets/${params.id}/annotate/${target.id}${jobIdParam ? `?jobId=${jobIdParam}` : ""}`);
     },
-    [currentDraftKey, isNativeMode, mediaList, params.id, persistDraft, router, total, jobIdParam]
+    [
+      comparisonQuerySuffix,
+      current,
+      currentDraftKey,
+      isNativeMode,
+      jobIdParam,
+      mediaList,
+      params.id,
+      persistDraft,
+      router,
+      total,
+    ],
   );
 
   const handleFrameInputCommit = () => {
@@ -568,56 +856,301 @@ export default function AnnotatePageClient() {
     }
   }, [current, navigateTo, scrubValue]);
 
+  const handleAutoLabelComplete = useCallback(async (job: AutoLabelDatasetJob) => {
+    if (!isNativeMode || !Number.isFinite(datasetId)) return;
+    try {
+      const rows = await getFrameAnnotations(datasetId, frameIndex);
+      const generated = uniqueAutoLabelShapes(
+        apiShapesToEditor(rows).filter(
+          (shape) => shape.source === "auto_label" && shape.autoLabelModelId === job.model,
+        ),
+      );
+      _setShapes(sessionRef.current.update((current) => [
+        ...current.filter((shape) => shape.source !== "auto_label"),
+        ...generated,
+      ]));
+      setActiveRightTab("objects");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not refresh current-frame labels.");
+    }
+  }, [datasetId, frameIndex, isNativeMode]);
+
+  const handleFrameAutoLabelComplete = useCallback((result: AutoLabelPredictionResponse) => {
+    if (result.frame !== frameIndex) {
+      setError("Auto Label finished for a different frame. Run it again on the current frame.");
+      return;
+    }
+    const generated = uniqueAutoLabelShapes(autoLabelPredictionsToEditor(result));
+    _setShapes(sessionRef.current.update((current) => [
+      ...current.filter((shape) => shape.source !== "auto_label"),
+      ...generated,
+    ]));
+    setSelectedShapeId(generated[0]?.clientId ?? null);
+    setActiveRightTab("objects");
+  }, [frameIndex]);
+
   const handleSave = useCallback(async () => {
+    if (loading || isLoadingRef.current) {
+      setError("Wait for the current frame to finish loading before saving.");
+      return false;
+    }
     const tokenNow = getAccessToken();
     if (!tokenNow) {
       setError("Login required to save. In demo mode annotations are kept in-memory only.");
-      return;
+      return false;
     }
     if (!canSaveToApi) {
       setError("Cannot determine save target. Check the URL has a valid dataset/media/job id.");
-      return;
+      return false;
     }
 
     setSaving(true);
     setError(null);
     try {
-      const payload = editorToApiPayload(shapes);
-      if (!Number.isNaN(jobId)) {
-        await patchJobAnnotations(jobId, payload);
-      } else if (isNativeMode) {
-        await putFrameAnnotations(datasetId, frameIndex, payload);
-      } else {
-        await putMediaAnnotations(mediaId, payload);
-      }
+      const labelPayload = labels.map((label) => ({ id: label.id, name: label.name, color: label.color }));
 
-      if (Number.isNaN(jobId) && labels.length) {
-        const labelPayload = labels.map((label) => ({ id: label.id, name: label.name, color: label.color }));
-        try {
-          if (isNativeMode) await putFrameLabelProfile(datasetId, frameIndex, labelPayload);
-          else if (Number.isFinite(mediaId)) await putMediaLabelProfile(mediaId, labelPayload);
-        } catch {
-          setError((prev) => prev || "Annotations saved, but label profile sync failed.");
+      if (!Number.isNaN(jobId)) {
+        await patchJobAnnotations(jobId, editorToApiPayload(shapes));
+      } else if (isNativeMode) {
+        // Save only the frames the user actually edited this session (tracked in
+        // sessionStorage), plus the current frame if just the label roster changed.
+        // Merely navigating through frames must NOT trigger a save for each one.
+        persistDraft(currentDraftKey, shapes);
+
+        const validClassIds = new Set(labels.map((label) => label.id));
+        const totalFrames = mediaTotal ?? Infinity;
+        const prefix = `visiox-annotate-draft:dataset:${datasetId}:frame:`;
+        const dropStaleDraft = (fi: number) => {
+          delete draftCacheRef.current[`${prefix}${fi}`];
+          if (typeof window !== "undefined") {
+            try {
+              sessionStorage.removeItem(`${prefix}${fi}`);
+            } catch {
+              // ignore storage failures
+            }
+          }
+        };
+
+        const labelsDirty = JSON.stringify(labels) !== savedLabelsJsonRef.current;
+        const dirtyFrames = readDirtyFrames();
+        const frameIndices = new Set<number>(dirtyFrames);
+        if (labelsDirty) frameIndices.add(frameIndex);
+
+        const failedFrames: number[] = [];
+        let firstError: unknown = null;
+        let droppedInvalid = 0;
+        let profileFailed = false;
+        for (const fi of frameIndices) {
+          if (fi < 0 || fi >= totalFrames) {
+            dropStaleDraft(fi);
+            clearFrameDirty(fi);
+            continue;
+          }
+          const annotationsEdited = dirtyFrames.includes(fi);
+          const rawShapes = fi === frameIndex ? shapes : readDraft(`${prefix}${fi}`).shapes;
+          // Skip objects whose label was deleted (id no longer a project class):
+          // the backend rejects unknown class ids and would fail the whole save.
+          const frameShapes = rawShapes.filter((s) => validClassIds.has(s.classLabelId));
+          droppedInvalid += rawShapes.length - frameShapes.length;
+
+          // Only the current frame needs a profile write when just the label roster
+          // changed; other untouched frames keep their existing profile.
+          const saveProfile = labelPayload.length > 0 && (annotationsEdited || (labelsDirty && fi === frameIndex));
+          if (!annotationsEdited && !saveProfile) continue;
+
+          try {
+            if (annotationsEdited) {
+              await putFrameAnnotations(datasetId, fi, editorToApiPayload(frameShapes));
+            }
+            if (saveProfile) {
+              try {
+                await putFrameLabelProfile(datasetId, fi, labelPayload);
+              } catch {
+                profileFailed = true;
+              }
+            }
+            clearFrameDirty(fi);
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 404) {
+              // Frame no longer exists in this dataset — drop its stale draft, don't fail.
+              dropStaleDraft(fi);
+              clearFrameDirty(fi);
+              continue;
+            }
+            failedFrames.push(fi);
+            if (!firstError) firstError = err;
+          }
+        }
+        if (failedFrames.length) {
+          const detail =
+            firstError instanceof ApiError
+              ? firstError.body || firstError.message
+              : firstError instanceof Error
+                ? firstError.message
+                : "";
+          throw new Error(
+            `Save failed for frame(s) ${failedFrames.map((f) => f + 1).join(", ")}${detail ? `: ${detail}` : ""}`,
+          );
+        }
+        if (profileFailed) {
+          setError((prev) => prev || "Annotations saved, but label profile sync failed for some frames.");
+        } else if (droppedInvalid > 0) {
+          setError(
+            (prev) =>
+              prev || `Saved. Skipped ${droppedInvalid} object(s) that used a deleted label — reassign them to keep.`,
+          );
+        }
+      } else {
+        await putMediaAnnotations(mediaId, editorToApiPayload(shapes));
+        if (labelPayload.length && Number.isFinite(mediaId)) {
+          try {
+            await putMediaLabelProfile(mediaId, labelPayload);
+          } catch {
+            setError((prev) => prev || "Annotations saved, but label profile sync failed.");
+          }
         }
       }
 
       if (typeof window !== "undefined") {
         savedShapesJsonRef.current = JSON.stringify(shapes);
+        savedLabelsJsonRef.current = JSON.stringify(labels);
         persistDraft(currentDraftKey, shapes);
         try {
           const ch = new BroadcastChannel("visiox-annotations");
           ch.postMessage({ type: "annotations-saved", datasetId });
           ch.close();
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2500);
       }
+      return true;
     } catch (e) {
-      setError(e instanceof ApiError ? e.body || e.message : "Save failed.");
+      setError(e instanceof ApiError ? e.body || e.message : e instanceof Error ? e.message : "Save failed.");
+      return false;
     } finally {
       setSaving(false);
     }
-  }, [canSaveToApi, currentDraftKey, datasetId, frameIndex, isNativeMode, jobId, labels, mediaId, persistDraft, shapes]);
+  }, [
+    canSaveToApi,
+    clearFrameDirty,
+    currentDraftKey,
+    datasetId,
+    frameIndex,
+    isNativeMode,
+    jobId,
+    labels,
+    loading,
+    mediaId,
+    mediaTotal,
+    persistDraft,
+    readDirtyFrames,
+    readDraft,
+    shapes,
+  ]);
+
+  const clearDatasetDrafts = useCallback(() => {
+    const prefix = `visiox-annotate-draft:dataset:${datasetId}:`;
+    for (const key of Object.keys(draftCacheRef.current)) {
+      if (key.startsWith(prefix)) delete draftCacheRef.current[key];
+    }
+    if (typeof window !== "undefined") {
+      try {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith(prefix)) sessionStorage.removeItem(k);
+        }
+        sessionStorage.removeItem("visiox-annotate-draft:active-key");
+        sessionStorage.removeItem(dirtyFramesKey);
+      } catch {
+        // ignore storage failures
+      }
+    }
+  }, [datasetId, dirtyFramesKey]);
+
+  const requestDeleteFrame = useCallback(() => {
+    const hasUnsavedChanges =
+      shapesDifferFromSaved() ||
+      JSON.stringify(labels) !== savedLabelsJsonRef.current ||
+      readDirtyFrames().length > 0;
+    if (hasUnsavedChanges) {
+      setError("Save or undo annotation changes before deleting a frame.");
+      return;
+    }
+    setError(null);
+    setShowDeleteFrameConfirm(true);
+  }, [labels, readDirtyFrames, shapesDifferFromSaved]);
+
+  const handleDeleteFrame = useCallback(async () => {
+    if (!isNativeMode || deletingFrame) return;
+    setDeletingFrame(true);
+    setError(null);
+    try {
+      const result = await visioxDatasets.deleteFrame(datasetId, frameIndex);
+      const revision = (datasetFrameRevision.get(datasetId) ?? frameRevision) + 1;
+      datasetFrameRevision.set(datasetId, revision);
+      datasetDetailCache.delete(datasetId);
+      mediaListCache.delete(datasetId);
+
+      isLoadingRef.current = true;
+      previousDraftKeyRef.current = null;
+      clearDatasetDrafts();
+      savedShapesJsonRef.current = "[]";
+      _setShapes(sessionRef.current.hydrate([]));
+      setMediaTotal(result.remaining);
+      setShowDeleteFrameConfirm(false);
+
+      if (result.remaining === 0) {
+        router.replace(`/datasets/${params.id}`);
+        return;
+      }
+
+      const nextFrameIndex = Math.min(frameIndex, result.remaining - 1);
+      setLoading(true);
+      setFrameRevision(revision);
+      if (nextFrameIndex !== frameIndex) {
+        router.replace(
+          `/datasets/${params.id}/annotate/native?frame=${nextFrameIndex}${jobIdParam ? `&jobId=${jobIdParam}` : ""}${comparisonQuerySuffix}`,
+        );
+      }
+    } catch (reason) {
+      setError(
+        reason instanceof ApiError
+          ? reason.body || reason.message
+          : reason instanceof Error
+            ? reason.message
+            : "Could not delete this frame.",
+      );
+    } finally {
+      setDeletingFrame(false);
+    }
+  }, [
+    clearDatasetDrafts,
+    comparisonQuerySuffix,
+    datasetId,
+    deletingFrame,
+    frameIndex,
+    frameRevision,
+    isNativeMode,
+    jobIdParam,
+    params.id,
+    router,
+  ]);
+
+  const handleDiscard = useCallback(() => {
+    // Drop every unsaved draft for this dataset so nothing is restored on return.
+    isLoadingRef.current = true;
+    clearDatasetDrafts();
+    // Reset the current frame back to its last-saved state.
+    try {
+      _setShapes(sessionRef.current.hydrate(JSON.parse(savedShapesJsonRef.current)));
+    } catch {
+      _setShapes(sessionRef.current.hydrate([]));
+    }
+    setShowExitConfirm(false);
+    router.push(`/datasets/${params.id}`);
+  }, [clearDatasetDrafts, params.id, router]);
 
   useEffect(() => {
     if (!openClassMenuId) return;
@@ -647,91 +1180,99 @@ export default function AnnotatePageClient() {
   }, [shapes]);
 
   const toggleShapeHidden = useCallback((shapeId: string) => {
-    setHiddenShapeIds((prev) =>
-      prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]
-    );
+    setHiddenShapeIds((prev) => (prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]));
   }, []);
 
   const toggleShapePinned = useCallback((shapeId: string) => {
-    setPinnedShapeIds((prev) =>
-      prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]
-    );
+    setPinnedShapeIds((prev) => (prev.includes(shapeId) ? prev.filter((id) => id !== shapeId) : [...prev, shapeId]));
   }, []);
 
-  const handleCreateLabel = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newLabelName.trim();
-    if (!name) return;
+  const handleCreateLabel = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      const name = newLabelName.trim();
+      if (!name) return;
 
-    if (!projectId || !isLoggedIn) {
-      const localId = Math.min(0, ...labels.map((label) => label.id)) - 1;
-      const localLabel = { id: localId, name, color: newLabelColor };
-      setLabels((prev) => [...prev, localLabel]);
-      setActiveClassId(localLabel.id);
-      setNewLabelName("");
-      setNewLabelColor(nextLabelColor([...labels, localLabel]));
-      return;
-    }
+      if (!projectId || !isLoggedIn) {
+        const localId = Math.min(0, ...labels.map((label) => label.id)) - 1;
+        const localLabel = { id: localId, name, color: newLabelColor };
+        setLabels((prev) => [...prev, localLabel]);
+        setActiveClassId(localLabel.id);
+        setNewLabelName("");
+        setNewLabelColor(nextLabelColor([...labels, localLabel]));
+        return;
+      }
 
-    setLabelBusyId("new");
-    setError(null);
-    try {
-      const created = await createClassForProject(projectId, { name, color: newLabelColor });
-      setLabels((prev) => [...prev.filter((label) => label.id !== created.id), created]);
-      setActiveClassId(created.id);
-      setNewLabelName("");
-      setNewLabelColor(nextLabelColor([...labels.filter((label) => label.id !== created.id), created]));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create label.");
-    } finally {
-      setLabelBusyId(null);
-    }
-  }, [isLoggedIn, labels, newLabelColor, newLabelName, projectId]);
+      setLabelBusyId("new");
+      setError(null);
+      try {
+        const created = await createClassForProject(projectId, { name, color: newLabelColor });
+        setLabels((prev) => [...prev.filter((label) => label.id !== created.id), created]);
+        setActiveClassId(created.id);
+        setNewLabelName("");
+        setNewLabelColor(nextLabelColor([...labels.filter((label) => label.id !== created.id), created]));
+        broadcastClassesUpdated(projectId);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not create label.");
+      } finally {
+        setLabelBusyId(null);
+      }
+    },
+    [isLoggedIn, labels, newLabelColor, newLabelName, projectId],
+  );
 
-  const handleDeleteLabel = useCallback(async (label: LabelDefinition) => {
-    if (shapes.some((shape) => shape.classLabelId === label.id)) {
-      setError("Remove or reassign objects using this label before deleting it.");
-      return;
-    }
+  const handleDeleteLabel = useCallback(
+    async (label: LabelDefinition) => {
+      if (shapes.some((shape) => shape.classLabelId === label.id)) {
+        setError("Remove or reassign objects using this label before deleting it.");
+        return;
+      }
 
-    if (!projectId || !isLoggedIn || label.id <= 0) {
-      setLabels((prev) => prev.filter((item) => item.id !== label.id));
-      if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
-      return;
-    }
-
-    setLabelBusyId(label.id);
-    setError(null);
-    try {
-      await deleteClass(label.id);
-      setLabels((prev) => prev.filter((item) => item.id !== label.id));
-      if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
+      if (!projectId || !isLoggedIn || label.id <= 0) {
         setLabels((prev) => prev.filter((item) => item.id !== label.id));
         if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
-      } else {
-        setError(err instanceof Error ? err.message : "Could not delete label.");
+        return;
       }
-    } finally {
-      setLabelBusyId(null);
-    }
-  }, [activeClassId, isLoggedIn, labels, projectId, shapes]);
+
+      setLabelBusyId(label.id);
+      setError(null);
+      try {
+        await deleteClass(label.id);
+        setLabels((prev) => prev.filter((item) => item.id !== label.id));
+        if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+        broadcastClassesUpdated(projectId);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          setLabels((prev) => prev.filter((item) => item.id !== label.id));
+          if (activeClassId === label.id) setActiveClassId(labels.find((item) => item.id !== label.id)?.id ?? 0);
+          broadcastClassesUpdated(projectId);
+        } else {
+          setError(err instanceof Error ? err.message : "Could not delete label.");
+        }
+      } finally {
+        setLabelBusyId(null);
+      }
+    },
+    [activeClassId, isLoggedIn, labels, projectId, shapes],
+  );
 
   const handleSyncLabels = useCallback(async () => {
     if (!projectId) return;
     setError(null);
     try {
       const refreshed = await getClassesForProject(projectId);
+      projectClassesCache.set(projectId, refreshed);
+      setUsedClassIds(new Set(refreshed.filter((c) => (c.annotation_count ?? 0) > 0).map((c) => c.id)));
       const synced = refreshed.map((item) => ({
         id: item.id,
         name: item.name,
         color: item.color || "#f97316",
       }));
       setLabels(synced);
+      savedLabelsJsonRef.current = JSON.stringify(synced);
       setNewLabelColor(nextLabelColor(synced));
       if (synced.length > 0) {
-        setActiveClassId((prev) => synced.some((l) => l.id === prev) ? prev : synced[0].id);
+        setActiveClassId((prev) => (synced.some((l) => l.id === prev) ? prev : synced[0].id));
       }
     } catch {
       // silent — don't show error on background sync
@@ -752,12 +1293,17 @@ export default function AnnotatePageClient() {
       // BroadcastChannel not supported
     }
     return () => {
-      try { channel?.close(); } catch { /* ignore */ }
+      try {
+        channel?.close();
+      } catch {
+        /* ignore */
+      }
     };
   }, [projectId, handleSyncLabels]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (autoLabelOpen || showDeleteFrameConfirm || showExitConfirm) return;
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
@@ -767,6 +1313,53 @@ export default function AnnotatePageClient() {
       }
       const key = e.key.toLowerCase();
       if (e.ctrlKey || e.metaKey) {
+        if (key === "c") {
+          const selected = shapes.find(
+            (shape) => shape.clientId === selectedShapeId && shape.shapeType === "rectangle",
+          );
+          if (selected) {
+            e.preventDefault();
+            try {
+              sessionStorage.setItem(
+                `visiox-annotation-bbox-clipboard:${datasetId}`,
+                JSON.stringify(selected),
+              );
+            } catch {
+              // Ignore unavailable session storage.
+            }
+          }
+          return;
+        }
+        if (key === "v") {
+          e.preventDefault();
+          try {
+            const raw = sessionStorage.getItem(`visiox-annotation-bbox-clipboard:${datasetId}`);
+            if (!raw) return;
+            const copied = JSON.parse(raw) as EditorShape;
+            if (copied.shapeType !== "rectangle") return;
+            const pasted: EditorShape = {
+              ...copied,
+              clientId: `paste-${Date.now()}`,
+              serverId: undefined,
+              source: "manual",
+              confidence: undefined,
+              autoLabelSource: undefined,
+              autoLabelModelId: undefined,
+              autoLabelProvider: undefined,
+              autoLabelEngineName: undefined,
+              frame: 0,
+            };
+            _setShapes(sessionRef.current.update((currentShapes) => [...currentShapes, pasted]));
+            setSelectedShapeId(pasted.clientId);
+            if (labels.some((label) => label.id === pasted.classLabelId)) {
+              setActiveClassId(pasted.classLabelId);
+            }
+            setActiveRightTab("objects");
+          } catch {
+            // Ignore invalid or unavailable clipboard data.
+          }
+          return;
+        }
         if (key === "z" && !e.shiftKey) {
           e.preventDefault();
           undo();
@@ -783,34 +1376,93 @@ export default function AnnotatePageClient() {
         }
         return;
       }
-      if (key === "arrowleft") {
+      if (key === "a" || key === "arrowleft") {
         e.preventDefault();
         navigateTo(current - 1, { wrap: true });
-      } else if (key === "arrowright") {
+      } else if (key === "d" || key === "arrowright") {
         e.preventDefault();
         navigateTo(current + 1, { wrap: true });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, navigateTo, handleSave]);
+  }, [
+    autoLabelOpen,
+    current,
+    datasetId,
+    handleSave,
+    labels,
+    navigateTo,
+    selectedShapeId,
+    shapes,
+    showDeleteFrameConfirm,
+    showExitConfirm,
+  ]);
 
   const changeShapeClass = useCallback((shapeId: string, classId: number) => {
-    setShapes((prev) =>
-      prev.map((item) => (item.clientId === shapeId ? { ...item, classLabelId: classId } : item))
-    );
+    setShapes((prev) => prev.map((item) => (item.clientId === shapeId ? { ...item, classLabelId: classId } : item)));
+    setActiveClassId(classId);
   }, []);
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#fcfaf7]">
+      {showDeleteFrameConfirm && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-frame-title"
+            aria-describedby="delete-frame-description"
+            className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 text-red-600">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 10v6m4-6v6" />
+              </svg>
+            </div>
+            <h2 id="delete-frame-title" className="mt-4 text-lg font-bold text-stone-900">
+              Delete frame {frameIndex + 1}?
+            </h2>
+            <p id="delete-frame-description" className="mt-2 text-sm leading-6 text-stone-500">
+              This permanently removes the image and all of its annotations from the dataset. This action cannot be
+              undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteFrameConfirm(false)}
+                disabled={deletingFrame}
+                className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteFrame}
+                disabled={deletingFrame}
+                className="inline-flex min-w-32 items-center justify-center rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingFrame ? "Deleting..." : "Delete frame"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showExitConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div
+          className={["fixed inset-0 z-[200] flex items-center justify-center bg-black/40", "backdrop-blur-sm"].join(
+            " ",
+          )}
+        >
           <div className="relative w-96 rounded-2xl bg-white p-6 shadow-2xl">
             {/* Close button */}
             <button
               type="button"
               onClick={() => setShowExitConfirm(false)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600"
+              className={[
+                "absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100",
+                "hover:text-stone-600",
+              ].join(" ")}
               aria-label="Close"
             >
               <svg
@@ -827,20 +1479,19 @@ export default function AnnotatePageClient() {
               </svg>
             </button>
 
-            <h2 className="text-base font-bold text-stone-900">
-              Unsaved changes
-            </h2>
+            <h2 className="text-base font-bold text-stone-900">Unsaved changes</h2>
 
-            <p className="mt-1.5 text-sm text-stone-500">
-              You have unsaved annotations. Save before leaving?
-            </p>
+            <p className="mt-1.5 text-sm text-stone-500">You have unsaved annotations. Save before leaving?</p>
 
             <div className="mt-6 flex gap-3">
               {/* Discard */}
               <button
                 type="button"
-                onClick={() => router.push(`/datasets/${params.id}`)}
-                className="flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-100"
+                onClick={handleDiscard}
+                className={[
+                  "flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold",
+                  "text-stone-600 transition hover:bg-stone-100",
+                ].join(" ")}
               >
                 Discard changes
               </button>
@@ -850,30 +1501,18 @@ export default function AnnotatePageClient() {
                 type="button"
                 disabled={saving}
                 onClick={async () => {
-                  await handleSave();
-                  router.push(`/datasets/${params.id}`);
+                  const ok = await handleSave();
+                  if (ok) router.push(`/datasets/${params.id}`);
                 }}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                className={[
+                  "flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5",
+                  "text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50",
+                ].join(" ")}
               >
                 {saving ? (
-                  <svg
-                    className="h-4 w-4 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v8z"
-                    />
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                   </svg>
                 ) : (
                   <svg
@@ -904,10 +1543,20 @@ export default function AnnotatePageClient() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
-            className="fixed left-1/2 top-6 z-[100] -translate-x-1/2 flex items-center gap-2.5 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-xl shadow-emerald-500/30"
+            className={[
+              "fixed left-1/2 top-6 z-[100] -translate-x-1/2 flex items-center gap-2.5 rounded-2xl",
+              "bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-xl",
+              "shadow-emerald-500/30",
+            ].join(" ")}
           >
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none">
-              <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M3 8l3.5 3.5L13 4.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
             Saved successfully
           </motion.div>
@@ -921,10 +1570,13 @@ export default function AnnotatePageClient() {
         jobId={jobId}
         canSaveToApi={canSaveToApi}
         saving={saving}
+        saveDisabled={loading}
         canUndo={canUndo}
         canRedo={canRedo}
         onBack={() => {
-          if (JSON.stringify(shapes) !== savedShapesJsonRef.current) {
+          const dirtyShapes = shapesDifferFromSaved();
+          const dirtyLabels = JSON.stringify(labels) !== savedLabelsJsonRef.current;
+          if (dirtyShapes || dirtyLabels) {
             setShowExitConfirm(true);
           } else {
             router.push(`/datasets/${params.id}`);
@@ -933,9 +1585,32 @@ export default function AnnotatePageClient() {
         onUndo={undo}
         onRedo={redo}
         onSave={handleSave}
+        onDeleteFrame={isNativeMode ? requestDeleteFrame : undefined}
+        deletingFrame={deletingFrame}
+        deleteFrameDisabled={loading || saving || !canSaveToApi || total <= 0}
+        onAutoLabel={isNativeMode ? () => setAutoLabelOpen(true) : undefined}
+        autoLabelDisabled={projectId == null || loading}
+        autoLabelTitle={
+          projectId != null && !loading
+            ? "Auto Label current frame or entire dataset"
+            : isLoggedIn
+              ? "Waiting for dataset information"
+              : "Sign in to use Auto Label"
+        }
       />
 
       <ErrorBanner message={error} />
+
+      <AutoLabelDialog
+        open={autoLabelOpen}
+        datasetId={datasetId}
+        frameIndex={frameIndex}
+        projectId={projectId}
+        labels={labels}
+        onClose={() => setAutoLabelOpen(false)}
+        onDatasetComplete={handleAutoLabelComplete}
+        onFrameComplete={handleFrameAutoLabelComplete}
+      />
 
       <main className="flex min-h-0 flex-grow overflow-hidden">
         <ToolPane
@@ -953,6 +1628,9 @@ export default function AnnotatePageClient() {
           labels={labels}
           activeClassId={activeClassId}
           shapes={shapes}
+          predictionShapes={predictionShapes}
+          predictionModelName={predictionModelName}
+          predictionLoading={predictionLoading}
           activeTool={activeTool}
           polygonVertexCount={polygonVertexCount}
           hiddenShapeIds={hiddenShapeIds}
@@ -976,6 +1654,8 @@ export default function AnnotatePageClient() {
           newLabelColor={newLabelColor}
           labelBusyId={labelBusyId}
           selectedShapeId={selectedShapeId}
+          activeClassId={activeClassId}
+          usedClassIds={usedClassIds}
           onTabChange={setActiveRightTab}
           onNewLabelNameChange={setNewLabelName}
           onNewLabelColorChange={setNewLabelColor}
@@ -1015,4 +1695,3 @@ export default function AnnotatePageClient() {
     </div>
   );
 }
-

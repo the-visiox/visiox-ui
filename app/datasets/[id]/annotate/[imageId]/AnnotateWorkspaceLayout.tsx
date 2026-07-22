@@ -24,6 +24,7 @@ import {
   Plus,
   Redo2,
   Save,
+  Sparkles,
   Spline,
   Square,
   Tag,
@@ -90,7 +91,11 @@ function clampColorChannel(value: number) {
 function normalizeHexColor(value: string, fallback = "#E66700") {
   const raw = value.trim().replace("#", "");
   if (/^[0-9A-Fa-f]{3}$/.test(raw)) {
-    return `#${raw.split("").map((char) => char + char).join("").toUpperCase()}`;
+    return `#${raw
+      .split("")
+      .map((char) => char + char)
+      .join("")
+      .toUpperCase()}`;
   }
   if (/^[0-9A-Fa-f]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
   return fallback;
@@ -106,7 +111,10 @@ function hexToRgb(hex: string): RgbColor {
 }
 
 function rgbToHex({ r, g, b }: RgbColor) {
-  return `#${[r, g, b].map((value) => clampColorChannel(value).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  return `#${[r, g, b]
+    .map((value) => clampColorChannel(value).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase()}`;
 }
 
 function rgbToHsv({ r, g, b }: RgbColor): HsvColor {
@@ -144,7 +152,7 @@ function hsvToRgb({ h, s, v }: HsvColor): RgbColor {
   else if (h < 180) [red, green, blue] = [0, c, x];
   else if (h < 240) [red, green, blue] = [0, x, c];
   else if (h < 300) [red, green, blue] = [x, 0, c];
-  else[red, green, blue] = [c, 0, x];
+  else [red, green, blue] = [c, 0, x];
 
   return {
     r: clampColorChannel((red + m) * 255),
@@ -171,9 +179,17 @@ export function PaneResizeHandle({
       onPointerMove={resize.update}
       onPointerUp={resize.stop}
       onPointerCancel={resize.stop}
-      className="group relative z-30 w-2 shrink-0 cursor-col-resize touch-none bg-transparent outline-none"
+      className={["group relative z-30 w-2 shrink-0 cursor-col-resize touch-none", "bg-transparent outline-none"].join(
+        " ",
+      )}
     >
-      <span className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 rounded-full bg-stone-200 transition group-hover:w-1 group-hover:bg-orange-400 group-focus-visible:w-1 group-focus-visible:bg-orange-500" />
+      <span
+        className={[
+          "absolute inset-y-3 left-1/2 w-px -translate-x-1/2 rounded-full bg-stone-200 transition",
+          "group-hover:w-1 group-hover:bg-orange-400 group-focus-visible:w-1",
+          "group-focus-visible:bg-orange-500",
+        ].join(" ")}
+      />
     </button>
   );
 }
@@ -186,12 +202,19 @@ export function WorkspaceHeader({
   jobId,
   canSaveToApi,
   saving,
+  saveDisabled = false,
   canUndo,
   canRedo,
   onBack,
   onUndo,
   onRedo,
   onSave,
+  onAutoLabel,
+  onDeleteFrame,
+  deletingFrame = false,
+  deleteFrameDisabled = false,
+  autoLabelDisabled = false,
+  autoLabelTitle = "Auto Label current frame",
 }: {
   datasetId: string | string[] | undefined;
   imageId: string | string[] | undefined;
@@ -200,30 +223,45 @@ export function WorkspaceHeader({
   jobId: number;
   canSaveToApi: boolean;
   saving: boolean;
+  saveDisabled?: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onBack: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onSave: () => void;
+  onAutoLabel?: () => void;
+  onDeleteFrame?: () => void;
+  deletingFrame?: boolean;
+  deleteFrameDisabled?: boolean;
+  autoLabelDisabled?: boolean;
+  autoLabelTitle?: string;
 }) {
   const modeText = isNativeMode ? ` · Frame ${frameIndex + 1}` : ` · Media ${imageId}`;
   const saveText = !Number.isNaN(jobId) ? ` · Job ${jobId}` : canSaveToApi ? " · Direct" : " · Demo";
 
   return (
-    <nav className="z-30 flex items-center justify-between border-b border-stone-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-stone-200/40 backdrop-blur-xl">
+    <nav
+      className={[
+        "z-30 flex items-center justify-between border-b border-stone-200/80 bg-white/90 px-4",
+        "py-3 shadow-sm shadow-stone-200/40 backdrop-blur-xl",
+      ].join(" ")}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
           onClick={onBack}
-          className="shrink-0 rounded-xl p-2 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
+          className={[
+            "shrink-0 rounded-xl p-2 text-stone-500 transition-colors",
+            "hover:bg-stone-100 hover:text-stone-900",
+          ].join(" ")}
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="h-8 w-px shrink-0 bg-stone-200" />
         <div className="hidden min-w-0 sm:block">
           <h1 className="text-sm font-bold leading-none text-stone-900">Annotation workspace</h1>
-          <p className="mt-1.5 truncate text-xs font-bold uppercase tracking-widest text-orange-600">
+          <p className={["mt-1.5 truncate text-xs font-bold uppercase tracking-widest", "text-orange-600"].join(" ")}>
             Dataset {datasetId}
             {modeText}
             {saveText}
@@ -234,15 +272,15 @@ export function WorkspaceHeader({
           <button
             type="button"
             onClick={onSave}
-            disabled={saving}
+            disabled={saving || saveDisabled}
             title="Save (Ctrl+S)"
-            className="flex h-7 w-7 items-center justify-center pt-0.5 rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+            className={[
+              "flex h-7 w-7 items-center justify-center pt-0.5 rounded-lg text-stone-400 transition",
+              "hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent",
+              "disabled:hover:text-stone-400",
+            ].join(" ")}
           >
-            {saving ? (
-              <Loader2 className="h-4.5 w-4.5 animate-spin" />
-            ) : (
-              <Save className="h-5 w-5" />
-            )}
+            {saving ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Save className="h-5 w-5" />}
           </button>
 
           <button
@@ -250,7 +288,11 @@ export function WorkspaceHeader({
             onClick={onUndo}
             disabled={!canUndo}
             title="Undo (Ctrl+Z)"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+            className={[
+              "flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition",
+              "hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent",
+              "disabled:hover:text-stone-400",
+            ].join(" ")}
           >
             <Undo2 className="h-5 w-5" />
           </button>
@@ -260,11 +302,41 @@ export function WorkspaceHeader({
             onClick={onRedo}
             disabled={!canRedo}
             title="Redo (Ctrl+Y)"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+            className={[
+              "flex h-7 w-7 items-center justify-center rounded-lg text-stone-400 transition",
+              "hover:bg-white/80 hover:text-stone-700 disabled:opacity-30 disabled:hover:bg-transparent",
+              "disabled:hover:text-stone-400",
+            ].join(" ")}
           >
             <Redo2 className="h-5 w-5" />
           </button>
         </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {onDeleteFrame ? (
+          <button
+            type="button"
+            onClick={onDeleteFrame}
+            disabled={deleteFrameDisabled || deletingFrame}
+            title="Delete current frame"
+            aria-label="Delete current frame"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+          >
+            {deletingFrame ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          </button>
+        ) : null}
+        {onAutoLabel ? (
+          <button
+            type="button"
+            onClick={onAutoLabel}
+            disabled={autoLabelDisabled}
+            title={autoLabelTitle}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-sm font-bold text-orange-700 transition-colors hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400 sm:px-4"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">Auto Label</span>
+          </button>
+        ) : null}
       </div>
     </nav>
   );
@@ -275,11 +347,22 @@ export function ErrorBanner({ message }: { message: string | null }) {
 
   return (
     <div className="group absolute left-4 top-14 z-50">
-      <div className="flex cursor-default items-center gap-1.5 rounded-full border border-red-200 bg-red-500 px-2.5 py-1 shadow-sm">
+      <div
+        className={[
+          "flex cursor-default items-center gap-1.5 rounded-full border border-red-200 bg-red-500",
+          "px-2.5 py-1 shadow-sm",
+        ].join(" ")}
+      >
         <AlertCircle className="h-3.5 w-3.5 text-white" />
         <span className="text-xs font-semibold text-white">Error</span>
       </div>
-      <div className="pointer-events-none absolute left-0 top-full mt-2 w-72 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 opacity-0 shadow-lg transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+      <div
+        className={[
+          "pointer-events-none absolute left-0 top-full mt-2 w-72 rounded-2xl border border-red-100",
+          "bg-red-50 px-4 py-3 text-sm text-red-700 opacity-0 shadow-lg transition-opacity",
+          "duration-150 group-hover:pointer-events-auto group-hover:opacity-100",
+        ].join(" ")}
+      >
         <div className="flex items-start gap-2">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{message}</span>
@@ -304,7 +387,10 @@ export function ToolPane({
 }) {
   return (
     <aside
-      className="z-20 flex flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80 bg-white/90 px-2 py-4 shadow-sm shadow-stone-200/30 sm:px-2.5"
+      className={[
+        "z-20 flex flex-col items-stretch gap-3 overflow-y-auto border-r border-stone-200/80",
+        "bg-white/90 px-2 py-4 shadow-sm shadow-stone-200/30 sm:px-2.5",
+      ].join(" ")}
       style={{ width, minWidth: width, maxWidth: width, flexShrink: 0, flexGrow: 0 }}
     >
       <div className="flex flex-col gap-2 p-1">
@@ -352,9 +438,18 @@ function ToolButton({
       type="button"
       title={`${label} (${shortcut})`}
       onClick={() => onToolChange(tool)}
-      className={`inline-flex h-10 w-10 self-center flex-col items-center justify-center gap-1 rounded-xl text-[8px] font-bold uppercase tracking-wide transition-all ${isActive
-          ? "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400/25"
-          : "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white hover:text-stone-900 hover:shadow-sm"
+      className={`inline-flex h-10 w-10 self-center flex-col items-center justify-center
+        gap-1 rounded-xl text-[8px] font-bold uppercase tracking-wide
+        transition-all ${
+          isActive
+            ? [
+                "border border-orange-200 bg-orange-50 text-orange-700 shadow-lg",
+                "shadow-orange-500/20 ring-2 ring-orange-400/25",
+              ].join(" ")
+            : [
+                "border border-transparent text-stone-500 hover:border-stone-200 hover:bg-white",
+                "hover:text-stone-900 hover:shadow-sm",
+              ].join(" ")
         }`}
     >
       {icon}
@@ -367,17 +462,30 @@ function ToolButton({
     <div className="flex w-14 self-center flex-col gap-1.5">
       {button}
       {isActive && (
-        <label className="flex w-14 flex-col gap-1.5 rounded-xl border border-orange-200 bg-white px-1.5 py-2 shadow-sm shadow-orange-100/60">
-          <span className="text-center text-[8px] font-bold uppercase leading-none tracking-wider text-stone-500">
+        <label
+          className={[
+            "flex w-14 flex-col gap-1.5 rounded-xl border border-orange-200 bg-white px-1.5 py-2",
+            "shadow-sm shadow-orange-100/60",
+          ].join(" ")}
+        >
+          <span
+            className={[
+              "text-center text-[8px] font-bold uppercase leading-none tracking-wider",
+              "text-stone-500",
+            ].join(" ")}
+          >
             Points
           </span>
           <select
             value={polygonVertexCount}
             onChange={(e) => onPolygonVertexCountChange(Number(e.target.value))}
             onClick={(e) => e.stopPropagation()}
-            className="w-full rounded-lg border border-stone-200 bg-stone-50 px-1.5 py-1.5 text-xs font-semibold text-stone-800"
+            className={[
+              "w-full rounded-lg border border-stone-200 bg-stone-50 px-1.5 py-1.5 text-xs",
+              "font-semibold text-stone-800",
+            ].join(" ")}
           >
-            {[(tool === "polyline" ? 2 : 3), 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
+            {[tool === "polyline" ? 2 : 3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 20].map((n) => (
               <option key={`${tool}-${n}`} value={n}>
                 {n}
               </option>
@@ -396,6 +504,9 @@ export function CanvasStage({
   labels,
   activeClassId,
   shapes,
+  predictionShapes = [],
+  predictionModelName,
+  predictionLoading = false,
   activeTool,
   polygonVertexCount,
   hiddenShapeIds,
@@ -412,6 +523,9 @@ export function CanvasStage({
   labels: LabelDefinition[];
   activeClassId: number;
   shapes: EditorShape[];
+  predictionShapes?: EditorShape[];
+  predictionModelName?: string;
+  predictionLoading?: boolean;
   activeTool: Tool;
   polygonVertexCount: number;
   hiddenShapeIds: string[];
@@ -423,7 +537,16 @@ export function CanvasStage({
   externalSelectedId?: string | null;
 }) {
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch overflow-hidden">
+    <div
+      className={["relative flex min-h-0 min-w-0 flex-grow items-stretch justify-stretch", "overflow-hidden"].join(" ")}
+    >
+      {predictionModelName || predictionLoading ? (
+        <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-xl border border-violet-200 bg-white/95 px-3 py-2 text-xs font-bold text-violet-700 shadow-sm backdrop-blur-sm">
+          {predictionLoading
+            ? "Running model prediction…"
+            : `Solid: Ground truth · Dashed: ${predictionModelName} (${predictionShapes.length})`}
+        </div>
+      ) : null}
       {loading ? (
         <div className="absolute inset-4 z-10 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-stone-500">
@@ -432,7 +555,12 @@ export function CanvasStage({
           </div>
         </div>
       ) : (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45 }} className="absolute inset-0">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.45 }}
+          className="absolute inset-0 overflow-hidden"
+        >
           <AnnotationEditor
             key={currentDraftKey}
             imageUrl={imageUrl}
@@ -440,6 +568,8 @@ export function CanvasStage({
             activeClassId={activeClassId}
             onActiveClassIdChange={onActiveClassIdChange}
             shapes={shapes}
+            predictionShapes={predictionShapes}
+            predictionModelName={predictionModelName}
             onShapesChange={onShapesChange}
             activeTool={activeTool}
             onToolChange={onToolChange}
@@ -467,6 +597,8 @@ export function RightPane({
   newLabelColor,
   labelBusyId,
   selectedShapeId,
+  activeClassId,
+  usedClassIds,
   onSelectShape,
   onTabChange,
   onNewLabelNameChange,
@@ -490,6 +622,8 @@ export function RightPane({
   newLabelColor: string;
   labelBusyId: number | "new" | null;
   selectedShapeId: string | null;
+  activeClassId: number;
+  usedClassIds: Set<number>;
   onTabChange: (tab: RightTab) => void;
   onNewLabelNameChange: (value: string) => void;
   onNewLabelColorChange: (value: string) => void;
@@ -504,7 +638,10 @@ export function RightPane({
 }) {
   return (
     <aside
-      className="z-20 grid h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l border-stone-200/80 bg-white/90 p-4 shadow-xl shadow-stone-200/30 backdrop-blur-xl"
+      className={[
+        "z-20 grid h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l",
+        "border-stone-200/80 bg-white/90 p-4 shadow-xl shadow-stone-200/30 backdrop-blur-xl",
+      ].join(" ")}
       style={{ width, minWidth: width, maxWidth: width, flexShrink: 0, flexGrow: 0 }}
     >
       <RightPaneTabs activeTab={activeTab} objectCount={shapes.length} onTabChange={onTabChange} />
@@ -517,10 +654,13 @@ export function RightPane({
             newLabelName={newLabelName}
             newLabelColor={newLabelColor}
             labelBusyId={labelBusyId}
+            activeClassId={activeClassId}
+            usedClassIds={usedClassIds}
             onNewLabelNameChange={onNewLabelNameChange}
             onNewLabelColorChange={onNewLabelColorChange}
             onCreateLabel={onCreateLabel}
             onDeleteLabel={onDeleteLabel}
+            onActiveClassIdChange={onActiveClassIdChange}
           />
         ) : (
           <ObjectsPanel
@@ -560,17 +700,20 @@ function RightPaneTabs({
             key={tab}
             type="button"
             onClick={() => onTabChange(tab)}
-            className={`-mb-px border-b-2 px-3 pb-2 text-sm font-bold uppercase tracking-widest transition ${activeTab === tab
+            className={`-mb-px border-b-2 px-3 pb-2 text-sm font-bold uppercase tracking-widest transition ${
+              activeTab === tab
                 ? "border-orange-500 text-stone-900"
                 : "border-transparent text-stone-400 hover:text-stone-700"
-              }`}
+            }`}
           >
             {tab === "objects" ? "Objects" : "Labels"}
           </button>
         ))}
       </div>
       {activeTab === "objects" && (
-        <span className="rounded-lg bg-stone-100 px-2.5 mb-2 py-1 text-xs font-bold text-stone-500">{objectCount} total</span>
+        <span className="rounded-lg bg-stone-100 px-2.5 mb-2 py-1 text-xs font-bold text-stone-500">
+          {objectCount} total
+        </span>
       )}
     </div>
   );
@@ -582,47 +725,69 @@ function LabelsPanel({
   newLabelName,
   newLabelColor,
   labelBusyId,
+  activeClassId,
+  usedClassIds,
   onNewLabelNameChange,
   onNewLabelColorChange,
   onCreateLabel,
   onDeleteLabel,
+  onActiveClassIdChange,
 }: {
   labels: LabelDefinition[];
   shapes: EditorShape[];
   newLabelName: string;
   newLabelColor: string;
   labelBusyId: number | "new" | null;
+  activeClassId: number;
+  usedClassIds: Set<number>;
   onNewLabelNameChange: (value: string) => void;
   onNewLabelColorChange: (value: string) => void;
   onCreateLabel: (e: React.FormEvent) => void;
   onDeleteLabel: (label: LabelDefinition) => void;
+  onActiveClassIdChange: (classId: number) => void;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-4">
-      <div className="mb-3 shrink-0 text-[14px] font-bold uppercase tracking-widest text-stone-500">Classes</div>
+    <div
+      className={[
+        "flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border",
+        "border-stone-200/80 bg-stone-50/80 p-4",
+      ].join(" ")}
+    >
+      <div className={["mb-3 shrink-0 text-[14px] font-bold uppercase tracking-widest", "text-stone-500"].join(" ")}>
+        Classes
+      </div>
       <form onSubmit={onCreateLabel} className="mb-3 flex shrink-0 items-center gap-2">
-        <LabelColorPicker
-          value={newLabelColor}
-          onChange={onNewLabelColorChange}
-        />
+        <LabelColorPicker value={newLabelColor} onChange={onNewLabelColorChange} />
         <input
           type="text"
           value={newLabelName}
           onChange={(e) => onNewLabelNameChange(e.target.value)}
           placeholder="New label"
-          className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-stone-800 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+          className={[
+            "min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm",
+            "font-semibold text-stone-800 outline-none transition focus:border-orange-400",
+            "focus:ring-2 focus:ring-orange-400/20",
+          ].join(" ")}
         />
         <button
           type="submit"
           disabled={!newLabelName.trim() || labelBusyId === "new"}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+          className={[
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white",
+            "transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50",
+          ].join(" ")}
           title="Add label"
           aria-label="Add label"
         >
           {labelBusyId === "new" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
         </button>
       </form>
-      <div className="custom-scrollbar min-h-0 flex-1 max-h-[68.3vh] space-y-2 overflow-y-auto overscroll-contain pr-2">
+      <div
+        className={[
+          "custom-scrollbar min-h-0 flex-1 max-h-[68.3vh] space-y-2 overflow-y-auto",
+          "overscroll-contain pr-2",
+        ].join(" ")}
+      >
         {labels.length === 0 ? (
           <p className="pt-6 text-center text-xs text-stone-400">
             No classes yet. Add classes in project settings or create one above.
@@ -632,8 +797,10 @@ function LabelsPanel({
             <LabelRow
               key={label.id}
               label={label}
-              isUsed={shapes.some((shape) => shape.classLabelId === label.id)}
+              isUsed={usedClassIds.has(label.id) || shapes.some((shape) => shape.classLabelId === label.id)}
               deleting={labelBusyId === label.id}
+              isActive={label.id === activeClassId}
+              onSelect={onActiveClassIdChange}
               onDelete={onDeleteLabel}
             />
           ))
@@ -643,13 +810,7 @@ function LabelsPanel({
   );
 }
 
-function LabelColorPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
+function LabelColorPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const [open, setOpen] = React.useState(false);
   const [draftColor, setDraftColor] = React.useState(normalizeHexColor(value));
   const initialColorRef = React.useRef(normalizeHexColor(value));
@@ -693,7 +854,7 @@ function LabelColorPicker({
       setDraftColor(normalized);
       onChange(normalized);
     },
-    [draftColor, onChange]
+    [draftColor, onChange],
   );
 
   const updateFromColorArea = React.useCallback(
@@ -704,7 +865,7 @@ function LabelColorPicker({
       const v = Math.max(0, Math.min(1, 1 - (event.clientY - rect.top) / rect.height));
       commitColor(rgbToHex(hsvToRgb({ h: hsv.h, s, v })));
     },
-    [commitColor, hsv.h]
+    [commitColor, hsv.h],
   );
 
   const updateRgb = (channel: keyof RgbColor, channelValue: string) => {
@@ -720,7 +881,11 @@ function LabelColorPicker({
           setDraftColor(normalizeHexColor(value));
           setOpen((current) => !current);
         }}
-        className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-stone-200 bg-white p-1 shadow-sm shadow-stone-200/40 transition hover:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-400/20"
+        className={[
+          "h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-stone-200 bg-white p-1",
+          "shadow-sm shadow-stone-200/40 transition hover:border-orange-300 focus:outline-none",
+          "focus:ring-2 focus:ring-orange-400/20",
+        ].join(" ")}
         title="Pick label color"
         aria-label="Pick label color"
       >
@@ -729,7 +894,10 @@ function LabelColorPicker({
 
       {open && (
         <div
-          className="absolute left-0 top-11 z-50 w-[244px] rounded-2xl border border-stone-200 bg-white p-3 shadow-2xl shadow-stone-300/50"
+          className={[
+            "absolute left-0 top-11 z-50 w-[244px] rounded-2xl border border-stone-200 bg-white p-3",
+            "shadow-2xl shadow-stone-300/50",
+          ].join(" ")}
           onKeyDown={(event) => {
             if (event.key === "Enter") event.preventDefault();
           }}
@@ -739,7 +907,9 @@ function LabelColorPicker({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900"
+              className={["rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100", "hover:text-stone-900"].join(
+                " ",
+              )}
               aria-label="Close color picker"
             >
               <X className="h-4 w-4" />
@@ -762,26 +932,44 @@ function LabelColorPicker({
             onPointerMove={(event) => {
               if (event.buttons === 1) updateFromColorArea(event);
             }}
-            className="relative h-32 w-full touch-none cursor-crosshair overflow-hidden border border-stone-200"
+            className={[
+              "relative h-32 w-full touch-none cursor-crosshair overflow-hidden border",
+              "border-stone-200",
+            ].join(" ")}
             style={{
-              background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))`,
+              background: [
+                "linear-gradient(to top, #000, transparent)",
+                `linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))`,
+              ].join(", "),
             }}
           >
             <span
-              className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md shadow-black/40"
+              className={[
+                "absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white",
+                "shadow-md shadow-black/40",
+              ].join(" ")}
               style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
             />
           </div>
 
           <div className="mt-3 flex items-center gap-2">
-            <span className="h-8 w-8 shrink-0 rounded-full border border-stone-200" style={{ backgroundColor: draftColor }} />
+            <span
+              className="h-8 w-8 shrink-0 rounded-full border border-stone-200"
+              style={{ backgroundColor: draftColor }}
+            />
             <input
               type="range"
               min={0}
               max={359}
               value={Math.round(hsv.h)}
               onChange={(event) => commitColor(rgbToHex(hsvToRgb({ ...hsv, h: Number(event.target.value) })))}
-              className="h-3 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-[linear-gradient(to_right,#ef4444,#f97316,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ec4899,#ef4444)]"
+              className="h-3 min-w-0 flex-1 cursor-pointer appearance-none rounded-full"
+              style={{
+                background: [
+                  "linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e",
+                  "#06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)",
+                ].join(", "),
+              }}
               aria-label="Hue"
             />
           </div>
@@ -800,7 +988,11 @@ function LabelColorPicker({
                   }
                 }}
                 onBlur={() => commitColor(draftColor)}
-                className="h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-2 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+                className={[
+                  "h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-2 text-center text-xs",
+                  "text-stone-800 outline-none focus:border-orange-400 focus:ring-2",
+                  "focus:ring-orange-400/20",
+                ].join(" ")}
               />
             </label>
 
@@ -813,13 +1005,22 @@ function LabelColorPicker({
                   max={255}
                   value={rgb[channel]}
                   onChange={(event) => updateRgb(channel, event.target.value)}
-                  className="no-number-spinner h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-1 text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+                  className={[
+                    "no-number-spinner h-8 w-full rounded-lg border border-stone-200 bg-stone-50 px-1",
+                    "text-center text-xs text-stone-800 outline-none focus:border-orange-400 focus:ring-2",
+                    "focus:ring-orange-400/20",
+                  ].join(" ")}
                 />
               </label>
             ))}
           </div>
 
-          <div className="mt-1 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2 text-center text-[10px] font-bold text-stone-500">
+          <div
+            className={[
+              "mt-1 grid grid-cols-[1.9fr_1fr_1fr_1fr] gap-2 text-center text-[10px] font-bold",
+              "text-stone-500",
+            ].join(" ")}
+          >
             <span>Hex</span>
             <span>R</span>
             <span>G</span>
@@ -832,7 +1033,10 @@ function LabelColorPicker({
                 key={color}
                 type="button"
                 onClick={() => commitColor(color)}
-                className="h-5 w-5 rounded-md border border-stone-200 transition hover:scale-110 focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                className={[
+                  "h-5 w-5 rounded-md border border-stone-200 transition hover:scale-110 focus:outline-none",
+                  "focus:ring-2 focus:ring-orange-400/30",
+                ].join(" ")}
                 style={{ backgroundColor: color }}
                 aria-label={`Use ${color}`}
               />
@@ -843,7 +1047,10 @@ function LabelColorPicker({
             <button
               type="button"
               onClick={() => commitColor("#E66700")}
-              className="rounded-lg border border-stone-200 px-2 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-50"
+              className={[
+                "rounded-lg border border-stone-200 px-2 py-2 text-xs font-bold text-stone-600 transition",
+                "hover:bg-stone-50",
+              ].join(" ")}
             >
               Reset
             </button>
@@ -853,14 +1060,20 @@ function LabelColorPicker({
                 commitColor(initialColorRef.current);
                 setOpen(false);
               }}
-              className="rounded-lg border border-stone-200 px-2 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-50"
+              className={[
+                "rounded-lg border border-stone-200 px-2 py-2 text-xs font-bold text-stone-600 transition",
+                "hover:bg-stone-50",
+              ].join(" ")}
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-lg bg-orange-500 px-2 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600"
+              className={[
+                "rounded-lg bg-orange-500 px-2 py-2 text-xs font-bold text-white shadow-lg",
+                "shadow-orange-500/20 transition hover:bg-orange-600",
+              ].join(" ")}
             >
               OK
             </button>
@@ -875,24 +1088,57 @@ function LabelRow({
   label,
   isUsed,
   deleting,
+  isActive,
+  onSelect,
   onDelete,
 }: {
   label: LabelDefinition;
   isUsed: boolean;
   deleting: boolean;
+  isActive: boolean;
+  onSelect: (classId: number) => void;
   onDelete: (label: LabelDefinition) => void;
 }) {
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-xl bg-white/70 px-3 py-2 text-left text-base font-semibold text-stone-700 shadow-sm shadow-stone-200/40">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(label.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(label.id);
+        }
+      }}
+      aria-pressed={isActive}
+      title={`Use “${label.name}” for new labels`}
+      className={[
+        "group flex min-w-0 shrink-0 cursor-pointer items-center gap-3 rounded-xl border p-2",
+        "text-left text-sm font-semibold text-stone-700 transition-colors",
+      ].join(" ")}
+      style={{
+        borderColor: isActive ? label.color : `${label.color}55`,
+        backgroundColor: isActive ? `${label.color}26` : `${label.color}0F`,
+        // Inset ring in the label's own colour: uniform tone, never bleeds past the card.
+        boxShadow: isActive ? `inset 0 0 0 0px ${label.color}` : undefined,
+      }}
+    >
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
       <span className="min-w-0 flex-1 truncate">{label.name}</span>
       <button
         type="button"
-        onClick={() => void onDelete(label)}
+        onClick={(e) => {
+          e.stopPropagation();
+          void onDelete(label);
+        }}
         disabled={deleting || isUsed}
         title={isUsed ? "Label is in use" : "Delete label"}
         aria-label={isUsed ? "Label is in use" : "Delete label"}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-stone-400"
+        className={[
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition",
+          "hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-35",
+          "disabled:hover:bg-transparent disabled:hover:text-stone-400",
+        ].join(" ")}
       >
         {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
       </button>
@@ -928,12 +1174,20 @@ function ObjectsPanel({
   onSelectShape: (shapeId: string) => void;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/80 p-3">
-      <div className="custom-scrollbar min-h-0 flex-1 max-h-[77vh] space-y-2 overflow-y-auto overscroll-contain pr-2 p-1">
+    <div
+      className={[
+        "flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border",
+        "border-stone-200/80 bg-stone-50/80 p-3",
+      ].join(" ")}
+    >
+      <div
+        className={[
+          "custom-scrollbar min-h-0 flex-1 max-h-[77vh] space-y-2 overflow-y-auto",
+          "overscroll-contain pr-2 p-1",
+        ].join(" ")}
+      >
         {shapes.length === 0 && (
-          <p className="text-base leading-relaxed text-stone-500">
-            Box: click two corners on the image (N).
-          </p>
+          <p className="text-base leading-relaxed text-stone-500">Box: click two corners on the image (N).</p>
         )}
         {shapes.map((shape, index) => (
           <ObjectRow
@@ -999,17 +1253,33 @@ function ObjectRow({
   return (
     <motion.div
       ref={rowRef}
-      animate={isSelected ? { boxShadow: [`0 0 0px ${color}00`, `0 0 12px ${color}88`, `0 0 6px ${color}44`] } : { boxShadow: `0 0 0px ${color}00` }}
+      animate={
+        isSelected
+          ? { boxShadow: [`0 0 0px ${color}00`, `0 0 12px ${color}88`, `0 0 6px ${color}44`] }
+          : { boxShadow: `0 0 0px ${color}00` }
+      }
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className={`group space-y-1 rounded-2xl border p-2.5 transition-colors hover:bg-white ${isSelected ? "ring-2 ring-orange-400/60" : ""}`}
+      className={`group space-y-1 rounded-2xl border p-2.5 transition-colors
+        hover:bg-white ${isSelected ? "ring-2 ring-orange-400/60" : ""}`}
       style={{
         borderColor: isSelected ? `${color}99` : `${color}55`,
         backgroundColor: isSelected ? `${color}33` : `${color}0F`,
       }}
     >
-      <div className="flex cursor-pointer items-center justify-between" onClick={() => { onSelect(shape.clientId); onActiveClassIdChange(shape.classLabelId); }}>
+      <div
+        className="flex cursor-pointer items-center justify-between"
+        onClick={() => {
+          onSelect(shape.clientId);
+          onActiveClassIdChange(shape.classLabelId);
+        }}
+      >
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[11px] font-black tabular-nums text-stone-700">
+          <span
+            className={[
+              "flex h-6 w-6 shrink-0 items-center justify-center text-[11px] font-black tabular-nums",
+              "text-stone-700",
+            ].join(" ")}
+          >
             {index + 1}.
           </span>
         </div>
@@ -1030,6 +1300,11 @@ function ObjectRow({
           >
             <Pin className="h-3.5 w-3.5" />
           </ObjectIconButton>
+          {shape.source === "auto_label" ? (
+            <span title={shape.autoLabelEngineName} className="rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-black text-orange-700">
+              AI{typeof shape.confidence === "number" ? ` ${Math.round(shape.confidence * 100)}%` : ""}
+            </span>
+          ) : null}
           <span className="font-mono text-xs text-stone-400">{objectSummary(shape)}</span>
         </div>
       </div>
@@ -1070,8 +1345,9 @@ function ObjectIconButton({
         e.stopPropagation();
         onClick();
       }}
-      className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${active ? activeClassName : "text-stone-400 hover:bg-white hover:text-stone-800"
-        }`}
+      className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
+        active ? activeClassName : "text-stone-400 hover:bg-white hover:text-stone-800"
+      }`}
     >
       {children}
     </button>
@@ -1106,16 +1382,28 @@ function ClassMenu({
             e.stopPropagation();
             onOpenClassMenuIdChange((prev) => (prev === shape.clientId ? null : shape.clientId));
           }}
-          className="flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-left text-sm font-semibold normal-case tracking-normal text-stone-800 shadow-sm shadow-stone-200/50 outline-none transition hover:border-stone-400 hover:bg-white focus:border-stone-400 "
+          className={[
+            "flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200",
+            "bg-white px-3.5 py-2.5 text-left text-sm font-semibold normal-case tracking-normal",
+            "text-stone-800 shadow-sm shadow-stone-200/50 outline-none transition",
+            "hover:border-stone-400 hover:bg-white focus:border-stone-400",
+          ].join(" ")}
         >
           <span className="flex min-w-0 items-center gap-2">
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
             <span className="truncate">{name}</span>
           </span>
-          <ChevronRight className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${isOpen ? "-rotate-90" : "rotate-90"}`} />
+          <ChevronRight
+            className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${isOpen ? "-rotate-90" : "rotate-90"}`}
+          />
         </button>
         {isOpen && (
-          <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 max-h-64 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-xl shadow-stone-300/30">
+          <div
+            className={[
+              "absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 max-h-64 overflow-y-auto",
+              "rounded-xl border border-stone-200 bg-white p-1 shadow-xl shadow-stone-300/30",
+            ].join(" ")}
+          >
             {labels.map((label) => (
               <ClassMenuItem
                 key={label.id}
@@ -1151,7 +1439,9 @@ function ClassMenuItem({
         e.stopPropagation();
         onSelect(label.id);
       }}
-      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold normal-case tracking-normal transition ${selected ? "bg-white text-stone-800" : "text-stone-300 hover:bg-stone-50 hover:text-stone-900"
+      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm
+        font-semibold normal-case tracking-normal transition ${
+          selected ? "bg-white text-stone-800" : "text-stone-300 hover:bg-stone-50 hover:text-stone-900"
         }`}
     >
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
@@ -1200,19 +1490,50 @@ export function TimelineBar({
   const fallbackName = isNativeMode ? `Frame ${frameIndex + 1}` : `Media ${imageId}`;
   const controls = [
     { icon: <ChevronFirst className="h-4 w-4" />, label: "First", action: () => onNavigateTo(1) },
-    { icon: <ChevronsLeft className="h-4 w-4" />, label: "Back 10", action: () => onNavigateTo(current - 10, { wrap: true }) },
-    { icon: <ChevronLeft className="h-4 w-4" />, label: "Prev", action: () => onNavigateTo(current - 1, { wrap: true }) },
-    { icon: <Play className="h-4 w-4" />, label: "Play", action: () => { } },
-    { icon: <ChevronRight className="h-4 w-4" />, label: "Next", action: () => onNavigateTo(current + 1, { wrap: true }) },
-    { icon: <ChevronsRight className="h-4 w-4" />, label: "Forward 10", action: () => onNavigateTo(current + 10, { wrap: true }) },
+    {
+      icon: <ChevronsLeft className="h-4 w-4" />,
+      label: "Back 10",
+      action: () => onNavigateTo(current - 10, { wrap: true }),
+    },
+    {
+      icon: <ChevronLeft className="h-4 w-4" />,
+      label: "Prev",
+      action: () => onNavigateTo(current - 1, { wrap: true }),
+    },
+    { icon: <Play className="h-4 w-4" />, label: "Play", action: () => {} },
+    {
+      icon: <ChevronRight className="h-4 w-4" />,
+      label: "Next",
+      action: () => onNavigateTo(current + 1, { wrap: true }),
+    },
+    {
+      icon: <ChevronsRight className="h-4 w-4" />,
+      label: "Forward 10",
+      action: () => onNavigateTo(current + 10, { wrap: true }),
+    },
     { icon: <ChevronLast className="h-4 w-4" />, label: "Last", action: () => onNavigateTo(total || 1) },
   ];
 
   return (
-    <div className="z-30 flex select-none items-center gap-3 border-t border-stone-200/80 bg-white/95 px-4 py-1 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl" style={{ width: '100%', flexShrink: 0, flexGrow: 0 }}>
+    <div
+      className={[
+        "z-30 flex select-none items-center gap-3 border-t border-stone-200/80 bg-white/95 px-4",
+        "py-1 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)] backdrop-blur-xl",
+      ].join(" ")}
+      style={{ width: "100%", flexShrink: 0, flexGrow: 0 }}
+    >
       <div className="flex items-center gap-1.5">
         {controls.map(({ icon, label, action }) => (
-          <button key={label} type="button" title={label} onClick={action} className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200">
+          <button
+            key={label}
+            type="button"
+            title={label}
+            onClick={action}
+            className={[
+              "flex h-8 w-8 items-center justify-center rounded-lg text-stone-600 transition",
+              "hover:bg-stone-100 hover:text-stone-900 active:bg-stone-200",
+            ].join(" ")}
+          >
             {icon}
           </button>
         ))}
@@ -1239,9 +1560,17 @@ export function TimelineBar({
               onCommitSlider();
             }
           }}
-          className="h-2 w-full cursor-pointer touch-none appearance-none rounded-full bg-stone-200 accent-orange-500 transition-[background] duration-200"
+          className={[
+            "h-2 w-full cursor-pointer touch-none appearance-none rounded-full bg-stone-200",
+            "accent-orange-500 transition-[background] duration-200",
+          ].join(" ")}
           style={{
-            background: `linear-gradient(to right, #f97316 0%, #f97316 ${sliderProgress}%, #e7e5e4 ${sliderProgress}%, #e7e5e4 100%)`,
+            background: [
+              "linear-gradient(to right, #f97316 0%",
+              `#f97316 ${sliderProgress}%`,
+              `#e7e5e4 ${sliderProgress}%`,
+              "#e7e5e4 100%)",
+            ].join(", "),
           }}
         />
       </div>
@@ -1250,10 +1579,26 @@ export function TimelineBar({
         <span className="min-w-0 flex-1 truncate text-xs font-bold text-stone-600" title={currentFilename}>
           {currentFilename || fallbackName}
         </span>
-        <button type="button" title="Copy link" onClick={() => navigator.clipboard?.writeText(window.location.href)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700">
+        <button
+          type="button"
+          title="Copy link"
+          onClick={() => navigator.clipboard?.writeText(window.location.href)}
+          className={[
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition",
+            "hover:bg-stone-100 hover:text-stone-700",
+          ].join(" ")}
+        >
           <Link2 className="h-4 w-4" />
         </button>
-        <button type="button" title="Delete annotation" onClick={onClearShapes} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-red-50 hover:text-red-500">
+        <button
+          type="button"
+          title="Delete annotation"
+          onClick={onClearShapes}
+          className={[
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 transition",
+            "hover:bg-red-50 hover:text-red-500",
+          ].join(" ")}
+        >
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
@@ -1269,12 +1614,14 @@ export function TimelineBar({
           onKeyDown={(e) => {
             if (e.key === "Enter") onFrameInputCommit();
           }}
-          className="no-number-spinner w-12 rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-center text-xs font-bold tabular-nums text-stone-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25"
+          className={[
+            "no-number-spinner w-12 rounded-lg border border-stone-200 bg-stone-50 px-2 py-1",
+            "text-center text-xs font-bold tabular-nums text-stone-800 outline-none",
+            "focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25",
+          ].join(" ")}
         />
         {total > 0 && <span className="text-xs font-bold text-stone-400">/ {total}</span>}
       </div>
     </div>
   );
 }
-
-

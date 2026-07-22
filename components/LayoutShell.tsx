@@ -7,9 +7,19 @@ import Footer from "@/components/Footer";
 import Sidebar from "@/components/platform/Sidebar";
 import { useAuth } from "@/lib/auth";
 import { getAccessToken } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
 // Routes that belong to the authenticated platform workspace hubs.
-const PLATFORM_ROUTES = ["/home", "/overview", "/projects", "/teams", "/datasets", "/dataverse", "/workflows", "/train", "/deploy"];
+const PLATFORM_ROUTES = [
+  "/home",
+  "/overview",
+  "/projects",
+  "/datasets",
+  "/dataverse",
+  "/workflows",
+  "/train",
+  "/deploy",
+];
 // Routes that show no shell at all (auth pages).
 const BARE_ROUTES = ["/login", "/register", "/auth/callback"];
 
@@ -42,17 +52,21 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     return <div className="min-h-screen bg-[#1c1917]">{children}</div>;
   }
 
+  if (isPlatformRoute(pathname) && !authReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fcfaf7]" role="status" aria-label="Restoring session">
+        <Loader2 aria-hidden="true" className="h-7 w-7 animate-spin text-orange-500 motion-reduce:animate-none" />
+      </div>
+    );
+  }
+
   // ── Annotation terminal (datasets … / annotate / …) ──────────
   if (isAnnotateWorkspace(pathname)) {
-    return (
-      <div className="flex h-screen flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">{children}</div>
-    );
+    return <div className="flex h-screen flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">{children}</div>;
   }
 
   // ── Authenticated platform workspace ───────────────────────────
   if (isPlatformRoute(pathname)) {
-    const isHomeWorkspace = pathname === "/home" || pathname === "/overview";
-
     return (
       <div className="flex min-h-screen bg-[#fcfaf7]">
         <Sidebar />

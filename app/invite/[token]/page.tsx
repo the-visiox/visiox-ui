@@ -12,7 +12,6 @@ export default function AcceptInvitePage() {
   const router = useRouter();
   const [state, setState] = useState<State>("loading");
   const [message, setMessage] = useState("");
-  const [teamName, setTeamName] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -20,7 +19,6 @@ export default function AcceptInvitePage() {
       .acceptInvitation(token as string)
       .then((res) => {
         setMessage(res.detail);
-        setTeamName(res.member?.user_username ?? "");
         setState("success");
       })
       .catch((err: unknown) => {
@@ -31,8 +29,18 @@ export default function AcceptInvitePage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-8 shadow-xl shadow-stone-200/40 text-center">
-        <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-400 shadow-lg shadow-violet-500/20">
+      <div
+        className={[
+          "w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-8 shadow-xl",
+          "shadow-stone-200/40 text-center",
+        ].join(" ")}
+      >
+        <div
+          className={[
+            "mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br",
+            "from-violet-500 to-purple-400 shadow-lg shadow-violet-500/20",
+          ].join(" ")}
+        >
           {state === "loading" && <Loader2 className="h-7 w-7 animate-spin text-white" />}
           {state === "success" && <CheckCircle2 className="h-7 w-7 text-white" />}
           {state === "error" && <XCircle className="h-7 w-7 text-white" />}
@@ -47,12 +55,15 @@ export default function AcceptInvitePage() {
 
         {state === "success" && (
           <>
-            <h1 className="text-lg font-bold text-stone-900">You're in!</h1>
+            <h1 className="text-lg font-bold text-stone-900">You&apos;re in!</h1>
             <p className="mt-1 text-sm text-stone-500">{message}</p>
             <button
               type="button"
               onClick={() => router.push("/projects")}
-              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-500 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-violet-500/20 transition hover:bg-violet-600"
+              className={[
+                "mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-500 px-5 py-2.5 text-sm",
+                "font-bold text-white shadow-md shadow-violet-500/20 transition hover:bg-violet-600",
+              ].join(" ")}
             >
               Go to Projects
               <ArrowRight className="h-4 w-4" />
@@ -67,7 +78,10 @@ export default function AcceptInvitePage() {
             <button
               type="button"
               onClick={() => router.push("/projects")}
-              className="mt-6 inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 px-5 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-100"
+              className={[
+                "mt-6 inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 px-5",
+                "py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-100",
+              ].join(" ")}
             >
               Back to Projects
             </button>

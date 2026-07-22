@@ -1,78 +1,93 @@
 ---
 name: visiox-frontend-agent
-description: Enforces the premium, light-themed, animated design system of the VisioX UI project when building or modifying React/Next.js components. Use this skill whenever generating frontend code.
+description: Build, modify, and review VisioX React/Next.js frontend UI while preserving its light workspace design system, responsive behavior, interaction state, accessibility, and Django REST integration. Use for VisioX pages, components, Tailwind styling, dataset/training workflows, annotation UI, sliders, accordions, forms, API-connected states, and frontend refactors.
 ---
 
-# VisioX Frontend Engineering Guidelines
+# VisioX Frontend Engineering
 
-When acting as an AI coding assistant on the VisioX UI repository, follow these design, architectural, and API-integration rules. The product uses a **light**, workspace-first aesthetic and talks to the **Visiox Django API** via `lib/api.ts`. Some flows may embed or proxy **CVAT** (see optional route `/datasets/[id]/annotate/cvat` if present in the repo).
+## Workflow
 
-## 1. Core tech stack
+1. Inspect the target component, nearby components, `lib/api.ts`, and existing types before editing.
+2. Reuse established component and state patterns. Do not add a second visual representation of the same state.
+3. Preserve server/client boundaries: keep `generateStaticParams()` in server `page.tsx` files and interactive code in `*Client.tsx`.
+4. Implement the complete interaction, including loading, empty, disabled, error, saved, dirty, and completed states.
+5. Validate the edited file with ESLint. Run `pnpm build` for structural, routing, or TypeScript-sensitive changes.
 
-- **Framework**: Next.js 16 (App Router) with React 19.
-- **Styling**: Tailwind CSS v4. Avoid custom CSS unless necessary.
-- **Animations**: `framer-motion` for section entrances and lists; avoid heavy raw-CSS transitions for those.
-- **Icons**: `lucide-react` only.
-- **Canvas**: `konva` + `react-konva` for in-app annotation (`AnnotationEditor`); `use-image` for loading images on the canvas.
-- **Lists**: `virtua` where virtualized lists are used.
-- **Package manager**: `pnpm` (v10) for installs and scripts.
+## Stack and integration
 
-## 2. Global aesthetics and colors
+- Use Next.js 16 App Router, React 19, TypeScript, Tailwind CSS v4, Framer Motion, and Lucide icons.
+- Use `lib/api.ts` as the primary typed API client. Keep endpoints under `/api/v1/` and preserve JWT refresh and LAN hostname behavior.
+- Use `NEXT_PUBLIC_API_URL` without a trailing slash.
+- Use Konva/react-konva only in annotation canvas code; keep annotation business logic in `lib/annotation/`.
+- Do not add Redux or Zustand for local page workflows; prefer focused React state or extracted hooks.
+- Do not import platform chrome into pages. `LayoutShell` owns Sidebar, TopBar, Header, and Footer selection.
 
-- **Base**: Generous whitespace. Backgrounds: `bg-[#fcfaf7]`, `bg-stone-50` — not pure `#fff` / `#000` for large areas.
-- **Text**: `text-stone-900` headings; `text-stone-500` / `text-stone-600` body.
-- **Gradients** (accents): e.g. `from-orange-600 to-amber-500 bg-clip-text text-transparent`, or brand `from-[#E66700] via-[#FF7300] to-[#F1A222]`.
-- **Shadows**: `shadow-xl shadow-stone-200/50` for depth.
-- **Radius**: `rounded-2xl`, `rounded-3xl`, `rounded-[2.5rem]` for cards and canvas containers.
+## Visual system
 
-## 3. Structural rules
+- Use light workspace backgrounds: `#fcfaf7`, `stone-50`, and white cards.
+- Use stone text and borders; reserve orange (`#FF7300` family) for the primary action/current state.
+- Use emerald for completed/success, amber for warning, red for destructive/error, and violet sparingly for dataset split or model accents.
+- Prefer `rounded-xl` for controls and inner options; use `rounded-2xl` or `rounded-3xl` for outer cards.
+- Use one subtle outer shadow. Avoid stacking shadows and borders around every nested container.
+- Use Lucide icons only. Standard control icons are `h-4 w-4`; section icons/markers are `h-5 w-5` or a `h-10 w-10` container.
 
-- **Server vs client**: Do not mix `"use client"` with `generateStaticParams()` in the same file. Use a `*Client.tsx` wrapper and a thin `page.tsx` (server) that exports `generateStaticParams` and renders the client component.
-- **Next.js 16 params**: In server pages, when `params` is a Promise, `await` it before use.
-- **Client components**: Add `"use client"` for interactivity, Konva, hooks, Framer Motion controls.
-- **Root layout**: `app/layout.tsx` wraps `AuthProvider` + `LayoutShell`. **Do not** import `Header` or `Footer` inside individual pages (double chrome).
-- **LayoutShell** (`components/LayoutShell.tsx`):
-  - Marketing routes: `Header` + `Footer`.
-  - Platform routes (`/overview`, `/datasets`, …): `Sidebar` + `TopBar`.
-  - **Annotation workspace** (`/datasets/.../annotate/...`): full-width light shell **without** sidebar/top bar; the annotate page supplies its own toolbar.
-- **Badges**: Use `@/components/Badge` for section labels.
+## Spacing, type, and controls
 
-## 4. Configuration and deployment
+Use these defaults unless the surrounding UI establishes a stronger pattern:
 
-- **Config**: `next.config.mjs` (not `.ts`). Typically includes `images.unoptimized: true` and optional `basePath` for GitHub Actions / Pages. If `output: "export"` is enabled, every route must stay statically compatible.
-- **Env**: `NEXT_PUBLIC_API_URL` in `.env.local` for the Django API (see `.env.local.example`). A separate `NEXT_PUBLIC_CVAT_URL` may exist when CVAT iframe flows are enabled.
-- **CI**: Check `.github/workflows` for deploy targets.
+- Outer workflow cards: `rounded-2xl border border-stone-200 bg-white shadow-sm`.
+- Expanded card body: `border-t border-stone-200 p-5`.
+- Card groups: `space-y-4` or `gap-4`; never rely on `space-y-*` through a `display: contents` wrapper.
+- Accordion header: `min-h-[4.5rem] w-full items-center gap-3 p-5`.
+- Reuse one shared accordion-trigger class for sibling cards; do not mix a full-width header trigger with a separate square Chevron button.
+- Section heading: `text-base font-bold text-stone-900`.
+- Option heading: `text-sm font-bold`; descriptions: `text-xs leading-relaxed text-stone-400/500`.
+- Standard buttons/selects: `h-10 rounded-xl px-4 text-sm font-bold`.
+- Primary buttons: orange background, white text, color transition. Avoid scale animation on frequently clicked or drag-adjacent controls.
+- Keep sibling cards, buttons, icons, and labels the same height, padding, radius, and font size.
 
-## 5. API integration
+## Workflow and accordion state
 
-- **Single client**: Prefer `lib/api.ts` — `API_BASE_URL`, `auth.login` / `register`, `datasets`, `projects`, `training`, `deployments`, JWT refresh on 401.
-- **Annotation jobs**: `lib/api/jobs.ts` — `GET/PATCH /api/jobs/{id}/annotations/`, `POST` issues.
-- **CORS**: Non-default front-end origins must be listed in Django `CORS_ALLOWED_ORIGINS`.
+- Give each workflow step exactly one outer card. Put its header and expanded body inside that border.
+- Show the current step as a numbered orange marker; show preceding steps as emerald checks; show future steps as neutral numbers.
+- When navigating forward, mark preceding optional steps complete without requiring an option selection.
+- Keep optional steps independently selectable unless product requirements explicitly require sequential locking.
+- Separate persisted state from draft state. For example, distinguish `isConfigured` from `isSaved`/`hasUnsavedChanges`; do not collapse or recolor the whole workflow on every draft edit.
+- Disable irreversible or backend actions when the draft is unsaved, but keep configuration sections stable to prevent layout jumps.
+- Collapsed headers remain usable and communicate status without duplicating a separate stepper card.
+- Put the Chevron inside the full header trigger. Keep Verify, Reset, Edit, or Delete as sibling buttons in the same header row so interactive elements are never nested.
 
-## 6. Animation and micro-interactions
+## Sliders and pointer interactions
 
-- Fade-up: `initial={{ opacity: 0, y: 20 }}` → `animate={{ opacity: 1, y: 0 }}`, `duration ~0.5`.
-- Lists: stagger `transition={{ delay: index * 0.1 }}`.
-- Images: `group-hover:scale-105 transition-transform duration-700` where appropriate.
-- Buttons: subtle `hover:-translate-y-0.5` or `hover:scale-105 active:scale-95`.
-- Nav / overlays: `backdrop-blur-md` / `backdrop-blur-xl`.
+- Use pointer capture for custom range handles and support ArrowLeft/ArrowRight keyboard control.
+- Preserve the pointer-to-handle offset on pointer down; do not snap the handle center to the cursor.
+- Clear drag state on pointer up, cancel, and lost capture.
+- Skip state updates when the computed value did not change.
+- Avoid hover scaling or transform transitions on draggable handles; they cause flicker.
+- Keep handles inside the visual track at 0% and 100%, and use tabular numbers for changing percentages/counts.
 
-## 7. Key components
+## Responsive and accessible behavior
 
-| Component | Role |
-|-----------|------|
-| `LayoutShell` | Route-based chrome (marketing vs platform vs annotate). |
-| `AnnotationEditor` | Konva: rectangle (drag), polygon (vertex count prop), select, Transformer on rects. |
-| `AnnotatePageClient` | Toolbar, labels, `?jobId=` save/load, demo fallback. |
-| `ImageGrid` | Dataset thumbnails (virtualized where used). |
-| `BlueprintGrid` | Background grid on workspace pages. |
-| `SolutionPageTemplate` | Industry solution pages. |
-| Dataset detail / CVAT | If present: data browser, frame proxy URLs, optional CVAT iframe — follow existing `lib/api.ts` helpers and `*Client.tsx` patterns in-repo. |
+- Start with mobile-safe layouts, then add `sm`, `md`, and `xl` grid enhancements.
+- Let action rows wrap; do not force controls beyond their container.
+- Provide `type="button"`, disabled states, focus-visible rings, `aria-expanded` for accordions, `aria-checked` for switches, and slider ARIA values.
+- Do not nest interactive elements. If an accordion header also has Reset/Edit actions, use sibling buttons inside a shared header row.
+- Preserve readable labels; do not depend on color alone for state.
 
-## 8. File naming
+## Performance
 
-- Pages: `page.tsx` (server when possible).
-- Clients: `*Client.tsx` / `*PageClient.tsx`.
-- Shared UI: `components/**/*.tsx`.
-- Hooks: `hooks/*.ts`.
-- Utilities: `lib/*.ts`, `lib/**/*.ts`.
+- Avoid duplicate fetches and derived state that can be computed locally.
+- Memoize callbacks only when they stabilize effects or expensive children.
+- Lazy-load gallery images and prefetch only a small useful set of annotation routes.
+- Keep animation subtle: short fade/translate entrances and lightweight color transitions.
+
+## Validation
+
+Run the narrowest useful checks first:
+
+```powershell
+pnpm exec eslint "app/path/Component.tsx"
+pnpm build
+```
+
+Treat existing unrelated lint warnings separately; do not introduce new errors or warnings in edited files.

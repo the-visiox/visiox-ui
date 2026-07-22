@@ -54,7 +54,8 @@ body {
   }
 
   @keyframes float {
-    0%, 100% {
+    0%,
+    100% {
       transform: translateY(0px);
     }
     50% {
@@ -75,6 +76,45 @@ body {
   .no-number-spinner::-webkit-inner-spin-button {
     margin: 0;
     -webkit-appearance: none;
+  }
+
+  .split-range {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 1.25rem;
+    margin: 0;
+    appearance: none;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  .split-range::-webkit-slider-thumb {
+    width: 1rem;
+    height: 1rem;
+    appearance: none;
+    border: 3px solid white;
+    border-radius: 9999px;
+    background: #ff7300;
+    box-shadow: 0 1px 4px rgb(28 25 23 / 30%);
+    cursor: grab;
+    pointer-events: auto;
+  }
+
+  .split-range::-moz-range-thumb {
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 3px solid white;
+    border-radius: 9999px;
+    background: #ff7300;
+    box-shadow: 0 1px 4px rgb(28 25 23 / 30%);
+    cursor: grab;
+    pointer-events: auto;
+  }
+
+  .split-range:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid #fb923c;
+    outline-offset: 2px;
   }
 
   .custom-scrollbar {

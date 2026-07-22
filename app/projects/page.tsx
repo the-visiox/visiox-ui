@@ -20,30 +20,39 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
+import DatasetExportDialog, { type DatasetExportTarget } from "@/components/datasets/DatasetExportDialog";
+import { useConfirm } from "@/components/useConfirm";
 import { projects, datasets as datasetsApi, resolveMediaUrl, type Project, type Dataset } from "@/lib/api";
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
-  const m  = Math.floor(diff / 60000);
-  const h  = Math.floor(m / 60);
-  const d  = Math.floor(h / 24);
+  const m = Math.floor(diff / 60000);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
   const mo = Math.floor(d / 30);
   if (mo > 0) return `${mo} month${mo > 1 ? "s" : ""} ago`;
-  if (d  > 0) return `${d} day${d > 1 ? "s" : ""} ago`;
-  if (h  > 0) return `${h} hour${h > 1 ? "s" : ""} ago`;
-  if (m  > 0) return `${m} minute${m > 1 ? "s" : ""} ago`;
+  if (d > 0) return `${d} day${d > 1 ? "s" : ""} ago`;
+  if (h > 0) return `${h} hour${h > 1 ? "s" : ""} ago`;
+  if (m > 0) return `${m} minute${m > 1 ? "s" : ""} ago`;
   return "just now";
 }
 
 const TASK_TYPE_LABEL: Record<string, string> = {
-  image_classification:  "Classification",
-  object_detection:      "Object Detection",
+  image_classification: "Classification",
+  object_detection: "Object Detection",
   semantic_segmentation: "Segmentation",
   instance_segmentation: "Instance Segmentation",
-  keypoint_detection:    "Keypoints",
-  video_annotation:      "Video",
+  keypoint_detection: "Keypoints",
+  video_annotation: "Video",
 };
+
+interface ExportDialogState {
+  targets: DatasetExportTarget[];
+  exportName: string;
+  dialogTitle?: string;
+  subtitle?: string;
+}
 
 /* ── skeletons ───────────────────────────────────────────────────── */
 function SkeletonCard() {
@@ -64,14 +73,16 @@ function SkeletonCard() {
 ══════════════════════════════════════════════════════════════════ */
 export default function ProjectsPage() {
   const router = useRouter();
-  const [list, setList]               = useState<Project[]>([]);
-  const [query, setQuery]             = useState("");
-  const [search, setSearch]           = useState("");
-  const [loading, setLoading]         = useState(true);
+  const { confirm, dialog: confirmDialog } = useConfirm();
+  const [list, setList] = useState<Project[]>([]);
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const [selected, setSelected]       = useState<Project | null>(null);
+  const [selected, setSelected] = useState<Project | null>(null);
   const [datasetList, setDatasetList] = useState<Dataset[]>([]);
-  const [dsLoading, setDsLoading]     = useState(false);
+  const [dsLoading, setDsLoading] = useState(false);
+  const [exportDialog, setExportDialog] = useState<ExportDialogState | null>(null);
 
   /* load projects */
   useEffect(() => {
@@ -99,12 +110,12 @@ export default function ProjectsPage() {
         if (!cancelled) setDsLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selected]);
 
-  const filtered = list.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = list.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
 
   const handleBack = () => {
     setSelected(null);
@@ -112,58 +123,131 @@ export default function ProjectsPage() {
   };
 
   /* ── action handlers ─────────────────────────────────────────── */
-  function handleDeleteProject(id: number) {
-    if (!window.confirm("Delete this project? This cannot be undone.")) return;
-    projects.delete(id)
-      .then(() => setList((prev) => prev.filter((p) => p.id !== id)))
-      .catch((err) => window.alert(err instanceof Error ? err.message : "Delete failed"));
+  async function handleDeleteProject(id: number) {
+    if (
+      !(await confirm({
+        title: "Delete project",
+        message: "Delete this project? This cannot be undone.",
+        confirmLabel: "Delete",
+        danger: true,
+      }))
+    )
+      return;
+    try {
+      await projects.delete(id);
+      setList((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      await confirm({
+        title: "Delete failed",
+        message: err instanceof Error ? err.message : "Delete failed",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    }
   }
 
-  function handleDeleteDataset(id: number) {
-    if (!window.confirm("Delete this dataset? This cannot be undone.")) return;
-    datasetsApi.delete(id)
-      .then(() => setDatasetList((prev) => prev.filter((d) => d.id !== id)))
-      .catch((err) => window.alert(err instanceof Error ? err.message : "Delete failed"));
+  async function handleDeleteDataset(id: number) {
+    if (
+      !(await confirm({
+        title: "Delete dataset",
+        message: "Delete this dataset? This cannot be undone.",
+        confirmLabel: "Delete",
+        danger: true,
+      }))
+    )
+      return;
+    try {
+      await datasetsApi.delete(id);
+      setDatasetList((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      await confirm({
+        title: "Delete failed",
+        message: err instanceof Error ? err.message : "Delete failed",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    }
   }
 
-  function triggerExport(id: number, format: "coco" | "yolo" | "voc") {
-    const url = datasetsApi.exportUrl(id, format);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `dataset-${id}-${format}.zip`;
-    a.click();
+  function openDatasetExport(dataset: Dataset) {
+    setExportDialog({
+      targets: [{ id: dataset.id, name: dataset.name }],
+      exportName: dataset.name,
+      subtitle: dataset.name,
+    });
+  }
+
+  async function openProjectExport(project: Project) {
+    try {
+      const projectDatasets = await datasetsApi.listAll(project.id);
+
+      if (projectDatasets.length === 0) {
+        await confirm({
+          title: "No datasets to export",
+          message: `${project.name} does not have any datasets yet.`,
+          confirmLabel: "OK",
+          hideCancel: true,
+        });
+        return;
+      }
+
+      setExportDialog({
+        targets: projectDatasets.map((dataset) => ({
+          id: dataset.id,
+          name: dataset.name,
+        })),
+        exportName: project.name,
+        dialogTitle: "Download project datasets",
+        subtitle: `${project.name} - ${projectDatasets.length} dataset${projectDatasets.length === 1 ? "" : "s"}`,
+      });
+    } catch (err) {
+      await confirm({
+        title: "Export unavailable",
+        message: err instanceof Error ? err.message : "Could not load project datasets.",
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    }
   }
 
   function projectMenuItems(p: Project): CardMenuItem[] {
     return [
-      { icon: Download,  label: "Export Dataset",  onClick: () => router.push(`/projects/${p.id}`) },
-      { icon: UserPlus,  label: "Assignee",         onClick: () => router.push(`/projects/${p.id}`) },
-      { icon: BarChart2, label: "View Analytics",   onClick: () => router.push(`/projects/${p.id}`) },
-      { icon: Trash2,    label: "Delete",            onClick: () => handleDeleteProject(p.id), danger: true, dividerBefore: true },
+      { icon: Download, label: "Export", onClick: () => void openProjectExport(p) },
+      { icon: UserPlus, label: "Assignee", onClick: () => router.push(`/projects/${p.id}`) },
+      { icon: BarChart2, label: "View Analytics", onClick: () => router.push(`/projects/${p.id}`) },
+      { icon: Trash2, label: "Delete", onClick: () => handleDeleteProject(p.id), danger: true, dividerBefore: true },
     ];
   }
 
   function datasetMenuItems(ds: Dataset): CardMenuItem[] {
     return [
-      { icon: Upload,    label: "Upload Annotations", onClick: () => router.push(`/datasets/${ds.id}`) },
-      { icon: Wand2,     label: "Auto Annotations",   onClick: () => router.push(`/datasets/${ds.id}`) },
-      { icon: Download,  label: "Export as COCO",     onClick: () => triggerExport(ds.id, "coco"), dividerBefore: true },
-      { icon: Download,  label: "Export as YOLO",     onClick: () => triggerExport(ds.id, "yolo") },
-      { icon: Download,  label: "Export as VOC",      onClick: () => triggerExport(ds.id, "voc") },
-      { icon: UserPlus,  label: "Assignee",            onClick: () => router.push(`/datasets/${ds.id}`), dividerBefore: true },
-      { icon: BarChart2, label: "View Analytics",      onClick: () => router.push(`/datasets/${ds.id}`) },
-      { icon: Trash2,    label: "Delete",              onClick: () => handleDeleteDataset(ds.id), danger: true, dividerBefore: true },
+      { icon: Upload, label: "Upload Annotations", onClick: () => router.push(`/datasets/${ds.id}`) },
+      { icon: Wand2, label: "Auto Annotations", onClick: () => router.push(`/datasets/${ds.id}`) },
+      { icon: Download, label: "Export", onClick: () => openDatasetExport(ds), dividerBefore: true },
+      { icon: UserPlus, label: "Assignee", onClick: () => router.push(`/datasets/${ds.id}`), dividerBefore: true },
+      { icon: BarChart2, label: "View Analytics", onClick: () => router.push(`/datasets/${ds.id}`) },
+      { icon: Trash2, label: "Delete", onClick: () => handleDeleteDataset(ds.id), danger: true, dividerBefore: true },
     ];
   }
 
   /* ── render ──────────────────────────────────────────────────── */
   return (
     <div className="relative flex-1 flex flex-col min-h-screen">
+      {confirmDialog}
+      {exportDialog ? (
+        <DatasetExportDialog
+          targets={exportDialog.targets}
+          exportName={exportDialog.exportName}
+          dialogTitle={exportDialog.dialogTitle}
+          subtitle={exportDialog.subtitle}
+          open
+          onClose={() => setExportDialog(null)}
+        />
+      ) : null}
       <BlueprintGrid />
 
       <main className="flex-grow p-6 z-10">
         <AnimatePresence mode="wait">
-
           {/* ════ PHASE 1 — Project list ════ */}
           {!selected && (
             <motion.div
@@ -174,11 +258,15 @@ export default function ProjectsPage() {
               transition={{ duration: 0.18 }}
             >
               {/* Header */}
-              <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+              <div
+                className={[
+                  "mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5",
+                  "shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center",
+                  "md:justify-between",
+                ].join(" ")}
+              >
                 <div>
-                  <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">
-                    Projects
-                  </h1>
+                  <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">Projects</h1>
                   <p className="max-w-xl text-base leading-6 text-stone-500">
                     Open a project to browse and manage its datasets.
                   </p>
@@ -186,7 +274,10 @@ export default function ProjectsPage() {
 
                 <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
                   <form
-                    onSubmit={(e) => { e.preventDefault(); setSearch(query); }}
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      setSearch(query);
+                    }}
                     className="w-full md:w-auto"
                   >
                     <div className="relative w-full md:w-64">
@@ -194,12 +285,20 @@ export default function ProjectsPage() {
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Search projects…"
-                        className="h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-4 pr-12 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                        className={[
+                          "h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-4 pr-12 text-sm",
+                          "outline-none transition-all focus:border-orange-500 focus:ring-2",
+                          "focus:ring-orange-500/20",
+                        ].join(" ")}
                       />
                       <button
                         type="submit"
                         aria-label="Search"
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+                        className={[
+                          "absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center",
+                          "justify-center rounded-lg text-stone-400 transition hover:bg-stone-100",
+                          "hover:text-stone-700",
+                        ].join(" ")}
                       >
                         <Search className="w-4 h-4" />
                       </button>
@@ -207,7 +306,11 @@ export default function ProjectsPage() {
                   </form>
                   <Link
                     href="/projects/new"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
+                    className={[
+                      "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
+                      "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
+                      "transition-all hover:bg-orange-200",
+                    ].join(" ")}
                   >
                     <Plus className="w-4 h-4" />
                     New project
@@ -216,11 +319,21 @@ export default function ProjectsPage() {
               </div>
 
               {/* Grid */}
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+              <div
+                className={[
+                  "grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4",
+                  "2xl:grid-cols-5",
+                ].join(" ")}
+              >
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
                 ) : filtered.length === 0 ? (
-                  <div className="col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16 text-center">
+                  <div
+                    className={[
+                      "col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16",
+                      "text-center",
+                    ].join(" ")}
+                  >
                     <p className="mb-2 font-bold text-stone-900">No projects found</p>
                     <Link href="/projects/new" className="text-sm text-orange-500 hover:underline">
                       Create your first project
@@ -234,7 +347,11 @@ export default function ProjectsPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04 }}
                       onClick={() => router.push(`/projects/${p.id}`)}
-                      className="group flex aspect-[1:1] w-full cursor-pointer flex-col rounded-3xl border border-stone-200 bg-white p-3 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]"
+                      className={[
+                        "group flex aspect-square w-full cursor-pointer flex-col rounded-3xl border",
+                        "border-stone-200 bg-white p-3 text-left shadow-sm transition-all hover:border-orange-300",
+                        "hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]",
+                      ].join(" ")}
                     >
                       {/* Thumbnail */}
                       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-stone-100">
@@ -242,7 +359,10 @@ export default function ProjectsPage() {
                           <img
                             src={resolveMediaUrl(p.thumbnail)}
                             alt={p.name}
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            className={[
+                              "h-full w-full object-cover transition-transform duration-500",
+                              "group-hover:scale-105",
+                            ].join(" ")}
                           />
                         ) : (
                           <img
@@ -251,7 +371,12 @@ export default function ProjectsPage() {
                             className="h-full w-full object-cover"
                           />
                         )}
-                        <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-stone-900 shadow-sm backdrop-blur">
+                        <div
+                          className={[
+                            "absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold",
+                            "text-stone-900 shadow-sm backdrop-blur",
+                          ].join(" ")}
+                        >
                           {TASK_TYPE_LABEL[p.task_type] ?? p.task_type}
                         </div>
                       </div>
@@ -259,7 +384,12 @@ export default function ProjectsPage() {
                       {/* Info */}
                       <div className="shrink-0 px-2 pt-2 pb-1">
                         <div className="flex items-center justify-between">
-                          <h3 className="truncate text-base font-bold text-stone-900 transition-colors group-hover:text-orange-600">
+                          <h3
+                            className={[
+                              "truncate text-base font-bold text-stone-900 transition-colors",
+                              "group-hover:text-orange-600",
+                            ].join(" ")}
+                          >
                             {p.name}
                           </h3>
                           <CardMenu items={projectMenuItems(p)} />
@@ -284,9 +414,20 @@ export default function ProjectsPage() {
               transition={{ duration: 0.18 }}
             >
               {/* Header */}
-              <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between">
+              <div
+                className={[
+                  "mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5",
+                  "shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center",
+                  "md:justify-between",
+                ].join(" ")}
+              >
                 <div>
-                  <div className="mb-3 flex items-center gap-2 text-sm font-bold tracking-widest text-stone-400">
+                  <div
+                    className={[
+                      "mb-3 flex items-center gap-2 text-sm font-bold tracking-widest",
+                      "text-stone-400",
+                    ].join(" ")}
+                  >
                     <button
                       onClick={handleBack}
                       className="hover:text-orange-600 transition-colors flex items-center gap-1"
@@ -297,11 +438,14 @@ export default function ProjectsPage() {
                     <span>/</span>
                     <span className="text-stone-900 truncate max-w-[200px]">{selected.name}</span>
                   </div>
-                  <h1 className="mb-2 text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">
-                    {selected.name}
-                  </h1>
+                  <h1 className="mb-2 text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">{selected.name}</h1>
                   <p className="text-sm text-stone-500">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-orange-700">
+                    <span
+                      className={[
+                        "inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3",
+                        "py-1 text-[10px] font-bold uppercase tracking-widest text-orange-700",
+                      ].join(" ")}
+                    >
                       <Database className="w-3 h-3" />
                       {TASK_TYPE_LABEL[selected.task_type] ?? selected.task_type}
                     </span>
@@ -311,13 +455,21 @@ export default function ProjectsPage() {
                 <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
                   <Link
                     href={`/projects/${selected.id}`}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-5 text-sm font-bold text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105 active:scale-95"
+                    className={[
+                      "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200",
+                      "bg-white px-5 text-sm font-bold text-stone-700 shadow-sm transition-all",
+                      "hover:bg-stone-50 hover:scale-105 active:scale-95",
+                    ].join(" ")}
                   >
                     View project
                   </Link>
                   <Link
                     href={`/projects/${selected.id}`}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60 transition-all hover:scale-105 hover:bg-orange-200 active:scale-95"
+                    className={[
+                      "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
+                      "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
+                      "transition-all hover:bg-orange-200",
+                    ].join(" ")}
                   >
                     <Plus className="w-4 h-4" />
                     New dataset
@@ -326,17 +478,30 @@ export default function ProjectsPage() {
               </div>
 
               {/* Dataset grid */}
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(18rem,20rem))] sm:justify-between">
+              <div
+                className={[
+                  "grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(18rem,20rem))]",
+                  "sm:justify-between",
+                ].join(" ")}
+              >
                 {dsLoading ? (
                   Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
                 ) : datasetList.length === 0 ? (
-                  <div className="col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16 text-center">
+                  <div
+                    className={[
+                      "col-span-full rounded-3xl border border-dashed border-stone-200 bg-white/80 py-16",
+                      "text-center",
+                    ].join(" ")}
+                  >
                     <Layers className="w-10 h-10 text-stone-300 mx-auto mb-3" />
                     <p className="font-bold text-stone-900 mb-2">No datasets yet</p>
                     <p className="text-sm text-stone-500 mb-4">Create the first dataset for this project.</p>
                     <Link
                       href={`/projects/${selected.id}`}
-                      className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5 py-2.5 text-sm font-bold text-orange-700 hover:bg-orange-200 transition-all"
+                      className={[
+                        "inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-100 px-5",
+                        "py-2.5 text-sm font-bold text-orange-700 hover:bg-orange-200 transition-all",
+                      ].join(" ")}
                     >
                       <Plus className="w-4 h-4" />
                       Create dataset
@@ -352,7 +517,10 @@ export default function ProjectsPage() {
                     >
                       <div
                         onClick={() => router.push(`/datasets/${ds.id}`)}
-                        className="group block w-full cursor-pointer rounded-3xl border border-stone-200 bg-white p-2 shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50"
+                        className={[
+                          "group block w-full cursor-pointer rounded-3xl border border-stone-200 bg-white p-2",
+                          "shadow-sm transition-all hover:border-orange-300 hover:shadow-xl hover:shadow-orange-50",
+                        ].join(" ")}
                       >
                         {/* Thumbnail */}
                         <div className="relative h-40 overflow-hidden rounded-2xl bg-stone-100">
@@ -360,14 +528,22 @@ export default function ProjectsPage() {
                             <img
                               src={resolveMediaUrl(ds.thumbnail)}
                               alt={ds.name}
-                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              className={[
+                                "h-full w-full object-cover transition-transform duration-500",
+                                "group-hover:scale-105",
+                              ].join(" ")}
                             />
                           ) : (
                             <div className="flex h-full items-center justify-center">
                               <ImageIcon className="h-12 w-12 text-stone-300" />
                             </div>
                           )}
-                          <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-stone-900 shadow-sm backdrop-blur">
+                          <div
+                            className={[
+                              "absolute left-3 top-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold",
+                              "text-stone-900 shadow-sm backdrop-blur",
+                            ].join(" ")}
+                          >
                             v{ds.version}
                           </div>
                         </div>
@@ -375,14 +551,17 @@ export default function ProjectsPage() {
                         {/* Info */}
                         <div className="p-4">
                           <div className="flex items-center justify-between gap-1 mb-1">
-                            <h3 className="truncate text-base font-bold text-stone-900 group-hover:text-orange-600 transition-colors">
+                            <h3
+                              className={[
+                                "truncate text-base font-bold text-stone-900 group-hover:text-orange-600",
+                                "transition-colors",
+                              ].join(" ")}
+                            >
                               {ds.name}
                             </h3>
                             <CardMenu items={datasetMenuItems(ds)} />
                           </div>
-                          <p className="text-xs font-medium text-stone-400 mb-1">
-                            {ds.media_count ?? 0} images
-                          </p>
+                          <p className="text-xs font-medium text-stone-400 mb-1">{ds.media_count ?? 0} images</p>
                           <p className="text-xs text-stone-400">Updated {timeAgo(ds.updated_at)}</p>
                         </div>
                       </div>
@@ -392,7 +571,6 @@ export default function ProjectsPage() {
               </div>
             </motion.div>
           )}
-
         </AnimatePresence>
       </main>
     </div>
