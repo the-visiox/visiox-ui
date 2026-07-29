@@ -28,7 +28,7 @@ export type EditorShape = {
   serverId?: number;
   source?: "manual" | "imported" | "auto_label";
   confidence?: number;
-  autoLabelSource?: "uploaded_model" | "provider";
+  autoLabelSource?: "uploaded_model" | "provider" | "propagation";
   autoLabelModelId?: number;
   autoLabelProvider?: string;
   autoLabelEngineName?: string;

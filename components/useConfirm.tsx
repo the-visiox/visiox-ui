@@ -46,6 +46,8 @@ export function useConfirm() {
     options && typeof document !== "undefined"
       ? createPortal(
           <div
+            data-confirm-dialog
+            role="presentation"
             className={["fixed inset-0 z-[200] flex items-center justify-center bg-black/40", "backdrop-blur-sm"].join(
               " ",
             )}
@@ -53,7 +55,12 @@ export function useConfirm() {
               if (e.target === e.currentTarget) settle(false);
             }}
           >
-            <div className="relative w-96 rounded-2xl bg-white p-6 shadow-2xl">
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-label={options.title}
+              className="relative w-96 rounded-2xl bg-white p-6 shadow-2xl"
+            >
               <button
                 type="button"
                 onClick={() => settle(false)}

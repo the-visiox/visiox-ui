@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -809,6 +810,7 @@ function CreateDatasetModal({
   importHint,
   onClose,
   onDatasetInitialized,
+  onDatasetDiscarded,
   onUploadStateChange,
   onCreated,
 }: {
@@ -816,6 +818,7 @@ function CreateDatasetModal({
   importHint: DatasetImportHint;
   onClose: () => void;
   onDatasetInitialized: (dataset: Dataset) => void;
+  onDatasetDiscarded: (datasetId: number) => void;
   onUploadStateChange: (datasetId: number, state: BackgroundDatasetUpload | null) => void;
   onCreated: (d: Dataset) => void;
 }) {
@@ -836,6 +839,7 @@ function CreateDatasetModal({
     total: 0,
   });
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
+  const uploadPercentRef = useRef<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formatMenuRef = useRef<HTMLDivElement>(null);
@@ -845,6 +849,14 @@ function CreateDatasetModal({
   const videoFiles = files.filter(isVideoUpload);
   const imageFiles = files.filter(isImageUpload);
   const configureVideoExtraction = !archiveImport && videoFiles.length > 0;
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     if (!formatMenuOpen) return;
@@ -905,6 +917,7 @@ function CreateDatasetModal({
 
   function removeFile(idx: number) {
     setFiles((prev) => prev.filter((_, i) => i !== idx));
+    setError("");
   }
 
   function formatSize(bytes: number): string {
@@ -949,11 +962,15 @@ function CreateDatasetModal({
         const uploadingDataset = created;
         setUploadProgress({ current: 0, total: files.length });
         setUploadPercent(null);
+        uploadPercentRef.current = 0;
         onUploadStateChange(uploadingDataset.id, {
           dataset: uploadingDataset,
           percent: 0,
           status: "uploading",
         });
+        // The browser upload keeps running after this modal unmounts. Progress
+        // and failures are owned by the project-level background upload card.
+        onClose();
         const importResponse = await datasets.startImport(created.id, files, archiveFormat ?? "images", {
           videoExtraction:
             configureVideoExtraction
@@ -962,7 +979,7 @@ function CreateDatasetModal({
           onUploadProgress: (uploadedBytes, totalBytes) => {
             if (totalBytes <= 0) return;
             const percent = Math.round(uploadedBytes * 100 / totalBytes);
-            setUploadPercent(percent);
+            uploadPercentRef.current = percent;
             onUploadStateChange(uploadingDataset.id, {
               dataset: uploadingDataset,
               percent,
@@ -979,10 +996,21 @@ function CreateDatasetModal({
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create dataset";
       setError(message);
-      if (created) {
-        onUploadStateChange(created.id, {
-          dataset: created,
-          percent: uploadPercent,
+      const failedDataset = created;
+      if (created && err instanceof ApiError && [400, 409].includes(err.status)) {
+        const failedDatasetId = created.id;
+        try {
+          await datasets.delete(failedDatasetId);
+          onDatasetDiscarded(failedDatasetId);
+          created = null;
+        } catch {
+          // Keep the empty dataset visible if cleanup fails so the user can remove it manually.
+        }
+      }
+      if (failedDataset) {
+        onUploadStateChange(failedDataset.id, {
+          dataset: failedDataset,
+          percent: uploadPercentRef.current,
           status: "error",
           error: message,
         });
@@ -995,6 +1023,7 @@ function CreateDatasetModal({
         total: 0,
       });
       setUploadPercent(null);
+      uploadPercentRef.current = null;
     }
   };
 
@@ -1008,9 +1037,9 @@ function CreateDatasetModal({
     return "Creating...";
   }
 
-  return (
+  return createPortal(
     <div
-      className={["fixed inset-0 z-50 flex items-center justify-center bg-stone-950/35 p-3 sm:p-5", "backdrop-blur-sm"].join(" ")}
+      className={["fixed inset-0 z-[200] flex items-center justify-center bg-stone-950/35 p-3 sm:p-5", "backdrop-blur-sm"].join(" ")}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
@@ -1515,7 +1544,8 @@ function CreateDatasetModal({
           </div>
         </form>
       </motion.div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2162,6 +2192,9 @@ export default function ProjectDetailPage() {
             onClose={() => setShowModal(false)}
             onDatasetInitialized={(dataset) => {
               setDatasetList((current) => [dataset, ...current.filter((item) => item.id !== dataset.id)]);
+            }}
+            onDatasetDiscarded={(datasetId) => {
+              setDatasetList((current) => current.filter((dataset) => dataset.id !== datasetId));
             }}
             onUploadStateChange={(datasetId, state) => {
               setBackgroundUploads((current) => {

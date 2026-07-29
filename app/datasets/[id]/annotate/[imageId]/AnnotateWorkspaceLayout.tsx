@@ -24,6 +24,7 @@ import {
   Plus,
   Redo2,
   Save,
+  ScanSearch,
   Sparkles,
   Spline,
   Square,
@@ -210,11 +211,14 @@ export function WorkspaceHeader({
   onRedo,
   onSave,
   onAutoLabel,
+  onPropagate,
   onDeleteFrame,
   deletingFrame = false,
   deleteFrameDisabled = false,
   autoLabelDisabled = false,
   autoLabelTitle = "Auto Label current frame",
+  propagateDisabled = false,
+  propagateTitle = "Track selected object in later frames",
 }: {
   datasetId: string | string[] | undefined;
   imageId: string | string[] | undefined;
@@ -231,11 +235,14 @@ export function WorkspaceHeader({
   onRedo: () => void;
   onSave: () => void;
   onAutoLabel?: () => void;
+  onPropagate?: () => void;
   onDeleteFrame?: () => void;
   deletingFrame?: boolean;
   deleteFrameDisabled?: boolean;
   autoLabelDisabled?: boolean;
   autoLabelTitle?: string;
+  propagateDisabled?: boolean;
+  propagateTitle?: string;
 }) {
   const modeText = isNativeMode ? ` · Frame ${frameIndex + 1}` : ` · Media ${imageId}`;
   const saveText = !Number.isNaN(jobId) ? ` · Job ${jobId}` : canSaveToApi ? " · Direct" : " · Demo";
@@ -335,6 +342,18 @@ export function WorkspaceHeader({
           >
             <Sparkles className="h-4 w-4" />
             <span className="hidden sm:inline">Auto Label</span>
+          </button>
+        ) : null}
+        {onPropagate ? (
+          <button
+            type="button"
+            onClick={onPropagate}
+            disabled={propagateDisabled}
+            title={propagateTitle}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400 sm:px-4"
+          >
+            <ScanSearch className="h-4 w-4" />
+            <span className="hidden lg:inline">Track object</span>
           </button>
         ) : null}
       </div>

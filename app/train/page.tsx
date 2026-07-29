@@ -378,6 +378,7 @@ interface NewJobModalProps {
   registeredModels: ModelRegistry[];
   onClose: () => void;
   onCreated: (job: TrainingJob) => void;
+  onDatasetUpdated: (dataset: Dataset) => void;
   initialProjectId?: number;
   initialDatasetId?: number;
   initialDatasetIds?: number[];
@@ -406,6 +407,13 @@ function architectureSize(architecture: ModelArchitecture): string {
   return architecture.default_config?.size ?? "n";
 }
 
+function datasetBackgroundCount(dataset: Dataset): number {
+  return dataset.unlabeled_count ?? Math.max(
+    0,
+    (dataset.image_count ?? dataset.media_count ?? 0) - (dataset.annotated_count ?? 0),
+  );
+}
+
 function NewJobModal({
   projectList,
   datasetList,
@@ -414,6 +422,7 @@ function NewJobModal({
   registeredModels,
   onClose,
   onCreated,
+  onDatasetUpdated,
   initialProjectId,
   initialDatasetId,
   initialDatasetIds,
@@ -450,6 +459,7 @@ function NewJobModal({
   const [batchSize, setBatchSize] = useState("32");
   const [imageSize, setImageSize] = useState("640");
   const [saving, setSaving] = useState(false);
+  const [verifyingDatasetId, setVerifyingDatasetId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const availableDatasets = datasetList
     .filter((dataset) => dataset.project === projectId)
@@ -466,6 +476,10 @@ function NewJobModal({
   const [baseModelId, setBaseModelId] = useState<number | "">(initialBaseModelId ?? "");
   const selectedAnnotatedCount = selectedDatasets.reduce(
     (total, dataset) => total + (dataset.annotated_count ?? 0),
+    0,
+  );
+  const selectedBackgroundCount = selectedDatasets.reduce(
+    (total, dataset) => total + datasetBackgroundCount(dataset),
     0,
   );
   const selectedDatasetsReady =
@@ -530,6 +544,23 @@ function NewJobModal({
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create job");
       setSaving(false);
+    }
+  };
+
+  const handleVerifyDataset = async () => {
+    if (!selectedDataset || (selectedDataset.annotated_count ?? 0) <= 0) return;
+    setVerifyingDatasetId(selectedDataset.id);
+    setError("");
+    try {
+      const updated = await datasets.verify(
+        selectedDataset.id,
+        datasetBackgroundCount(selectedDataset) > 0,
+      );
+      onDatasetUpdated(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify dataset annotations.");
+    } finally {
+      setVerifyingDatasetId(null);
     }
   };
 
@@ -629,8 +660,15 @@ function NewJobModal({
                   <button
                     key={dataset.id}
                     type="button"
-                    disabled={!dataset.is_train_ready}
+                    disabled={!dataset.is_train_ready && !selected}
                     aria-pressed={selected}
+                    title={
+                      !dataset.is_train_ready
+                        ? selected
+                          ? "Remove this dataset from the training run"
+                          : "Generate this dataset before selecting it"
+                        : undefined
+                    }
                     onClick={() => {
                       setDatasetIds((current) =>
                         current.includes(dataset.id)
@@ -664,8 +702,6 @@ function NewJobModal({
                     </span>
                   </button>
                 );
-                setInitializationMode("architecture");
-                setBaseModelId("");
               })}
             </div>
           </fieldset>
@@ -783,29 +819,54 @@ function NewJobModal({
             </div>
           </div>
           {selectedDataset ? (
-            <div className="grid grid-cols-3 gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+            <div className="grid grid-cols-2 gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-4 sm:grid-cols-4">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Images</p>
                 <p className="mt-1 text-lg font-bold text-stone-900">{selectedImageCount.toLocaleString()}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Annotated</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Labeled images</p>
                 <p className="mt-1 text-lg font-bold text-stone-900">{selectedAnnotatedCount.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Background</p>
+                <p className="mt-1 text-lg font-bold text-stone-900">{selectedBackgroundCount.toLocaleString()}</p>
               </div>
               <div className={["flex items-center justify-end gap-2 text-xs font-bold", selectedDatasetsReady ? "text-emerald-600" : "text-amber-600"].join(" ")}>
                 {selectedDatasetsReady ? <CheckCircle2 aria-hidden="true" className="h-4 w-4" /> : <AlertCircle aria-hidden="true" className="h-4 w-4" />}
-                {selectedDatasetsReady ? `${selectedDatasets.length} ready` : "Review selection"}
+                {selectedDatasetsReady
+                  ? `${selectedDatasets.length} ready`
+                  : selectedDataset.verification_is_current
+                    ? "Generation required"
+                    : "Verify backgrounds"}
               </div>
             </div>
           ) : null}
           {selectedDataset && !selectedDatasetsReady ? (
-            <p className="-mt-2 text-xs leading-5 text-amber-700">
-              {selectedDataset.is_label_complete
-                ? "This dataset is fully labeled. Verify it from the Project page before training."
-                : (selectedDataset.annotated_count ?? 0) > 0
-                  ? "Verify this dataset from the Project page. Unlabeled images will be treated as background."
-                  : "Add labels to at least 1 image, then verify this dataset from the Project page."}
-            </p>
+            <div className="-mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <p className="min-w-0 flex-1 text-xs leading-5 text-amber-800">
+                {selectedDataset.verification_is_current
+                  ? "Labels and background images are verified. Complete Generate Dataset from the Project page before training."
+                  : (selectedDataset.annotated_count ?? 0) > 0
+                    ? `${datasetBackgroundCount(selectedDataset).toLocaleString()} unlabeled images can be used as intentional background samples.`
+                    : "Add labels to at least 1 image before verifying this dataset."}
+              </p>
+              {!selectedDataset.verification_is_current && (selectedDataset.annotated_count ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleVerifyDataset}
+                  disabled={verifyingDatasetId === selectedDataset.id}
+                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {verifyingDatasetId === selectedDataset.id ? (
+                    <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />
+                  )}
+                  Confirm background & verify
+                </button>
+              ) : null}
+            </div>
           ) : null}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div>
@@ -1451,6 +1512,11 @@ export default function TrainPage() {
             registeredModels={registeredModels}
             onClose={() => setShowModal(false)}
             onCreated={handleJobCreated}
+            onDatasetUpdated={(updated) => {
+              setDatasetList((current) =>
+                current.map((dataset) => dataset.id === updated.id ? updated : dataset),
+              );
+            }}
             initialProjectId={trainingTarget.projectId}
             initialDatasetId={trainingTarget.datasetId}
             initialDatasetIds={trainingTarget.datasetIds}

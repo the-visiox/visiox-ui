@@ -18,7 +18,7 @@ export function apiShapesToEditor(rows: AnnotationApiRow[]): EditorShape[] {
     if (r.type === "bbox" || r.type === "rectangle") {
       const d = r.data as {
         x: number; y: number; width: number; height: number;
-        source?: string; confidence?: number; auto_label_source?: "uploaded_model" | "provider";
+        source?: string; confidence?: number; auto_label_source?: "uploaded_model" | "provider" | "propagation";
         auto_label_model_id?: number; auto_label_provider?: string; auto_label_engine_name?: string;
       };
       out.push({
@@ -44,7 +44,7 @@ export function apiShapesToEditor(rows: AnnotationApiRow[]): EditorShape[] {
     if (r.type === "polygon") {
       const d = r.data as {
         points?: number[]; source?: string; confidence?: number;
-        auto_label_source?: "uploaded_model" | "provider"; auto_label_model_id?: number;
+        auto_label_source?: "uploaded_model" | "provider" | "propagation"; auto_label_model_id?: number;
         auto_label_provider?: string; auto_label_engine_name?: string;
       };
       const pts = d.points;

@@ -361,9 +361,11 @@ export interface AutoLabelModel {
   task_type: "object_detection" | "instance_segmentation";
   capabilities: Array<"bbox" | "polygon">;
   class_names: string[];
+  checksum: string;
   file_size: number;
   status: "validating" | "ready" | "failed";
   validation_error: string;
+  is_temporary: boolean;
   created_at: string;
 }
 
@@ -412,6 +414,27 @@ export interface AutoLabelDatasetJob {
   labeled_images: number;
   saved_annotations: number;
   skipped_predictions: number;
+  error: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ObjectPropagationJob {
+  id: number;
+  dataset: number;
+  source_frame: number;
+  source_media: number;
+  class_label: number;
+  class_name: string;
+  seed_bbox: { x: number; y: number; width: number; height: number };
+  similarity_threshold: number;
+  max_frames: number | null;
+  track_id: string;
+  status: "queued" | "running" | "done" | "error";
+  total: number;
+  done: number;
+  matched_frames: number;
+  saved_annotations: number;
   error: string;
   created_at: string;
   updated_at: string;
@@ -993,7 +1016,7 @@ export const datasets = {
       };
 
       try {
-        const concurrency = Math.min(3, files.length);
+        const concurrency = Math.min(6, files.length);
         await Promise.all(Array.from({ length: concurrency }, () => uploadWorker()));
         return await request<DatasetImportAccepted>(
           `/api/v1/datasets/${id}/import-jobs/${prepared.job.id}/commit/`,
@@ -1028,10 +1051,13 @@ export const datasets = {
   browser(id: number) {
     return request<BrowserData>(`/api/v1/datasets/${id}/browser/`);
   },
-  frameUrl(id: number, frameNum: number, quality: "original" | "thumb" = "original") {
+  frameUrl(id: number, frameNum: number, quality: "original" | "thumb" = "original", mediaId?: number) {
     const token = getAccessToken();
     const baseUrl = resolveBaseUrl();
-    return `${baseUrl}/api/v1/datasets/${id}/frames/${frameNum}/?quality=${quality}${token ? `&token=${token}` : ""}`;
+    const params = new URLSearchParams({ quality });
+    if (mediaId !== undefined) params.set("media_id", String(mediaId));
+    if (token) params.set("token", token);
+    return `${baseUrl}/api/v1/datasets/${id}/frames/${frameNum}/?${params.toString()}`;
   },
   exportUrl(id: number, format: DatasetExportFormat, saveImages = false) {
     const token = getAccessToken();
@@ -1268,6 +1294,9 @@ export const autoLabel = {
     body.append("model_file", data.file);
     return request<AutoLabelModel>("/api/v1/auto-label/models/", { method: "POST", body });
   },
+  deleteModel(id: number) {
+    return request<void>(`/api/v1/auto-label/models/${id}/`, { method: "DELETE" });
+  },
   startDatasetJob(
     datasetId: number,
     data: { model_id: number; output_type: "bbox" | "polygon"; confidence: number },
@@ -1295,6 +1324,29 @@ export const autoLabel = {
       method: "POST",
       body: JSON.stringify(data),
       signal,
+    });
+  },
+  propagateObject(
+    datasetId: number,
+    frame: number,
+    data: {
+      class_label: number;
+      bbox: { x: number; y: number; width: number; height: number };
+      similarity_threshold: number;
+      max_frames?: number | null;
+    },
+  ) {
+    return request<ObjectPropagationJob>(`/api/v1/datasets/${datasetId}/frames/${frame}/propagate/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  getPropagationJob(datasetId: number, jobId: number) {
+    return request<ObjectPropagationJob>(`/api/v1/datasets/${datasetId}/propagation-jobs/${jobId}/`);
+  },
+  resumePropagationJob(datasetId: number, jobId: number) {
+    return request<ObjectPropagationJob>(`/api/v1/datasets/${datasetId}/propagation-jobs/${jobId}/`, {
+      method: "POST",
     });
   },
 };

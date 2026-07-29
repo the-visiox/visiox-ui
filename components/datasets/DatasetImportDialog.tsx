@@ -161,6 +161,8 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
 
   useEffect(() => {
     if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || submitting) return;
       if (hintOpen) {
@@ -170,7 +172,10 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
       onClose();
     };
     document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
   }, [hintOpen, onClose, open, submitting]);
 
   useEffect(() => {
@@ -294,7 +299,7 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-950/35 p-3 backdrop-blur-sm sm:p-5"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-stone-950/35 p-3 backdrop-blur-sm sm:p-5"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) resetAndClose();
       }}
@@ -442,7 +447,7 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
                   role="tooltip"
                   onMouseEnter={showHint}
                   onMouseLeave={hideHint}
-                  className="fixed z-[130] overflow-y-auto rounded-2xl border border-orange-200 bg-white p-5 shadow-xl"
+                  className="fixed z-[230] overflow-y-auto rounded-2xl border border-orange-200 bg-white p-5 shadow-xl"
                   style={hintPosition}
                 >
                   <div className="flex items-center gap-3">

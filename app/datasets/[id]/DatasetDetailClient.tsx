@@ -48,14 +48,12 @@ import {
   GitBranch,
 } from "lucide-react";
 
-const BATCH_SIZE = 50;
-const IMPORT_BATCH_SIZE = 500;
-const INTEGER_FORMATTER = new Intl.NumberFormat();
 import BlueprintGrid from "@/components/BlueprintGrid";
 import DatasetExportDialog from "@/components/datasets/DatasetExportDialog";
 import DatasetImportDialog, { type DatasetImportFormat } from "@/components/datasets/DatasetImportDialog";
 import { useConfirm } from "@/components/useConfirm";
 import {
+  ApiError,
   datasets,
   annotationClasses,
   deployments,
@@ -67,6 +65,12 @@ import {
   type AnnotationClass,
   type ModelRegistry,
 } from "@/lib/api";
+
+// Keep each gallery page small enough that changing page does not start dozens
+// of thumbnail requests at once. Images below the viewport are lazy-loaded.
+const BATCH_SIZE = 24;
+const IMPORT_BATCH_SIZE = 500;
+const INTEGER_FORMATTER = new Intl.NumberFormat();
 
 interface Props {
   id: string;
@@ -504,6 +508,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [annotatedCountApi, setAnnotatedCountApi] = useState<number | null>(null);
   const [mediaCountApi, setMediaCountApi] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [datasetNotFound, setDatasetNotFound] = useState(false);
   const [browserLoading, setBrowserLoading] = useState(true);
   const [error, setError] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
@@ -559,6 +564,17 @@ export default function DatasetDetailClient({ id }: Props) {
     let registryPromise = overviewOnly ? null : deployments.listRegistry();
 
     const [dsResult, statsResult] = await overviewPromise;
+    const datasetWasNotFound = [dsResult, statsResult].some(
+      (result) => result.status === "rejected" && result.reason instanceof ApiError && result.reason.status === 404,
+    );
+    if (datasetWasNotFound) {
+      setDatasetNotFound(true);
+      setLoading(false);
+      setBrowserLoading(false);
+      return;
+    }
+
+    setDatasetNotFound(false);
     if (dsResult.status === "fulfilled") {
       setDatasetDetail(dsResult.value);
       if (dsResult.value.split_config) {
@@ -647,6 +663,8 @@ export default function DatasetDetailClient({ id }: Props) {
 
   const latestImportJob = datasetDetail?.latest_import_job ?? null;
   const hasActiveImport = latestImportJob != null && ["queued", "running"].includes(latestImportJob.status);
+  const importedImageCount = datasetDetail?.image_count ?? mediaCountApi ?? 0;
+  const latestJobIsOneOfMultipleBatches = latestImportJob != null && importedImageCount > latestImportJob.total;
 
   useEffect(() => {
     if (!hasActiveImport) return;
@@ -773,6 +791,7 @@ export default function DatasetDetailClient({ id }: Props) {
     setLoading(true);
     setBrowserLoading(true);
     setBrowserData(null);
+    setDatasetNotFound(false);
     setError("");
     load();
     return () => {
@@ -820,6 +839,8 @@ export default function DatasetDetailClient({ id }: Props) {
   useEffect(() => {
     function handleDocMouseDown(e: MouseEvent) {
       if (selectedMediaIds.length === 0) return;
+      const target = e.target;
+      if (target instanceof Element && target.closest("[data-confirm-dialog]")) return;
       const panel = imageBrowserPanelRef.current;
       if (!panel) return;
       if (panel.contains(e.target as Node)) return;
@@ -929,10 +950,11 @@ export default function DatasetDetailClient({ id }: Props) {
 
   const handleDeleteSelectedMedia = async () => {
     if (!selectedMediaIds.length || isNaN(numericId)) return;
+    const idsToDelete = [...selectedMediaIds];
     if (
       !(await confirm({
         title: "Delete images",
-        message: `Delete ${selectedMediaIds.length} image(s)? This cannot be undone.`,
+        message: `Delete ${idsToDelete.length} image(s)? This cannot be undone.`,
         confirmLabel: "Delete",
         danger: true,
       }))
@@ -941,7 +963,7 @@ export default function DatasetDetailClient({ id }: Props) {
     setDeleting(true);
     setError("");
     try {
-      await datasets.deleteMedia(numericId, selectedMediaIds);
+      await datasets.deleteMedia(numericId, idsToDelete);
       setSelectedMediaIds([]);
       anchorFrameIndexRef.current = null;
       await refreshStatsAndBrowser();
@@ -1123,6 +1145,35 @@ export default function DatasetDetailClient({ id }: Props) {
     );
   }
 
+  if (datasetNotFound) {
+    return (
+      <div className="relative flex min-h-screen flex-1 flex-col bg-stone-50">
+        <BlueprintGrid />
+        <main className="z-10 flex flex-1 items-center justify-center px-6 py-12">
+          <section
+            className="w-full max-w-lg rounded-3xl border border-stone-200 bg-white p-8 text-center shadow-sm"
+            role="alert"
+          >
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+              <AlertTriangle className="h-6 w-6" aria-hidden="true" />
+            </span>
+            <h1 className="mt-5 text-xl font-bold text-stone-900">Dataset no longer exists</h1>
+            <p className="mt-2 text-sm leading-6 text-stone-500">
+              Dataset #{id} may have been deleted in another tab or by another user.
+            </p>
+            <button
+              type="button"
+              onClick={() => router.replace("/projects")}
+              className="mt-6 h-10 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white transition-colors hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+            >
+              Back to projects
+            </button>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex-1 flex flex-col min-h-screen bg-stone-50">
       <BlueprintGrid />
@@ -1297,7 +1348,7 @@ export default function DatasetDetailClient({ id }: Props) {
                     ? "Worker is importing files"
                     : latestImportJob.status === "error"
                       ? "Latest import failed"
-                      : "Latest import completed"}
+                      : "Import completed"}
               </p>
               <p
                 className={[
@@ -1311,7 +1362,9 @@ export default function DatasetDetailClient({ id }: Props) {
               >
                 {latestImportJob.status === "error"
                   ? latestImportJob.error || "The worker could not finish this import."
-                  : `${latestImportJob.done}/${latestImportJob.total} files processed`}
+                  : latestJobIsOneOfMultipleBatches
+                    ? `${INTEGER_FORMATTER.format(importedImageCount)} images in dataset · latest batch ${latestImportJob.done}/${latestImportJob.total} processed`
+                    : `${latestImportJob.done}/${latestImportJob.total} files processed`}
               </p>
             </div>
           </div>
@@ -2696,7 +2749,7 @@ export default function DatasetDetailClient({ id }: Props) {
                       : `/datasets/${id}/annotate/native?mode=simple&frame=${frame.frame}`;
                   const imageSrc = frame.image_url
                     ? resolveMediaUrl(frame.image_url)
-                    : datasets.frameUrl(numericId, frame.frame, "thumb");
+                    : datasets.frameUrl(numericId, frame.frame, "thumb", frame.media_id);
                   return (
                     <div
                       key={frame.frame}
@@ -2807,55 +2860,56 @@ export default function DatasetDetailClient({ id }: Props) {
                             "to-stone-200/80",
                           ].join(" ")}
                         >
-                          <svg
-                            className={[
-                              "absolute inset-0 h-full w-full transition-transform duration-500 ease-out",
-                              "group-hover/card:scale-[1.03]",
-                            ].join(" ")}
-                            viewBox={`0 0 ${Math.max(frame.width, 1)} ${Math.max(frame.height, 1)}`}
-                            preserveAspectRatio="xMidYMid slice"
-                            aria-label={frame.name}
-                            role="img"
-                          >
-                            <image
-                              href={imageSrc}
-                              width={Math.max(frame.width, 1)}
-                              height={Math.max(frame.height, 1)}
+                          <div className="absolute inset-0 transition-transform duration-500 ease-out group-hover/card:scale-[1.03]">
+                            <svg
+                              className="absolute inset-0 h-full w-full"
+                              viewBox={`0 0 ${Math.max(frame.width, 1)} ${Math.max(frame.height, 1)}`}
                               preserveAspectRatio="xMidYMid slice"
-                            />
-                            {showAnnotationLabels && (
-                              <g className="pointer-events-none">
-                                {frame.annotations.map((annotation) => {
-                                    const points = annotation.points ?? [];
-                                    const path = pointsToPath(points);
-                                    if (!path) return null;
-                                    return (
-                                      <g key={`ann-${annotation.id}`}>
-                                        <polygon
-                                          points={path}
-                                          fill="none"
-                                          stroke={annotation.color || "#16a34a"}
-                                          strokeWidth={Math.max(1.25, Math.max(frame.width, frame.height) * 0.0005)}
-                                          vectorEffect="non-scaling-stroke"
-                                        />
-                                        <text
-                                          x={points[0] ?? 0}
-                                          y={Math.max(10, (points[1] ?? 0) - 3)}
-                                          fill={annotation.color || "#16a34a"}
-                                          fontSize={Math.max(frame.width, frame.height) * 0.028}
-                                          fontWeight={700}
-                                          paintOrder="stroke"
-                                          stroke="white"
-                                          strokeWidth={2}
-                                        >
-                                          {annotation.label}
-                                        </text>
-                                      </g>
-                                    );
-                                  })}
-                              </g>
-                            )}
-                          </svg>
+                              aria-label={frame.name}
+                              role="img"
+                            >
+                              <image
+                                href={imageSrc}
+                                x={0}
+                                y={0}
+                                width={Math.max(frame.width, 1)}
+                                height={Math.max(frame.height, 1)}
+                                preserveAspectRatio="none"
+                              />
+                              {showAnnotationLabels && (
+                                <g className="pointer-events-none">
+                                  {frame.annotations.map((annotation) => {
+                                      const points = annotation.points ?? [];
+                                      const path = pointsToPath(points);
+                                      if (!path) return null;
+                                      return (
+                                        <g key={`ann-${annotation.id}`}>
+                                          <polygon
+                                            points={path}
+                                            fill="none"
+                                            stroke={annotation.color || "#16a34a"}
+                                            strokeWidth={Math.max(1.25, Math.max(frame.width, frame.height) * 0.0005)}
+                                            vectorEffect="non-scaling-stroke"
+                                          />
+                                          <text
+                                            x={points[0] ?? 0}
+                                            y={Math.max(10, (points[1] ?? 0) - 3)}
+                                            fill={annotation.color || "#16a34a"}
+                                            fontSize={Math.max(frame.width, frame.height) * 0.028}
+                                            fontWeight={700}
+                                            paintOrder="stroke"
+                                            stroke="white"
+                                            strokeWidth={2}
+                                          >
+                                            {annotation.label}
+                                          </text>
+                                        </g>
+                                      );
+                                    })}
+                                </g>
+                              )}
+                            </svg>
+                          </div>
                         </div>
                         <div className="bg-white/60 px-2.5 py-2 backdrop-blur-[2px]">
                           <p className="truncate text-xs font-semibold text-stone-800">{frame.name}</p>

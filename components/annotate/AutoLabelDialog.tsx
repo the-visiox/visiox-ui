@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FileUp, Loader2, Sparkles, X } from "lucide-react";
 
 import {
@@ -15,6 +16,10 @@ import type { LabelDefinition } from "@/lib/annotation";
 function errorMessage(reason: unknown, fallback: string) {
   if (reason instanceof ApiError) return reason.body || reason.message;
   return reason instanceof Error ? reason.message : fallback;
+}
+
+function normalizeClassName(name: string) {
+  return name.trim().toLocaleLowerCase();
 }
 
 export default function AutoLabelDialog({
@@ -39,10 +44,11 @@ export default function AutoLabelDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const completedJobRef = useRef<number | null>(null);
   const runInFlightRef = useRef(false);
+  const modelHandedOffRef = useRef(false);
   const [scope, setScope] = useState<"frame" | "dataset">("frame");
   const [selectedModel, setSelectedModel] = useState<AutoLabelModel | null>(null);
   const [outputType, setOutputType] = useState<"bbox" | "polygon">("bbox");
-  const [confidence, setConfidence] = useState(0.25);
+  const [confidence, setConfidence] = useState(0.45);
   const [uploading, setUploading] = useState(false);
   const [frameRunning, setFrameRunning] = useState(false);
   const [frameResult, setFrameResult] = useState<AutoLabelPredictionResponse | null>(null);
@@ -55,6 +61,14 @@ export default function AutoLabelDialog({
   const datasetRunning = jobStatus === "queued" || jobStatus === "running";
   const running = frameRunning || datasetRunning;
   const progress = job && job.total > 0 ? Math.min(100, Math.round((job.done / job.total) * 100)) : 0;
+  const projectClassNames = useMemo(
+    () => new Set(labels.map((label) => normalizeClassName(label.name))),
+    [labels],
+  );
+  const matchedClassCount = selectedModel?.class_names.reduce(
+    (count, name) => count + Number(projectClassNames.has(normalizeClassName(name))),
+    0,
+  ) ?? 0;
 
   useEffect(() => {
     if (!open) return;
@@ -65,7 +79,17 @@ export default function AutoLabelDialog({
     setFrameResult(null);
     setError("");
     completedJobRef.current = null;
+    modelHandedOffRef.current = false;
   }, [open, projectId]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!canUsePolygon && outputType === "polygon") setOutputType("bbox");
@@ -103,6 +127,15 @@ export default function AutoLabelDialog({
 
   if (!open) return null;
 
+  const closeDialog = () => {
+    const model = selectedModel;
+    setSelectedModel(null);
+    if (model && !modelHandedOffRef.current) {
+      void autoLabel.deleteModel(model.id).catch(() => undefined);
+    }
+    onClose();
+  };
+
   const handleFile = async (file: File | null) => {
     if (!file || projectId == null) return;
     if (!file.name.toLowerCase().endsWith(".pt")) {
@@ -112,8 +145,12 @@ export default function AutoLabelDialog({
     setUploading(true);
     setError("");
     try {
+      if (selectedModel && !modelHandedOffRef.current) {
+        await autoLabel.deleteModel(selectedModel.id).catch(() => undefined);
+      }
       const created = await autoLabel.uploadModel({ project: projectId, file });
       setSelectedModel(created);
+      modelHandedOffRef.current = false;
       setOutputType("bbox");
       setJob(null);
       setFrameResult(null);
@@ -142,7 +179,7 @@ export default function AutoLabelDialog({
         });
         setFrameResult(result);
         await onFrameComplete(result);
-        onClose();
+        closeDialog();
       } catch (reason) {
         setError(errorMessage(reason, "Auto Label failed for this frame."));
       } finally {
@@ -160,7 +197,7 @@ export default function AutoLabelDialog({
       });
       completedJobRef.current = null;
       setJob(created);
-      onClose();
+      modelHandedOffRef.current = true;
     } catch (reason) {
       setError(errorMessage(reason, "Auto Label failed."));
     } finally {
@@ -175,15 +212,15 @@ export default function AutoLabelDialog({
     setError("");
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-950/45 p-4 backdrop-blur-sm">
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] isolate flex items-center justify-center overflow-y-auto bg-stone-950/45 p-3 backdrop-blur-sm sm:p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="auto-label-title"
-        className="w-full max-w-lg overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl"
+        className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
       >
-        <div className="flex items-center justify-between border-b border-stone-100 px-6 py-5">
+        <div className="flex shrink-0 items-center justify-between border-b border-stone-100 px-6 py-5">
           <div>
             <h2 id="auto-label-title" className="flex items-center gap-2 text-lg font-bold text-stone-900">
               <Sparkles className="h-5 w-5 text-orange-500" /> Auto Label
@@ -192,8 +229,8 @@ export default function AutoLabelDialog({
           </div>
           <button
             type="button"
-            onClick={onClose}
-            disabled={running || uploading}
+            onClick={closeDialog}
+            disabled={frameRunning || uploading}
             aria-label="Close Auto Label"
             className="flex h-9 w-9 items-center justify-center rounded-xl text-stone-400 hover:bg-stone-100 hover:text-stone-700 disabled:opacity-40"
           >
@@ -201,7 +238,7 @@ export default function AutoLabelDialog({
           </button>
         </div>
 
-        <div className="space-y-5 p-6">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-6">
           <div className="grid grid-cols-2 gap-2 rounded-2xl bg-stone-100 p-1.5" role="group" aria-label="Scope">
             <button
               type="button"
@@ -234,12 +271,51 @@ export default function AutoLabelDialog({
           </div>
 
           <div className="space-y-3">
-            <p className="text-sm font-bold text-stone-800">Model file</p>
+            <div>
+              <p className="text-sm font-bold text-stone-800">Temporary model file</p>
+              <p className="mt-1 text-xs leading-5 text-stone-500">
+                The model artifact is removed automatically after Auto Label finishes.
+              </p>
+            </div>
             {selectedModel ? (
-              <div className="flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800">
-                <FileUp className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{selectedModel.name}.pt</span>
-                <span className="text-xs font-bold uppercase">Ready</span>
+              <div className="space-y-3">
+                <div className="flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800">
+                  <FileUp className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{selectedModel.name}.pt</span>
+                  <span className="text-xs font-bold uppercase">{job?.status === "done" ? "Used" : "Ready"}</span>
+                </div>
+                <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-stone-800">Detected model classes</p>
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      {selectedModel.task_type === "instance_segmentation" ? "Segmentation" : "Object detection"}
+                      {selectedModel.file_size ? ` · ${(selectedModel.file_size / 1024 / 1024).toFixed(1)} MB` : ""}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedModel.class_names.map((name, index) => {
+                      const matched = projectClassNames.has(normalizeClassName(name));
+                      return (
+                        <span
+                          key={`${index}-${name}`}
+                          title={matched ? "Matches a project class" : "Not in project; predictions will be skipped"}
+                          className={[
+                            "rounded-lg border px-2 py-1 text-[11px] font-bold",
+                            matched
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-amber-200 bg-amber-50 text-amber-700",
+                          ].join(" ")}
+                        >
+                          {index}: {name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[11px] text-stone-500">
+                    {matchedClassCount}/{selectedModel.class_names.length} classes match this project.
+                    Amber classes are ignored.
+                  </p>
+                </div>
               </div>
             ) : null}
             <input
@@ -303,7 +379,11 @@ export default function AutoLabelDialog({
           ) : null}
 
           {job ? (
-            <div className="space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-4">
+            <div
+              className="space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-4"
+              role="status"
+              aria-live="polite"
+            >
               <div className="flex items-center justify-between text-sm font-bold text-stone-800">
                 <span>
                   {job.status === "done"
@@ -347,34 +427,35 @@ export default function AutoLabelDialog({
           ) : null}
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-stone-100 px-6 py-4">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-stone-100 bg-white px-6 py-4">
           <button
             type="button"
-            onClick={onClose}
-            disabled={running || uploading}
+            onClick={closeDialog}
+            disabled={frameRunning || uploading}
             className="h-10 rounded-xl border border-stone-200 px-4 text-sm font-bold text-stone-700 disabled:opacity-40"
           >
-            {job?.status === "done" || frameResult ? "Close" : "Cancel"}
+            {datasetRunning ? "Run in background" : job || frameResult ? "Close" : "Cancel"}
           </button>
-          <button
-            type="button"
-            onClick={() => void handleRun()}
-            disabled={running || uploading || !selectedModel || selectedModel.status !== "ready"}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white transition-colors hover:bg-orange-600 disabled:opacity-40"
-          >
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {running
-              ? scope === "frame"
-                ? "Labeling frame…"
-                : "Labeling dataset…"
-              : scope === "frame"
-                ? "Apply to current frame"
-                : job?.status === "done"
-                  ? "Run again"
+          {job?.status !== "done" && job?.status !== "error" ? (
+            <button
+              type="button"
+              onClick={() => void handleRun()}
+              disabled={running || uploading || !selectedModel || selectedModel.status !== "ready"}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white transition-colors hover:bg-orange-600 disabled:opacity-40"
+            >
+              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {running
+                ? scope === "frame"
+                  ? "Labeling frame…"
+                  : "Labeling dataset…"
+                : scope === "frame"
+                  ? "Apply to current frame"
                   : "Apply to entire dataset"}
-          </button>
+            </button>
+          ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
