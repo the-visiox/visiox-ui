@@ -10,8 +10,9 @@ import { useAuth } from "@/lib/auth";
 import {
   datasets as visioxDatasets,
   deployments,
+  projects as visioxProjects,
+  autoLabel,
   resolveMediaUrl,
-  type AutoLabelDatasetJob,
   type AutoLabelPredictionResponse,
   type ObjectPropagationJob,
 } from "@/lib/api";
@@ -43,7 +44,9 @@ import {
 import type { EditorShape, LabelDefinition } from "@/lib/annotation";
 
 const AutoLabelDialog = dynamic(() => import("@/components/annotate/AutoLabelDialog"), { ssr: false });
+const AutoSegmentDialog = dynamic(() => import("@/components/annotate/AutoSegmentDialog"), { ssr: false });
 const ObjectPropagationDialog = dynamic(() => import("@/components/annotate/ObjectPropagationDialog"), { ssr: false });
+const projectTaskTypeCache = new Map<number, string>();
 
 function draftStorageKey(
   datasetId: number,
@@ -306,6 +309,7 @@ export default function AnnotatePageClient() {
   const [usedClassIds, setUsedClassIds] = useState<Set<number>>(new Set());
   const [activeClassId, setActiveClassId] = useState(0);
   const [projectId, setProjectId] = useState<number | null>(null);
+  const [projectTaskType, setProjectTaskType] = useState<string | null>(null);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#E66700");
   const [labelBusyId, setLabelBusyId] = useState<number | "new" | null>(null);
@@ -338,6 +342,12 @@ export default function AnnotatePageClient() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [autoLabelOpen, setAutoLabelOpen] = useState(false);
+  const [autoSegmentOpen, setAutoSegmentOpen] = useState(false);
+  const [autoSegmentError, setAutoSegmentError] = useState<string | null>(null);
+  const [autoSegmentMessage, setAutoSegmentMessage] = useState<string | null>(null);
+  const [autoSegmentCandidates, setAutoSegmentCandidates] = useState<EditorShape[]>([]);
+  const [autoSegmentActive, setAutoSegmentActive] = useState(false);
+  const [autoSegmentLoading, setAutoSegmentLoading] = useState(false);
   const [propagationOpen, setPropagationOpen] = useState(false);
   const [predictionShapes, setPredictionShapes] = useState<EditorShape[]>([]);
   const [predictionModelName, setPredictionModelName] = useState<string | undefined>();
@@ -350,6 +360,8 @@ export default function AnnotatePageClient() {
   const draftCacheRef = useRef<Record<string, StoredAnnotationDraft>>({});
   const savedShapesJsonRef = useRef<string>("[]");
   const savedLabelsJsonRef = useRef<string>("[]");
+  const autoSegmentAbortRef = useRef<AbortController | null>(null);
+  const classSyncInFlightRef = useRef(false);
   shapesRef.current = shapes;
 
   const currentDraftKey = useMemo(
@@ -594,6 +606,17 @@ export default function AnnotatePageClient() {
           datasetDetailCache.set(datasetId, ds);
         }
         setProjectId(ds.project);
+        const cachedTaskType = projectTaskTypeCache.get(ds.project);
+        if (cachedTaskType) {
+          setProjectTaskType(cachedTaskType);
+        } else {
+          void visioxProjects.get(ds.project).then((project) => {
+            projectTaskTypeCache.set(ds.project, project.task_type);
+            if (!cancelled) setProjectTaskType(project.task_type);
+          }).catch(() => {
+            if (!cancelled) setProjectTaskType("");
+          });
+        }
 
         const nativeFrameTotal = ds.image_count ?? ds.media_count ?? 0;
         if (isNativeMode) {
@@ -688,6 +711,9 @@ export default function AnnotatePageClient() {
 
         if (cancelled) return;
 
+        // A background class sync may have completed while annotations/media
+        // were loading. Prefer that fresh response over this load's cached copy.
+        classes = projectClassesCache.get(ds.project) ?? classes;
         setUsedClassIds(new Set(classes.filter((c) => (c.annotation_count ?? 0) > 0).map((c) => c.id)));
 
         if (classes.length) {
@@ -932,6 +958,21 @@ export default function AnnotatePageClient() {
       ) ?? null,
     [selectedShapeId, shapes],
   );
+
+  useEffect(() => {
+    autoSegmentAbortRef.current?.abort();
+    autoSegmentAbortRef.current = null;
+    setAutoSegmentOpen(false);
+    setAutoSegmentError(null);
+    setAutoSegmentMessage(null);
+    setAutoSegmentCandidates([]);
+    setAutoSegmentActive(false);
+    setAutoSegmentLoading(false);
+  }, [currentDraftKey]);
+
+  useEffect(() => {
+    if (autoSegmentActive && autoSegmentCandidates.length === 0) setAutoSegmentActive(false);
+  }, [autoSegmentActive, autoSegmentCandidates.length]);
   const selectedTrackLabel = useMemo(
     () =>
       selectedTrackShape
@@ -1017,14 +1058,80 @@ export default function AnnotatePageClient() {
     }
   }, [current, navigateTo, scrubValue]);
 
-  const handleAutoLabelComplete = useCallback(async (job: AutoLabelDatasetJob) => {
+  const toggleAutoSegment = useCallback(() => {
+    if (autoSegmentActive) {
+      autoSegmentAbortRef.current?.abort();
+      autoSegmentAbortRef.current = null;
+      setAutoSegmentCandidates([]);
+      setAutoSegmentActive(false);
+      setAutoSegmentLoading(false);
+      return;
+    }
+    setAutoSegmentError(null);
+    setAutoSegmentMessage(null);
+    setAutoSegmentOpen(true);
+  }, [autoSegmentActive]);
+
+  const runAutoSegment = useCallback(async (labelIds: number[], confidence: number) => {
+    if (autoSegmentLoading || labelIds.length < 1 || labelIds.length > 20) return;
+    const controller = new AbortController();
+    autoSegmentAbortRef.current = controller;
+    setAutoSegmentLoading(true);
+    setAutoSegmentError(null);
+    setAutoSegmentMessage(null);
+    setActiveTool("select");
+    try {
+      const result = await autoLabel.segmentFrame(datasetId, frameIndex, {
+        provider: "sam3",
+        model: "facebook/sam3",
+        label_ids: labelIds,
+        output_type: "polygon",
+        confidence,
+      }, controller.signal);
+      if (controller.signal.aborted) return;
+      const candidates = uniqueAutoLabelShapes(
+        autoLabelPredictionsToEditor(result).filter((shape) => shape.shapeType === "polygon"),
+      );
+      setAutoSegmentCandidates(candidates);
+      setAutoSegmentActive(candidates.length > 0);
+      if (candidates.length) setAutoSegmentOpen(false);
+      else setAutoSegmentMessage("0 predictions. Adjust the labels or confidence, then retry.");
+    } catch (reason) {
+      if (!controller.signal.aborted) {
+        setAutoSegmentError(
+          reason instanceof ApiError && reason.status === 502
+            ? reason.body || "SAM 3 is unavailable on the inference agent."
+            : reason instanceof Error ? reason.message : "Could not start Auto Segment.",
+        );
+      }
+    } finally {
+      if (autoSegmentAbortRef.current === controller) autoSegmentAbortRef.current = null;
+      if (!controller.signal.aborted) setAutoSegmentLoading(false);
+    }
+  }, [autoSegmentLoading, datasetId, frameIndex]);
+
+  const commitAutoSegment = useCallback((shape: EditorShape) => {
+    _setShapes(sessionRef.current.update((current) => {
+      const geometry = JSON.stringify(shape.points?.map((value) => Math.round(value * 100) / 100));
+      const alreadyExists = current.some((item) =>
+        item.shapeType === "polygon" &&
+        item.classLabelId === shape.classLabelId &&
+        JSON.stringify(item.points?.map((value) => Math.round(value * 100) / 100)) === geometry,
+      );
+      if (alreadyExists) return current;
+      return [...current, shape];
+    }));
+    setAutoSegmentCandidates((current) => current.filter((item) => item.clientId !== shape.clientId));
+    setSelectedShapeId(shape.clientId);
+    setActiveRightTab("objects");
+  }, []);
+
+  const handleAutoLabelComplete = useCallback(async () => {
     if (!isNativeMode || !Number.isFinite(datasetId)) return;
     try {
       const rows = await getFrameAnnotations(datasetId, frameIndex);
       const generated = uniqueAutoLabelShapes(
-        apiShapesToEditor(rows).filter(
-          (shape) => shape.source === "auto_label" && shape.autoLabelModelId === job.model,
-        ),
+        apiShapesToEditor(rows).filter((shape) => shape.source === "auto_label"),
       );
       _setShapes(sessionRef.current.update((current) => [
         ...current.filter((shape) => shape.source !== "auto_label"),
@@ -1604,8 +1711,8 @@ export default function AnnotatePageClient() {
   );
 
   const handleSyncLabels = useCallback(async () => {
-    if (!projectId) return;
-    setError(null);
+    if (!projectId || classSyncInFlightRef.current) return;
+    classSyncInFlightRef.current = true;
     try {
       const refreshed = await getClassesForProject(projectId);
       projectClassesCache.set(projectId, refreshed);
@@ -1620,15 +1727,27 @@ export default function AnnotatePageClient() {
       setNewLabelColor(nextLabelColor(synced));
       if (synced.length > 0) {
         setActiveClassId((prev) => (synced.some((l) => l.id === prev) ? prev : synced[0].id));
+      } else {
+        setActiveClassId(0);
       }
     } catch {
       // silent — don't show error on background sync
+    } finally {
+      classSyncInFlightRef.current = false;
     }
   }, [projectId]);
 
   useEffect(() => {
     if (!projectId) return;
     let channel: BroadcastChannel | null = null;
+    const syncWhenVisible = () => {
+      if (document.visibilityState === "visible") void handleSyncLabels();
+    };
+    const syncOnFocus = () => void handleSyncLabels();
+
+    // Revalidate after client-side navigation. The module-level cache may have
+    // survived while Class management changed data on another route.
+    void handleSyncLabels();
     try {
       channel = new BroadcastChannel("visiox-project-classes");
       channel.onmessage = (e: MessageEvent<{ type: string; projectId: number }>) => {
@@ -1639,7 +1758,11 @@ export default function AnnotatePageClient() {
     } catch {
       // BroadcastChannel not supported
     }
+    window.addEventListener("focus", syncOnFocus);
+    document.addEventListener("visibilitychange", syncWhenVisible);
     return () => {
+      window.removeEventListener("focus", syncOnFocus);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
       try {
         channel?.close();
       } catch {
@@ -1650,7 +1773,7 @@ export default function AnnotatePageClient() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (autoLabelOpen || propagationOpen || showDeleteFrameConfirm || showExitConfirm) return;
+      if (autoLabelOpen || autoSegmentOpen || propagationOpen || showDeleteFrameConfirm || showExitConfirm) return;
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
@@ -1735,6 +1858,7 @@ export default function AnnotatePageClient() {
     return () => window.removeEventListener("keydown", onKey);
   }, [
     autoLabelOpen,
+    autoSegmentOpen,
     current,
     datasetId,
     handleSave,
@@ -1949,15 +2073,6 @@ export default function AnnotatePageClient() {
         onDeleteFrame={isNativeMode ? requestDeleteFrame : undefined}
         deletingFrame={deletingFrame}
         deleteFrameDisabled={loading || saving || !canSaveToApi || total <= 0}
-        onAutoLabel={isNativeMode ? () => setAutoLabelOpen(true) : undefined}
-        autoLabelDisabled={projectId == null || loading}
-        autoLabelTitle={
-          projectId != null && !loading
-            ? "Auto Label current frame or entire dataset"
-            : isLoggedIn
-              ? "Waiting for dataset information"
-              : "Sign in to use Auto Label"
-        }
         onPropagate={isNativeMode ? () => setPropagationOpen(true) : undefined}
         propagateDisabled={
           loading ||
@@ -1987,6 +2102,13 @@ export default function AnnotatePageClient() {
         frameIndex={frameIndex}
         projectId={projectId}
         labels={labels}
+        defaultOutputType={
+          projectTaskType === "semantic_segmentation" || projectTaskType === "instance_segmentation"
+            ? "polygon"
+            : projectTaskType === "object_detection"
+              ? "bbox"
+              : activeTool === "polygon" ? "polygon" : "bbox"
+        }
         onClose={() => setAutoLabelOpen(false)}
         onDatasetComplete={handleAutoLabelComplete}
         onFrameComplete={handleFrameAutoLabelComplete}
@@ -2003,6 +2125,18 @@ export default function AnnotatePageClient() {
         onComplete={handlePropagationComplete}
       />
 
+      {autoSegmentOpen ? (
+        <AutoSegmentDialog
+          labels={labels}
+          activeClassId={activeClassId}
+          running={autoSegmentLoading}
+          error={autoSegmentError}
+          message={autoSegmentMessage}
+          onClose={() => setAutoSegmentOpen(false)}
+          onRun={runAutoSegment}
+        />
+      ) : null}
+
       <main className="flex min-h-0 flex-grow overflow-hidden">
         <ToolPane
           width={toolPaneWidth}
@@ -2010,6 +2144,18 @@ export default function AnnotatePageClient() {
           polygonVertexCount={polygonVertexCount}
           onToolChange={setActiveTool}
           onPolygonVertexCountChange={setPolygonVertexCount}
+          onAutoLabel={isNativeMode ? () => setAutoLabelOpen(true) : undefined}
+          onAutoSegment={isNativeMode ? () => void toggleAutoSegment() : undefined}
+          autoSegmentActive={autoSegmentActive}
+          autoSegmentLoading={autoSegmentLoading}
+          autoLabelDisabled={projectId == null || loading}
+          autoLabelTitle={
+            projectId != null && !loading
+              ? "Auto Label current frame or entire dataset"
+              : isLoggedIn
+                ? "Waiting for dataset information"
+                : "Sign in to use Auto Label"
+          }
         />
 
         <CanvasStage
@@ -2031,6 +2177,10 @@ export default function AnnotatePageClient() {
           onToolChange={setActiveTool}
           onSelectedIdChange={setSelectedShapeId}
           externalSelectedId={selectedShapeId}
+          autoSegmentCandidates={autoSegmentCandidates}
+          autoSegmentEnabled={autoSegmentActive}
+          autoSegmentLoading={autoSegmentLoading}
+          onAutoSegmentCommit={commitAutoSegment}
         />
 
         <RightPane

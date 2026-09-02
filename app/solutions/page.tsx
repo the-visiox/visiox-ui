@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import Badge from "@/components/Badge";
 import { assetPath } from "@/lib/assets";
 
@@ -150,17 +151,15 @@ export default function SolutionsPage() {
                     <div className={`absolute inset-0 bg-gradient-to-br ${solution.color} opacity-20`} />
 
                     {/* Image */}
-                    <img
+                    <Image
                       src={solution.image}
                       alt={solution.title}
+                      fill
+                      unoptimized
                       className={[
                         "w-full h-full object-cover group-hover:scale-110 transition-transform",
                         "duration-700",
                       ].join(" ")}
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = "none";
-                      }}
                     />
 
                     {/* Overlay */}

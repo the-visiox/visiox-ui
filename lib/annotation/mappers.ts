@@ -210,7 +210,7 @@ export function autoLabelPredictionsToEditor(result: AutoLabelPredictionResponse
   return result.predictions.reduce<EditorShape[]>((shapes, prediction, index) => {
     const base = {
       clientId: `auto-${result.frame}-${Date.now()}-${index}`,
-      classLabelId: prediction.class_label,
+      classLabelId: prediction.label_id ?? prediction.class_label,
       source: "auto_label" as const,
       confidence: typeof prediction.confidence === "number" ? prediction.confidence : undefined,
       autoLabelSource: sourceKind as "uploaded_model" | "provider",

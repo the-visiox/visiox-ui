@@ -32,11 +32,14 @@ const UPLOAD_RULES: Record<
   { accept: string; title: string; description: string; multiple: boolean; guide: string[] }
 > = {
   images: {
-    accept: "image/*,video/*,.mp4,.webm,.mov,.mkv,.avi,.m4v",
-    title: "Drag and drop your images or videos here",
-    description: "Images & videos - PNG, JPG, MP4, MOV...",
+    accept: "image/*,video/*,.mp4,.webm,.mov,.mkv,.avi,.m4v,.zip,application/zip,application/x-zip-compressed",
+    title: "Drag and drop your images, videos, or ZIP archive here",
+    description: "Images, videos, or a .zip archive of images (PNG, JPG, MP4, MOV, ZIP...)",
     multiple: true,
-    guide: ["Upload image or video files.", "Duplicate files in the same selection are ignored."],
+    guide: [
+      "Upload individual image/video files, or a .zip archive containing images.",
+      "ZIP archives will be automatically unpacked and added to this dataset.",
+    ],
   },
   yolo26: {
     accept: ".zip,application/zip,application/x-zip-compressed",
@@ -64,50 +67,54 @@ const IMPORT_HINTS: Record<
   }
 > = {
   images: {
-    title: "Images upload guide",
-    description: "Upload image or video files now and add annotations later in VisioX.",
-    testPath: "images folder",
-    structure: `dataset/
+    title: "Images & ZIP upload guide",
+    description: "Upload image/video files or a .zip archive of raw images now and annotate them later in VisioX.",
+    testPath: "images.zip or images/ folder",
+    structure: `images.zip (or loose files)
 \`-- images/
     |-- image_001.jpg
     |-- image_002.png
     \`-- video_001.mp4`,
     configLabel: "Supported files",
-    configExample: `Images: PNG, JPG, JPEG
-Videos: MP4, MOV, WEBM`,
+    configExample: `Images: PNG, JPG, JPEG, BMP, WEBP
+Videos: MP4, MOV, WEBM
+Archives: .ZIP (auto-extracted)`,
     checklist: [
-      "Use this option when you only need to upload media files.",
+      "Use this option when you want to upload raw images, videos, or a ZIP archive.",
+      "VisioX automatically extracts all images found inside the ZIP file.",
       "You can annotate uploaded images in the VisioX annotation workspace.",
-      "Duplicate files in the same selection are ignored.",
     ],
   },
   yolo26: {
-    title: "YOLO26 ZIP import guide",
-    description: "Upload one .zip archive that contains data.yaml and matching image/label folders.",
-    testPath: "E:\\truck_detection.zip",
-    structure: `truck_detection.zip
-  |-- truck_detection/
-    |-- data.yaml
-    |-- train/
-    |   |-- images/
-    |   |-- labels/
-    |-- valid/
-    |   |-- images/
-    |   |-- labels/
-    |-- test/
-        |-- images/
-        |-- labels/`,
-    configLabel: "data.yaml",
-    configExample: `train: ../train/images
-val: ../valid/images
-test: ../test/images
+    title: "YOLO ZIP import guide",
+    description: "Upload a .zip archive containing images/ & labels/ folders, plus data.yaml or classes.txt.",
+    testPath: "dataset.zip",
+    structure: `dataset.zip (Un-split or Split)
+  |-- images/
+  |   |-- img_001.jpg
+  |   \`-- img_002.jpg
+  |-- labels/
+  |   |-- img_001.txt
+  |   \`-- img_002.txt
+  |-- data.yaml (or classes.txt)
 
-nc: 1
-names: ['truck']`,
+-- OR with split subfolders --
+  |-- train/ (images/ & labels/)
+  |-- valid/ (images/ & labels/)
+  \`-- data.yaml`,
+    configLabel: "data.yaml (or classes.txt)",
+    configExample: `# Option A: data.yaml
+nc: 2
+names: ['cat', 'dog']
+
+# Option B: classes.txt
+cat
+dog`,
     checklist: [
-      "Choose YOLO26, then upload exactly one ZIP archive.",
-      "Every image in images/ should have a matching .txt file in labels/.",
-      "Keep class order in data.yaml names aligned with the label ids.",
+      "Un-split archives with images/ and labels/ folders are fully supported.",
+      "Split archives with train/ and valid/ folders are also supported.",
+      "Each image in images/ should have a matching .txt in labels/.",
+      "Include data.yaml or classes.txt with your class names.",
     ],
   },
 };
@@ -249,9 +256,16 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
       return;
     }
 
-    const mediaFiles = candidates.filter(isMediaFile);
+    const zipArchive = candidates.find(isZipFile);
+    if (zipArchive && candidates.length === 1) {
+      setFiles([zipArchive]);
+      setError("");
+      return;
+    }
+
+    const mediaFiles = candidates.filter((f) => isMediaFile(f) || isZipFile(f));
     if (mediaFiles.length === 0) {
-      setError("Please upload image or video files.");
+      setError("Please upload image, video, or .zip archive files.");
       return;
     }
     setFiles((current) => {
@@ -389,8 +403,7 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
                 {formatMenuOpen ? (
                   <div
                     role="listbox"
-                    aria-label="Dataset import format"
-                    className="absolute right-0 top-full z-40 mt-2 min-w-40 overflow-hidden rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl"
+                    className="absolute right-0 top-[calc(100%+6px)] z-40 w-full min-w-44 rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl"
                   >
                     {IMPORT_OPTIONS.map((option) => (
                       <button
@@ -543,7 +556,7 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
                   </span>
                   <p className="text-sm font-semibold text-stone-700">{rule.title}</p>
                   <p className="my-2 text-xs text-stone-400">or</p>
-                  <span className="rounded-xl border border-orange-500 bg-white px-5 py-2.5 text-sm font-bold text-orange-600">
+                  <span className="rounded-xl border border-orange-500 bg-white px-5 py-2 text-sm font-bold text-orange-600 shadow-xs transition-colors hover:bg-orange-50">
                     Browse files
                   </span>
                   <p className="mt-4 text-xs text-stone-400">{rule.description}</p>
@@ -554,11 +567,11 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
                     <p className="text-sm font-semibold text-stone-700">
                       {files.length} file{files.length === 1 ? "" : "s"} selected
                     </p>
-                    <span className="text-xs text-orange-500">{archiveImport ? "Click or drop replacement" : "Click or drop more"}</span>
+                    <span className="text-xs font-semibold text-orange-600">{archiveImport ? "Click or drop replacement" : "Click or drop more"}</span>
                   </div>
                   <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                     {files.map((file, index) => (
-                      <div key={`${file.name}:${file.size}`} className="flex items-center gap-3 rounded-xl border border-stone-100 bg-white px-3 py-2 shadow-sm">
+                      <div key={`${file.name}:${file.size}`} className="flex items-center gap-3 rounded-xl border border-stone-100 bg-white px-3 py-2 shadow-xs">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-stone-100">
                           {archiveImport ? (
                             <FileArchive className="h-4 w-4 text-orange-500" />
@@ -597,7 +610,7 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
             type="button"
             onClick={resetAndClose}
             disabled={submitting}
-            className="h-11 rounded-xl border border-stone-200 bg-white px-6 text-sm font-bold text-stone-700 transition-colors hover:bg-stone-50 disabled:opacity-50"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-stone-200 bg-white px-5 text-sm font-semibold text-stone-700 shadow-xs transition-all hover:bg-stone-50 hover:text-stone-900 active:scale-[0.98] disabled:opacity-50"
           >
             Cancel
           </button>
@@ -605,7 +618,7 @@ export default function DatasetImportDialog({ open, datasetName, onClose, onSubm
             type="button"
             onClick={startImport}
             disabled={submitting || files.length === 0}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 text-sm font-bold text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 text-sm font-bold text-white shadow-sm transition-all hover:bg-orange-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {submitting ? "Starting import..." : "Start import"}

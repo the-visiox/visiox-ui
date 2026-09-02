@@ -231,13 +231,13 @@ export default function WorkflowsPage() {
             ))}
           </div>
 
-          <div className="mt-6 hidden rounded-2xl bg-orange-100 p-4 text-stone-600 lg:block">
-            <div className="flex items-center gap-2 text-xs font-bold text-orange-500">
+          <div className="mt-6 hidden rounded-2xl border border-orange-200/80 bg-orange-50/80 p-4 text-stone-600 lg:block">
+            <div className="flex items-center gap-2 text-xs font-bold text-orange-600">
               <Zap className="h-3.5 w-3.5" /> Runtime health
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div><p className="text-lg font-bold tabular-nums">12ms</p><p className="text-[10px] text-stone-500">Latency</p></div>
-              <div><p className="text-lg font-bold tabular-nums">99.9%</p><p className="text-[10px] text-stone-500">Uptime</p></div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div><p className="text-base font-bold tabular-nums text-stone-900">12ms</p><p className="text-[10px] text-stone-400">Latency</p></div>
+              <div><p className="text-base font-bold tabular-nums text-stone-900">99.9%</p><p className="text-[10px] text-stone-400">Uptime</p></div>
             </div>
           </div>
         </aside>

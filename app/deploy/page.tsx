@@ -301,8 +301,8 @@ export default function DeployPage() {
                 type="text"
                 placeholder="Search endpoints…"
                 className={[
-                  "h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-4 text-sm",
-                  "outline-none transition-all focus:border-orange-500 focus:ring-2",
+                  "h-10 w-full rounded-xl border border-stone-200 bg-white py-2 pl-9 pr-3.5 text-sm font-medium text-stone-900",
+                  "placeholder:text-stone-400 outline-none transition-all focus:border-orange-500 focus:ring-2",
                   "focus:ring-orange-500/20",
                 ].join(" ")}
               />
@@ -310,9 +310,9 @@ export default function DeployPage() {
             <button
               onClick={() => setShowModal(true)}
               className={[
-                "flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
-                "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
-                "transition-all hover:bg-orange-200",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl",
+                "bg-orange-500 px-5 text-sm font-bold text-white shadow-sm",
+                "transition-all hover:bg-orange-600 active:scale-[0.98]",
               ].join(" ")}
             >
               <Plus className="w-4 h-4" />

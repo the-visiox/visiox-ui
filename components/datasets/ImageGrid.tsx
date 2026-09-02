@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { experimental_VGrid as VGrid } from "virtua";
 import { motion } from "framer-motion";
 
@@ -46,9 +47,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, columns = 6 }) => {
                   "duration-300 cursor-pointer",
                 ].join(" ")}
               >
-                <img
+                <Image
                   src={image.url}
                   alt={image.name}
+                  fill
+                  unoptimized
                   className={[
                     "w-full h-full object-cover group-hover:scale-110 transition-transform",
                     "duration-500",

@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import Badge from "@/components/Badge";
 import { ArrowRight, Zap } from "lucide-react";
 import { ReactNode } from "react";
@@ -179,9 +180,11 @@ export default function SolutionPageTemplate({ config }: { config: SolutionPageC
                   " ",
                 )}
               >
-                <img
+                <Image
                   src={heroImage}
                   alt={badge}
+                  fill
+                  unoptimized
                   className={[
                     "w-full h-full object-cover group-hover:scale-105 transition-transform",
                     "duration-1000",
@@ -298,9 +301,11 @@ export default function SolutionPageTemplate({ config }: { config: SolutionPageC
               >
                 {/* Image */}
                 <div className="relative h-56 overflow-hidden">
-                  <img
+                  <Image
                     src={useCase.image}
                     alt={useCase.title}
+                    fill
+                    unoptimized
                     className={[
                       "w-full h-full object-cover group-hover:scale-110 transition-transform duration-700",
                       "opacity-60 group-hover:opacity-100",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Database, GitFork, Loader2, Search, Tag } from "lucide-react";
@@ -90,13 +91,13 @@ export default function DataversePage() {
       <main className="flex-grow p-8 z-10">
         <div
           className={[
-            "mb- flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm",
+            "mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5 shadow-sm",
             "shadow-stone-200/50 backdrop-blur md:flex-row md:items-center md:justify-between",
           ].join(" ")}
         >
           <div>
-            <h1 className="mb-1 text-3xl font-bold tracking-tight text-stone-900 md:text-3xl">Explore dataset</h1>
-            <p className="max-w-xl text-base leading-6 text-stone-500">
+            <h1 className="mb-1 text-2xl font-bold tracking-tight text-stone-900 md:text-3xl">Explore Datasets</h1>
+            <p className="max-w-xl text-sm leading-6 text-stone-500">
               Search community-shared projects, inspect their dataset shape, and fork useful work into your own
               workspace.
             </p>
@@ -110,26 +111,27 @@ export default function DataversePage() {
             className={["flex w-full flex-wrap items-center gap-3 md:w-auto md:max-w-xl", "md:flex-nowrap"].join(" ")}
           >
             <div className="relative min-w-0 flex-1 md:w-80 md:flex-none">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 w-3.5 h-3.5" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search defects, PPE, traffic, agriculture..."
+                placeholder="Search defects, PPE, traffic, agriculture…"
                 className={[
-                  "h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-10 pr-4 text-sm",
-                  "outline-none transition-all focus:border-orange-500 focus:ring-2",
+                  "h-10 w-full rounded-xl border border-stone-200 bg-white py-2 pl-9 pr-4 text-sm font-medium text-stone-900",
+                  "placeholder:text-stone-400 outline-none transition-all focus:border-orange-500 focus:ring-2",
                   "focus:ring-orange-500/20",
                 ].join(" ")}
               />
             </div>
             <button
+              type="submit"
               className={[
-                "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
-                "bg-orange-100 px-4 text-sm font-bold text-orange-700 transition-all hover:scale-105",
-                "hover:bg-orange-200 active:scale-95",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl",
+                "bg-orange-500 px-5 text-sm font-bold text-white shadow-sm",
+                "transition-all hover:bg-orange-600 active:scale-[0.98]",
               ].join(" ")}
             >
-              <Search className="w-4 h-4 text-orange-500" />
+              <Search className="w-4 h-4" />
               Search
             </button>
           </form>
@@ -178,9 +180,11 @@ export default function DataversePage() {
               >
                 <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-stone-100">
                   {item.thumbnail ? (
-                    <img
+                    <Image
                       src={resolveMediaUrl(item.thumbnail)}
                       alt={item.title}
+                      fill
+                      unoptimized
                       className={[
                         "h-full w-full object-cover transition-transform duration-500",
                         "group-hover:scale-105",

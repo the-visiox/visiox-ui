@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Check, CheckCircle2, ChevronDown, Copy, Download, Image as ImageIcon, Tags, X } from "lucide-react";
 
 import { datasets, type DatasetExportFormat } from "@/lib/api";
+import { startBackgroundExport } from "@/lib/exportManager";
 
 const EXPORT_FORMAT_GROUPS = [
   {
@@ -36,28 +37,6 @@ type ExportFormat = DatasetExportFormat;
 type DownloadOption = "download" | "code";
 type DialogStep = "options" | "code";
 type ExportContent = "images-and-labels" | "labels-only";
-
-interface WritableFileHandle {
-  createWritable: () => Promise<{
-    write: (data: Blob) => Promise<void>;
-    close: () => Promise<void>;
-  }>;
-}
-
-interface WritableDirectoryHandle {
-  getFileHandle: (name: string, options: { create: boolean }) => Promise<WritableFileHandle>;
-}
-
-interface WindowWithFilePickers extends Window {
-  showSaveFilePicker?: (options: {
-    suggestedName: string;
-    types: Array<{
-      description: string;
-      accept: Record<string, string[]>;
-    }>;
-  }) => Promise<WritableFileHandle>;
-  showDirectoryPicker?: (options: { mode: "readwrite" }) => Promise<WritableDirectoryHandle>;
-}
 
 const EXPORT_LABELS = new Map<ExportFormat, string>(
   EXPORT_FORMAT_GROUPS.flatMap((group) => group.formats.map((format) => [format.value, format.label] as const)),
@@ -103,8 +82,6 @@ export default function DatasetExportDialog({
   const [formatMenuOpen, setFormatMenuOpen] = useState(false);
   const [step, setStep] = useState<DialogStep>("options");
   const [copied, setCopied] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState("");
   const formatMenuRef = useRef<HTMLDivElement>(null);
 
   const closeDialog = useCallback(() => {
@@ -114,8 +91,6 @@ export default function DatasetExportDialog({
     setFormatMenuOpen(false);
     setStep("options");
     setCopied(false);
-    setExporting(false);
-    setExportError("");
     onClose();
   }, [onClose]);
 
@@ -127,7 +102,6 @@ export default function DatasetExportDialog({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (exporting) return;
       if (formatMenuOpen) {
         setFormatMenuOpen(false);
         return;
@@ -140,7 +114,7 @@ export default function DatasetExportDialog({
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [closeDialog, exporting, formatMenuOpen, open]);
+  }, [closeDialog, formatMenuOpen, open]);
 
   useEffect(() => {
     if (!formatMenuOpen) return;
@@ -207,76 +181,19 @@ export default function DatasetExportDialog({
     : "";
 
   const handleContinue = async () => {
-    if (!selectedFormat || exportItems.length === 0) return;
+    if (!selectedFormat || targets.length === 0) return;
 
     if (downloadOption === "code") {
       setStep("code");
       return;
     }
 
-    setExporting(true);
-    setExportError("");
-
-    const pickerWindow = window as WindowWithFilePickers;
-    let fileHandle: WritableFileHandle | null = null;
-    let directoryHandle: WritableDirectoryHandle | null = null;
-    let completed = false;
-
-    try {
-      if (exportItems.length === 1 && pickerWindow.showSaveFilePicker) {
-        const target = exportItems[0].target;
-        fileHandle = await pickerWindow.showSaveFilePicker({
-          suggestedName: `${safeFilename(target.name)}-${selectedFormat}.zip`,
-          types: [
-            {
-              description: "ZIP archive",
-              accept: { "application/zip": [".zip"] },
-            },
-          ],
-        });
-      } else if (exportItems.length > 1 && pickerWindow.showDirectoryPicker) {
-        directoryHandle = await pickerWindow.showDirectoryPicker({
-          mode: "readwrite",
-        });
-      }
-
-      for (const { target } of exportItems) {
-        const blob = await datasets.exportArchive(target.id, selectedFormat, exportContent === "images-and-labels");
-        const filename = `${safeFilename(target.name)}-${selectedFormat}.zip`;
-
-        if (fileHandle) {
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-        } else if (directoryHandle) {
-          const targetFile = await directoryHandle.getFileHandle(filename, {
-            create: true,
-          });
-          const writable = await targetFile.createWritable();
-          await writable.write(blob);
-          await writable.close();
-        } else {
-          const objectUrl = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = objectUrl;
-          link.download = filename;
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
-          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-        }
-      }
-
-      completed = true;
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        setExportError(error instanceof Error ? error.message : "Dataset export failed.");
-      }
-    } finally {
-      setExporting(false);
+    const saveImages = exportContent === "images-and-labels";
+    for (const target of targets) {
+      startBackgroundExport(target, selectedFormat, saveImages);
     }
 
-    if (completed) closeDialog();
+    closeDialog();
   };
 
   const handleCopy = async () => {
@@ -292,14 +209,13 @@ export default function DatasetExportDialog({
         "p-4 backdrop-blur-sm",
       ].join(" ")}
       onMouseDown={(event) => {
-        if (!exporting && event.target === event.currentTarget) closeDialog();
+        if (event.target === event.currentTarget) closeDialog();
       }}
     >
       <motion.div
         role="dialog"
         aria-modal="true"
         aria-labelledby={dialogTitleId}
-        aria-busy={exporting}
         initial={{ opacity: 0, y: 14, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
@@ -330,11 +246,9 @@ export default function DatasetExportDialog({
           <button
             type="button"
             onClick={closeDialog}
-            disabled={exporting}
             className={[
               "rounded-xl p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/50",
-              "disabled:cursor-not-allowed disabled:opacity-40",
             ].join(" ")}
             aria-label="Close export dialog"
           >
@@ -357,7 +271,6 @@ export default function DatasetExportDialog({
                     aria-expanded={formatMenuOpen}
                     aria-controls={formatListId}
                     onClick={() => setFormatMenuOpen((current) => !current)}
-                    disabled={exporting}
                     className={`flex h-11 w-full items-center justify-between rounded-xl border bg-white
                       px-3.5 text-left text-sm font-medium transition
                       focus-visible:outline-none focus-visible:ring-2
@@ -434,7 +347,7 @@ export default function DatasetExportDialog({
                 </div>
               </div>
 
-              <fieldset disabled={exporting} className="disabled:opacity-60">
+              <fieldset>
                 <legend className="mb-2.5 text-sm font-bold text-stone-800">Export contents</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label
@@ -509,7 +422,7 @@ export default function DatasetExportDialog({
                 </div>
               </fieldset>
 
-              <fieldset disabled={exporting} className="disabled:opacity-60">
+              <fieldset>
                 <legend className="mb-2.5 text-sm font-bold text-stone-800">Download options</legend>
                 <div className="space-y-2">
                   <label
@@ -595,18 +508,6 @@ export default function DatasetExportDialog({
                   </label>
                 </div>
               </fieldset>
-
-              {exportError ? (
-                <div
-                  role="alert"
-                  className={[
-                    "rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm",
-                    "font-medium text-red-700",
-                  ].join(" ")}
-                >
-                  {exportError}
-                </div>
-              ) : null}
             </div>
 
             <div
@@ -618,26 +519,24 @@ export default function DatasetExportDialog({
               <button
                 type="button"
                 onClick={closeDialog}
-                disabled={exporting}
                 className={[
-                  "h-10 rounded-xl border border-stone-300 bg-white px-4 text-sm font-bold text-stone-600",
-                  "transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2",
-                  "focus-visible:ring-orange-400/40 disabled:cursor-not-allowed disabled:opacity-50",
+                  "inline-flex h-10 items-center justify-center rounded-xl border border-stone-200 bg-white px-5",
+                  "text-sm font-semibold text-stone-700 shadow-xs transition-all hover:bg-stone-50 hover:text-stone-900 active:scale-[0.98]",
                 ].join(" ")}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={!selectedFormat || targets.length === 0 || exporting}
+                disabled={!selectedFormat || targets.length === 0}
                 onClick={() => void handleContinue()}
                 className={[
-                  "flex h-10 items-center rounded-xl bg-gradient-to-r from-[#E66700] via-[#FF7300]",
-                  "to-[#F1A222] px-5 text-sm font-bold text-white shadow-lg shadow-orange-500/20",
-                  "disabled:pointer-events-none disabled:opacity-45",
+                  "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-orange-500",
+                  "px-6 text-sm font-bold text-white shadow-sm transition-all hover:bg-orange-600 active:scale-[0.98]",
+                  "disabled:cursor-not-allowed disabled:opacity-45",
                 ].join(" ")}
               >
-                {exporting ? "Preparing ZIP..." : "Continue"}
+                Continue
               </button>
             </div>
           </>

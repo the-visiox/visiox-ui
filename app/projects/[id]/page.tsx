@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -145,50 +146,54 @@ const DATASET_IMPORT_HINTS: Record<
   }
 > = {
   images: {
-    title: "Images upload guide",
-    description: "Upload image or video files now and add annotations later in VisioX.",
-    testPath: "images folder",
-    structure: `dataset/
+    title: "Images & ZIP upload guide",
+    description: "Upload image/video files or a .zip archive of raw images now and annotate them later in VisioX.",
+    testPath: "images.zip or images/ folder",
+    structure: `images.zip (or loose files)
 \`-- images/
     |-- image_001.jpg
     |-- image_002.png
     \`-- video_001.mp4`,
     configLabel: "Supported files",
-    configExample: `Images: PNG, JPG, JPEG
-Videos: MP4, MOV, WEBM`,
+    configExample: `Images: PNG, JPG, JPEG, BMP, WEBP
+Videos: MP4, MOV, WEBM
+Archives: .ZIP (auto-extracted)`,
     checklist: [
-      "Use this option when you only need to upload media files.",
+      "Use this option when you want to upload raw images, videos, or a ZIP archive.",
+      "VisioX automatically extracts all images found inside the ZIP file.",
       "You can annotate uploaded images in the VisioX annotation workspace.",
-      "Duplicate files in the same selection are ignored.",
     ],
   },
   yolo26: {
-    title: "YOLO26 ZIP import guide",
-    description: "Upload one .zip archive that contains data.yaml and matching image/label folders.",
-    testPath: "E:\\truck_detection.zip",
-    structure: `truck_detection.zip
-  |-- truck_detection/
-    |-- data.yaml
-    |-- train/
-    |   |-- images/
-    |   |-- labels/
-    |-- valid/
-    |   |-- images/
-    |   |-- labels/
-    |-- test/
-        |-- images/
-        |-- labels/`,
-    configLabel: "data.yaml",
-    configExample: `train: ../train/images
-val: ../valid/images
-test: ../test/images
+    title: "YOLO ZIP import guide",
+    description: "Upload a .zip archive containing images/ & labels/ folders, plus data.yaml or classes.txt.",
+    testPath: "dataset.zip",
+    structure: `dataset.zip (Un-split or Split)
+  |-- images/
+  |   |-- img_001.jpg
+  |   \`-- img_002.jpg
+  |-- labels/
+  |   |-- img_001.txt
+  |   \`-- img_002.txt
+  |-- data.yaml (or classes.txt)
 
-nc: 1
-names: ['truck']`,
+-- OR with split subfolders --
+  |-- train/ (images/ & labels/)
+  |-- valid/ (images/ & labels/)
+  \`-- data.yaml`,
+    configLabel: "data.yaml (or classes.txt)",
+    configExample: `# Option A: data.yaml
+nc: 2
+names: ['cat', 'dog']
+
+# Option B: classes.txt
+cat
+dog`,
     checklist: [
-      "Choose YOLO26, then upload exactly one ZIP archive.",
-      "Every image in images/ should have a matching .txt file in labels/.",
-      "Keep class order in data.yaml names aligned with the label ids.",
+      "Un-split archives with images/ and labels/ folders are fully supported.",
+      "Split archives with train/ and valid/ folders are also supported.",
+      "Each image in images/ should have a matching .txt in labels/.",
+      "Include data.yaml or classes.txt with your class names.",
     ],
   },
   coco: {
@@ -1520,8 +1525,8 @@ function CreateDatasetModal({
               type="button"
               onClick={onClose}
               className={[
-                "flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-7",
-                "text-sm font-bold text-stone-700 transition-colors hover:bg-stone-50",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-6",
+                "text-sm font-semibold text-stone-700 shadow-xs transition-all hover:bg-stone-50 hover:text-stone-900 active:scale-[0.98]",
               ].join(" ")}
             >
               {saving ? <Minimize2 className="h-4 w-4" /> : null}
@@ -1532,8 +1537,8 @@ function CreateDatasetModal({
               type="submit"
               disabled={saving || !name || (archiveImport && files.length !== 1)}
               className={[
-                "flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-7 text-sm",
-                "font-bold text-white shadow-lg shadow-orange-500/20 transition-colors hover:bg-orange-600",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 text-sm",
+                "font-bold text-white shadow-sm transition-all hover:bg-orange-600 active:scale-[0.98]",
                 "disabled:opacity-50",
               ].join(" ")}
             >
@@ -2261,8 +2266,8 @@ export default function ProjectDetailPage() {
               }}
               title={preferredTrainingDataset ? "Choose a dataset to train" : "Approve a fully labeled dataset first"}
               className={[
-                "inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold",
-                "bg-stone-900 text-white shadow-lg transition-colors hover:bg-stone-800",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold",
+                "bg-stone-900 text-white shadow-sm transition-all hover:bg-stone-800 active:scale-[0.98]",
                 "focus-visible:ring-2 focus-visible:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-40",
               ].join(" ")}
             >
@@ -2277,32 +2282,30 @@ export default function ProjectDetailPage() {
               onClick={() => void handleShareToDataverse()}
               disabled={sharing}
               className={[
-                "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200",
-                "bg-white px-5 text-sm font-bold text-stone-700 shadow-sm transition-all",
-                "hover:bg-stone-50 hover:scale-105 active:scale-95 disabled:opacity-60",
-                "disabled:hover:scale-100",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-stone-200",
+                "bg-white px-4 text-sm font-semibold text-stone-700 shadow-xs transition-all",
+                "hover:bg-stone-50 hover:text-stone-900 active:scale-[0.98] disabled:opacity-60",
               ].join(" ")}
             >
-              {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe2 className="w-4 h-4" />}
+              {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe2 className="w-4 h-4 text-stone-500" />}
               Share to Dataverse
             </button>
             <button
               type="button"
               className={[
-                "inline-flex h-11 w-11 items-center justify-center rounded-xl border border-stone-200",
-                "bg-white text-stone-700 shadow-sm transition-all hover:bg-stone-50 hover:scale-105",
-                "active:scale-95",
+                "inline-flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200",
+                "bg-white text-stone-600 shadow-xs transition-all hover:bg-stone-50 hover:text-stone-900",
+                "active:scale-[0.98]",
               ].join(" ")}
             >
-              <Settings className="w-5 h-5 text-stone-600" />
+              <Settings className="w-4 h-4 text-stone-500" />
             </button>
             <button
               type="button"
               onClick={() => setShowModal(true)}
               className={[
-                "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
-                "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
-                "transition-all hover:bg-orange-200",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-orange-500",
+                "px-5 text-sm font-bold text-white shadow-sm transition-all hover:bg-orange-600 active:scale-[0.98]",
               ].join(" ")}
             >
               <Plus className="w-4 h-4" />
@@ -2750,9 +2753,11 @@ export default function ProjectDetailPage() {
               >
                 <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden bg-stone-50">
                   {dataset.thumbnail ? (
-                    <img
+                    <Image
                       src={resolveMediaUrl(dataset.thumbnail)}
                       alt={dataset.name}
+                      fill
+                      unoptimized
                       className={[
                         "w-full h-full object-cover group-hover:scale-105 transition-transform",
                         "duration-500",

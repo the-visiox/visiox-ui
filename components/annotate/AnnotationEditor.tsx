@@ -27,6 +27,22 @@ interface AnnotationEditorProps {
   pinnedShapeIds?: string[];
   onSelectedIdChange?: (id: string | null) => void;
   externalSelectedId?: string | null;
+  autoSegmentCandidates?: EditorShape[];
+  autoSegmentEnabled?: boolean;
+  onAutoSegmentCommit?: (shape: EditorShape) => void;
+}
+
+function pointInPolygon(x: number, y: number, points: number[]) {
+  let inside = false;
+  for (let index = 0, previous = points.length - 2; index < points.length; previous = index, index += 2) {
+    const xi = points[index];
+    const yi = points[index + 1];
+    const xj = points[previous];
+    const yj = points[previous + 1];
+    const crosses = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (crosses) inside = !inside;
+  }
+  return inside;
 }
 
 function layerPos(
@@ -99,6 +115,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   pinnedShapeIds = [],
   onSelectedIdChange,
   externalSelectedId,
+  autoSegmentCandidates = [],
+  autoSegmentEnabled = false,
+  onAutoSegmentCommit,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeFrameRef = useRef<number | null>(null);
@@ -135,12 +154,33 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isMiddlePan, setIsMiddlePan] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ shapeId: string; x: number; y: number } | null>(null);
+  const [autoSegmentHoveredId, setAutoSegmentHoveredId] = useState<string | null>(null);
+  const autoSegmentTimerRef = useRef<number | null>(null);
+  const onAutoSegmentCommitRef = useRef(onAutoSegmentCommit);
+  onAutoSegmentCommitRef.current = onAutoSegmentCommit;
   const panOffsetRef = useRef(panOffset);
   const panOriginRef = useRef<{ cx: number; cy: number; ox: number; oy: number } | null>(null);
   const transformStartRef = useRef<{ id: string; x: number; y: number; width: number; height: number } | null>(null);
   const MENU_WIDTH = 192;
   const MENU_HEIGHT = 220;
   const MENU_GAP = 8;
+
+  useEffect(() => {
+    if (autoSegmentTimerRef.current !== null) window.clearTimeout(autoSegmentTimerRef.current);
+    autoSegmentTimerRef.current = null;
+    if (!autoSegmentEnabled || !autoSegmentHoveredId) return;
+    const candidate = autoSegmentCandidates.find((shape) => shape.clientId === autoSegmentHoveredId);
+    if (!candidate) return;
+    autoSegmentTimerRef.current = window.setTimeout(() => {
+      onAutoSegmentCommitRef.current?.(candidate);
+      setAutoSegmentHoveredId(null);
+      autoSegmentTimerRef.current = null;
+    }, 450);
+    return () => {
+      if (autoSegmentTimerRef.current !== null) window.clearTimeout(autoSegmentTimerRef.current);
+      autoSegmentTimerRef.current = null;
+    };
+  }, [autoSegmentCandidates, autoSegmentEnabled, autoSegmentHoveredId]);
 
   const imageW = image?.width ?? 0;
   const imageH = image?.height ?? 0;
@@ -669,6 +709,17 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
     if (isMiddlePan) return;
+    if (autoSegmentEnabled) {
+      const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
+      const candidate = pos
+        ? autoSegmentCandidates.find(
+            (shape) => shape.points && pointInPolygon(pos.x, pos.y, shape.points),
+          )
+        : undefined;
+      const nextId = candidate?.clientId ?? null;
+      setAutoSegmentHoveredId((current) => current === nextId ? current : nextId);
+      return;
+    }
     if (canDrawPath && pathDraft.length > 0) {
       const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
       if (pos) setPathHover(pos);
@@ -714,7 +765,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const visibleDraft = activeTool === "polygon" || activeTool === "polyline" ? pathDraft : [];
   const previewPoints =
     visibleDraft.length > 0 && pathHover ? [...visibleDraft, pathHover.x, pathHover.y] : visibleDraft;
-  const hoverEnabled = activeTool === "select";
+  const hoverEnabled = activeTool === "select" && !autoSegmentEnabled;
   const safeLayerScale = Math.max(layerScale, 0.001);
   const transformerAnchorPx = CORNER_HANDLE_DIAMETER_PX;
   const shapeDragEnabled = activeTool === "select" && visibleDraft.length === 0 && !newBox;
@@ -724,6 +775,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     !newBox;
   const cursorClass = isMiddlePan
     ? "cursor-grabbing"
+    : autoSegmentEnabled
+      ? "cursor-cell"
     : canDrawRect || canDrawPath || canPlacePoint || canPlaceTag
       ? "cursor-crosshair"
       : "cursor-default";
@@ -837,6 +890,23 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 listening
               />
             )}
+
+            {autoSegmentEnabled ? autoSegmentCandidates.map((shape) => {
+              if (!shape.points || shape.clientId !== autoSegmentHoveredId) return null;
+              const color = getShapeColor(shape.classLabelId);
+              return (
+                <Line
+                  key={`auto-segment-${shape.clientId}`}
+                  points={shape.points}
+                  closed
+                  fill={color}
+                  opacity={0.24}
+                  stroke={color}
+                  strokeWidth={3 / safeLayerScale}
+                  listening={false}
+                />
+              );
+            }) : null}
 
             {predictionShapes.map((shape) => {
               const stroke = getShapeColor(shape.classLabelId);

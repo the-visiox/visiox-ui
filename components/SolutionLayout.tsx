@@ -1,7 +1,9 @@
 "use client";
 
+import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import Footer from "@/components/Footer";
 
 import { ReactNode } from "react";
@@ -186,9 +188,11 @@ export default function SolutionLayout({ colorTheme = "orange", hero, applicatio
                       ].join(" ")}
                     />
                   ) : (
-                    <img
+                    <Image
                       src={hero.image}
                       alt="Solution Visual"
+                      fill
+                      unoptimized
                       className={[
                         "w-full h-full object-cover group-hover:scale-105 transition-transform",
                         "duration-1000",
@@ -301,9 +305,11 @@ export default function SolutionLayout({ colorTheme = "orange", hero, applicatio
               >
                 {/* Visual Header: Image with Icon Overlay */}
                 <div className="relative h-56 overflow-hidden bg-stone-100">
-                  <img
+                  <Image
                     src={item.image || hero.image}
                     alt={item.title}
+                    fill
+                    unoptimized
                     className={[
                       "w-full h-full object-cover group-hover:scale-105 transition-transform",
                       "duration-700",

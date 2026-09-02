@@ -210,13 +210,10 @@ export function WorkspaceHeader({
   onUndo,
   onRedo,
   onSave,
-  onAutoLabel,
   onPropagate,
   onDeleteFrame,
   deletingFrame = false,
   deleteFrameDisabled = false,
-  autoLabelDisabled = false,
-  autoLabelTitle = "Auto Label current frame",
   propagateDisabled = false,
   propagateTitle = "Track selected object in later frames",
 }: {
@@ -234,13 +231,10 @@ export function WorkspaceHeader({
   onUndo: () => void;
   onRedo: () => void;
   onSave: () => void;
-  onAutoLabel?: () => void;
   onPropagate?: () => void;
   onDeleteFrame?: () => void;
   deletingFrame?: boolean;
   deleteFrameDisabled?: boolean;
-  autoLabelDisabled?: boolean;
-  autoLabelTitle?: string;
   propagateDisabled?: boolean;
   propagateTitle?: string;
 }) {
@@ -332,18 +326,6 @@ export function WorkspaceHeader({
             {deletingFrame ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           </button>
         ) : null}
-        {onAutoLabel ? (
-          <button
-            type="button"
-            onClick={onAutoLabel}
-            disabled={autoLabelDisabled}
-            title={autoLabelTitle}
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-sm font-bold text-orange-700 transition-colors hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400 sm:px-4"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span className="hidden sm:inline">Auto Label</span>
-          </button>
-        ) : null}
         {onPropagate ? (
           <button
             type="button"
@@ -397,12 +379,24 @@ export function ToolPane({
   polygonVertexCount,
   onToolChange,
   onPolygonVertexCountChange,
+  onAutoLabel,
+  onAutoSegment,
+  autoSegmentActive = false,
+  autoSegmentLoading = false,
+  autoLabelDisabled = false,
+  autoLabelTitle = "Auto Label current frame or dataset",
 }: {
   width: number;
   activeTool: Tool;
   polygonVertexCount: number;
   onToolChange: (tool: Tool) => void;
   onPolygonVertexCountChange: (value: number) => void;
+  onAutoLabel?: () => void;
+  onAutoSegment?: () => void;
+  autoSegmentActive?: boolean;
+  autoSegmentLoading?: boolean;
+  autoLabelDisabled?: boolean;
+  autoLabelTitle?: string;
 }) {
   return (
     <aside
@@ -427,6 +421,42 @@ export function ToolPane({
           />
         ))}
       </div>
+      {onAutoLabel ? (
+        <div className="mt-auto flex flex-col gap-2 border-t border-stone-200 px-1 pt-3">
+          {onAutoSegment ? (
+            <button
+              type="button"
+              onClick={onAutoSegment}
+              disabled={autoLabelDisabled || autoSegmentLoading}
+              title={autoSegmentActive ? "Stop hover segmentation" : "Segment the active class by hovering over objects"}
+              aria-label={autoSegmentActive ? "Stop Auto Segment" : "Start Auto Segment"}
+              aria-pressed={autoSegmentActive}
+              className={[
+                "flex w-full flex-col items-center gap-1.5 rounded-xl px-1 py-2.5 transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30",
+                "disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400",
+                autoSegmentActive
+                  ? "bg-orange-500 text-white"
+                  : "bg-orange-50 text-orange-700 hover:bg-orange-100",
+              ].join(" ")}
+            >
+              {autoSegmentLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Hexagon className="h-5 w-5" />}
+              <span className="text-[10px] font-bold leading-none">Auto Segment</span>
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onAutoLabel}
+            disabled={autoLabelDisabled}
+            title={autoLabelTitle}
+            aria-label="Open Auto Label"
+            className="group flex w-full flex-col items-center gap-1.5 rounded-xl bg-orange-50 px-1 py-2.5 text-orange-700 transition-colors hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+          >
+            <Sparkles className="h-5 w-5" />
+            <span className="text-[10px] font-bold leading-none">Models</span>
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -535,6 +565,10 @@ export function CanvasStage({
   onToolChange,
   onSelectedIdChange,
   externalSelectedId,
+  autoSegmentCandidates = [],
+  autoSegmentEnabled = false,
+  autoSegmentLoading = false,
+  onAutoSegmentCommit,
 }: {
   loading: boolean;
   currentDraftKey: string;
@@ -554,6 +588,10 @@ export function CanvasStage({
   onToolChange: (tool: Tool) => void;
   onSelectedIdChange?: (id: string | null) => void;
   externalSelectedId?: string | null;
+  autoSegmentCandidates?: EditorShape[];
+  autoSegmentEnabled?: boolean;
+  autoSegmentLoading?: boolean;
+  onAutoSegmentCommit?: (shape: EditorShape) => void;
 }) {
   return (
     <div
@@ -564,6 +602,13 @@ export function CanvasStage({
           {predictionLoading
             ? "Running model prediction…"
             : `Solid: Ground truth · Dashed: ${predictionModelName} (${predictionShapes.length})`}
+        </div>
+      ) : null}
+      {autoSegmentEnabled || autoSegmentLoading ? (
+        <div className="pointer-events-none absolute right-3 top-3 z-20 rounded-xl border border-orange-200 bg-white/95 px-3 py-2 text-xs font-bold text-orange-700 shadow-sm backdrop-blur-sm">
+          {autoSegmentLoading
+            ? "SAM 3 is finding segments…"
+            : `Hover an object to add it · ${autoSegmentCandidates.length} remaining`}
         </div>
       ) : null}
       {loading ? (
@@ -597,6 +642,9 @@ export function CanvasStage({
             pinnedShapeIds={pinnedShapeIds}
             onSelectedIdChange={onSelectedIdChange}
             externalSelectedId={externalSelectedId}
+            autoSegmentCandidates={autoSegmentCandidates}
+            autoSegmentEnabled={autoSegmentEnabled}
+            onAutoSegmentCommit={onAutoSegmentCommit}
           />
         </motion.div>
       )}

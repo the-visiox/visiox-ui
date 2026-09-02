@@ -514,6 +514,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [exportOpen, setExportOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [uploadingLabel, setUploadingLabel] = useState("");
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -1003,15 +1004,33 @@ export default function DatasetDetailClient({ id }: Props) {
   ) => {
     if (files.length === 0 || isNaN(numericId)) return;
     setUploading(true);
+    setUploadPercent(null);
     setUploadingLabel(files.length === 1 ? files[0].name : `${files.length} files`);
     setError("");
     try {
       if (format === "images") {
         for (let i = 0; i < files.length; i += IMPORT_BATCH_SIZE) {
-          await datasets.startImport(numericId, files.slice(i, i + IMPORT_BATCH_SIZE), "images");
+          const chunk = files.slice(i, i + IMPORT_BATCH_SIZE);
+          await datasets.startImport(numericId, chunk, "images", {
+            onUploadProgress: (uploaded) => {
+              const currentChunkLoaded = uploaded;
+              const completedChunksBytes = files.slice(0, i).reduce((acc, f) => acc + f.size, 0);
+              const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
+              if (totalBytes > 0) {
+                setUploadPercent(Math.round(((completedChunksBytes + currentChunkLoaded) * 100) / totalBytes));
+              }
+            },
+          });
         }
       } else {
-        await datasets.startImport(numericId, files, "yolo26", { replaceExisting });
+        await datasets.startImport(numericId, files, format, {
+          replaceExisting,
+          onUploadProgress: (uploaded, total) => {
+            if (total > 0) {
+              setUploadPercent(Math.round((uploaded * 100) / total));
+            }
+          },
+        });
       }
       await refreshStatsAndBrowser();
     } catch (err) {
@@ -1019,6 +1038,7 @@ export default function DatasetDetailClient({ id }: Props) {
       await refreshStatsAndBrowser();
     } finally {
       setUploading(false);
+      setUploadPercent(null);
       setUploadingLabel("");
     }
   };
@@ -1218,14 +1238,14 @@ export default function DatasetDetailClient({ id }: Props) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 md:justify-end">
+          <div className="flex flex-wrap items-center gap-2.5 md:justify-end">
             <button
               type="button"
               onClick={() => setImportDialogOpen(true)}
               disabled={uploading || hasActiveImport}
               className={[
-                "flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm",
-                "font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm",
+                "font-semibold text-stone-700 shadow-xs transition-all hover:bg-stone-50 hover:text-stone-900 active:scale-[0.98] disabled:opacity-50",
               ].join(" ")}
             >
               {uploading ? (
@@ -1233,7 +1253,7 @@ export default function DatasetDetailClient({ id }: Props) {
               ) : hasActiveImport ? (
                 <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
               ) : (
-                <Upload className="w-4 h-4" />
+                <Upload className="w-4 h-4 text-stone-500" />
               )}
               {uploading ? "Queueing upload..." : hasActiveImport ? "Importing..." : "Upload"}
             </button>
@@ -1244,20 +1264,19 @@ export default function DatasetDetailClient({ id }: Props) {
               aria-haspopup="dialog"
               aria-expanded={exportOpen}
               className={[
-                "flex h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm",
-                "font-bold text-stone-600 hover:bg-stone-50 transition-all disabled:opacity-50",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm",
+                "font-semibold text-stone-700 shadow-xs transition-all hover:bg-stone-50 hover:text-stone-900 active:scale-[0.98] disabled:opacity-50",
               ].join(" ")}
             >
-              <Download className="w-4 h-4" /> Export
+              <Download className="w-4 h-4 text-stone-500" /> Export
             </button>
 
             <button
               type="button"
               onClick={() => router.push(`/datasets/${id}/annotate/native?mode=simple`)}
               className={[
-                "flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
-                "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
-                "transition-all hover:bg-orange-200",
+                "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm",
+                "font-bold text-white shadow-sm transition-all hover:bg-orange-600 active:scale-[0.98]",
               ].join(" ")}
             >
               <Layers className="w-4 h-4" /> Annotate Native
@@ -1289,12 +1308,25 @@ export default function DatasetDetailClient({ id }: Props) {
           <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
             <Loader2 className="h-4 w-4 animate-spin" />
           </span>
-          <div className="min-w-0">
-            <p className="font-bold text-orange-800">Uploading in the background</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between">
+              <p className="font-bold text-orange-800">Uploading in the background</p>
+              {uploadPercent != null ? (
+                <span className="tabular-nums text-xs font-bold text-orange-600">{uploadPercent}%</span>
+              ) : null}
+            </div>
             <p className="mt-0.5 break-words text-xs leading-relaxed text-orange-600">
               {uploadingLabel || "Selected files"} is being sent to storage. You can continue using this page; keep this
               tab open until the upload is queued.
             </p>
+            {uploadPercent != null ? (
+              <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-orange-200">
+                <div
+                  className="h-full rounded-full bg-orange-500 transition-[width] duration-200"
+                  style={{ width: `${uploadPercent}%` }}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       ) : latestImportJob ? (

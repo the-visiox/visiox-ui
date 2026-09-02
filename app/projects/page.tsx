@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -286,8 +287,8 @@ export default function ProjectsPage() {
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Search projects…"
                         className={[
-                          "h-11 w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-4 pr-12 text-sm",
-                          "outline-none transition-all focus:border-orange-500 focus:ring-2",
+                          "h-10 w-full rounded-xl border border-stone-200 bg-white py-2 pl-3.5 pr-10 text-sm font-medium text-stone-900",
+                          "placeholder:text-stone-400 outline-none transition-all focus:border-orange-500 focus:ring-2",
                           "focus:ring-orange-500/20",
                         ].join(" ")}
                       />
@@ -295,7 +296,7 @@ export default function ProjectsPage() {
                         type="submit"
                         aria-label="Search"
                         className={[
-                          "absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center",
+                          "absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center",
                           "justify-center rounded-lg text-stone-400 transition hover:bg-stone-100",
                           "hover:text-stone-700",
                         ].join(" ")}
@@ -307,9 +308,9 @@ export default function ProjectsPage() {
                   <Link
                     href="/projects/new"
                     className={[
-                      "inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-orange-200",
-                      "bg-orange-100 px-5 text-sm font-bold text-orange-700 shadow-xl shadow-orange-100/60",
-                      "transition-all hover:bg-orange-200",
+                      "inline-flex h-10 items-center justify-center gap-2 rounded-xl",
+                      "bg-orange-500 px-5 text-sm font-bold text-white shadow-sm",
+                      "transition-all hover:bg-orange-600 active:scale-[0.98]",
                     ].join(" ")}
                   >
                     <Plus className="w-4 h-4" />
@@ -356,18 +357,22 @@ export default function ProjectsPage() {
                       {/* Thumbnail */}
                       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl bg-stone-100">
                         {p.thumbnail ? (
-                          <img
+                          <Image
                             src={resolveMediaUrl(p.thumbnail)}
                             alt={p.name}
+                            fill
+                            unoptimized
                             className={[
                               "h-full w-full object-cover transition-transform duration-500",
                               "group-hover:scale-105",
                             ].join(" ")}
                           />
                         ) : (
-                          <img
+                          <Image
                             src="/project-placeholder.svg"
                             alt="No images yet"
+                            fill
+                            unoptimized
                             className="h-full w-full object-cover"
                           />
                         )}
@@ -525,9 +530,11 @@ export default function ProjectsPage() {
                         {/* Thumbnail */}
                         <div className="relative h-40 overflow-hidden rounded-2xl bg-stone-100">
                           {ds.thumbnail ? (
-                            <img
+                            <Image
                               src={resolveMediaUrl(ds.thumbnail)}
                               alt={ds.name}
+                              fill
+                              unoptimized
                               className={[
                                 "h-full w-full object-cover transition-transform duration-500",
                                 "group-hover:scale-105",

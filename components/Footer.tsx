@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { assetPath } from "@/lib/assets";
 
 export default function Footer() {
@@ -15,15 +16,18 @@ export default function Footer() {
                   "hover:[animation-play-state:paused]",
                 ].join(" ")}
               >
-                <img
+                <Image
                   src={assetPath("/logos/visiox_text.png")}
                   alt="VisioX Logo"
+                  width={150}
+                  height={48}
+                  unoptimized
                   className="
-                                        h-12 w-auto object-contain
-                                        transition-all duration-300
-                                        group-hover:scale-105
-                                        group-hover:drop-shadow-[0_10px_30px_rgba(255,115,0,0.35)]
-                                    "
+                    h-12 w-auto object-contain
+                    transition-all duration-300
+                    group-hover:scale-105
+                    group-hover:drop-shadow-[0_10px_30px_rgba(255,115,0,0.35)]
+                  "
                 />
               </div>
             </Link>

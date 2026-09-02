@@ -8,6 +8,7 @@ import Sidebar from "@/components/platform/Sidebar";
 import { useAuth } from "@/lib/auth";
 import { getAccessToken } from "@/lib/api";
 import { Loader2 } from "lucide-react";
+import BackgroundExportToasts from "@/components/datasets/BackgroundExportToasts";
 
 // Routes that belong to the authenticated platform workspace hubs.
 const PLATFORM_ROUTES = [
@@ -62,7 +63,12 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
   // ── Annotation terminal (datasets … / annotate / …) ──────────
   if (isAnnotateWorkspace(pathname)) {
-    return <div className="flex h-screen flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">{children}</div>;
+    return (
+      <div className="flex h-screen flex-col overflow-hidden bg-[#fcfaf7] text-stone-900">
+        {children}
+        <BackgroundExportToasts />
+      </div>
+    );
   }
 
   // ── Authenticated platform workspace ───────────────────────────
@@ -70,9 +76,10 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     return (
       <div className="flex min-h-screen bg-[#fcfaf7]">
         <Sidebar />
-        <div className="flex-1 md:ml-72 flex flex-col min-h-screen">
+        <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
           <main className="flex-grow flex flex-col relative">{children}</main>
         </div>
+        <BackgroundExportToasts />
       </div>
     );
   }

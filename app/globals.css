@@ -2,7 +2,8 @@
 
 :root {
   --background: #fcfaf7;
-  --foreground: #9b6541;
+  --foreground: #1c1917;
+  --muted-foreground: #78716c;
 
   /* Tailwind 4 variables */
   --color-background: var(--background);
@@ -20,6 +21,8 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @layer utilities {

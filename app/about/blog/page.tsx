@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
+import Image from "next/image";
 
 export default function BlogPage() {
   const posts = [
@@ -72,9 +73,11 @@ export default function BlogPage() {
                       "transition-colors z-10",
                     ].join(" ")}
                   />
-                  <img
+                  <Image
                     src={post.image}
                     alt={post.title}
+                    fill
+                    unoptimized
                     className={[
                       "w-full h-full object-cover group-hover:scale-105 transition-transform",
                       "duration-500",

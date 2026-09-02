@@ -385,6 +385,7 @@ export type AutoLabelSource =
 export interface AutoLabelPrediction {
   type: "bbox" | "polygon";
   class_label: number;
+  label_id?: number;
   label: string;
   confidence?: number | null;
   data: { x?: number; y?: number; width?: number; height?: number; points?: number[] };
@@ -938,7 +939,7 @@ export const datasets = {
       onUploadProgress?: (uploadedBytes: number, totalBytes: number) => void;
     },
   ) {
-    const multipartImport = () => {
+    const multipartImport = () => new Promise<DatasetImportAccepted>((resolve, reject) => {
       const form = new FormData();
       for (const file of files) form.append("files", file);
       form.append("format", format);
@@ -946,11 +947,46 @@ export const datasets = {
       if (options?.videoExtraction?.enabled) {
         form.append("video_extraction", JSON.stringify(options.videoExtraction));
       }
-      return request<DatasetImportAccepted>(
-        `/api/v1/datasets/${id}/start-import/`,
-        { method: "POST", body: form },
-      );
-    };
+
+      const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
+      const xhr = new XMLHttpRequest();
+      const baseUrl = resolveBaseUrl();
+      const url = `${baseUrl}/api/v1/datasets/${id}/start-import/`;
+
+      xhr.open("POST", url);
+      const token = getAccessToken();
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          options?.onUploadProgress?.(event.loaded, event.total || totalBytes);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText) as DatasetImportAccepted;
+            options?.onUploadProgress?.(totalBytes, totalBytes);
+            resolve(data);
+          } catch {
+            resolve({} as DatasetImportAccepted);
+          }
+          return;
+        }
+        let message = `API error ${xhr.status}`;
+        try {
+          const err = JSON.parse(xhr.responseText);
+          message = err.detail || err.error || err.message || message;
+        } catch {
+          message = xhr.statusText || message;
+        }
+        reject(new ApiError(message, xhr.status));
+      };
+
+      xhr.onerror = () => reject(new Error("Upload failed. Check your network connection."));
+      xhr.send(form);
+    });
 
     const uploadFile = (
       upload: NonNullable<DatasetPreparedImport["uploads"]>[number],
@@ -1299,7 +1335,12 @@ export const autoLabel = {
   },
   startDatasetJob(
     datasetId: number,
-    data: { model_id: number; output_type: "bbox" | "polygon"; confidence: number },
+    data: {
+      model_id?: number;
+      source?: AutoLabelSource | { kind: string; [key: string]: unknown };
+      output_type: "bbox" | "polygon";
+      confidence: number;
+    },
   ) {
     return request<AutoLabelDatasetJob>(`/api/v1/datasets/${datasetId}/auto-label/`, {
       method: "POST",
@@ -1323,6 +1364,36 @@ export const autoLabel = {
     return request<AutoLabelPredictionResponse>(`/api/v1/datasets/${datasetId}/frames/${frame}/predict/`, {
       method: "POST",
       body: JSON.stringify(data),
+      signal,
+    });
+  },
+  segmentFrame(
+    datasetId: number,
+    frame: number,
+    data: {
+      provider: string;
+      model: string;
+      label_ids?: number[];
+      prompts?: string[];
+      output_type: "bbox" | "polygon";
+      confidence: number;
+    },
+    signal?: AbortSignal,
+  ) {
+    return request<AutoLabelPredictionResponse>(`/api/v1/datasets/${datasetId}/frames/${frame}/predict/`, {
+      method: "POST",
+      body: JSON.stringify({
+        source: {
+          type: "provider",
+          provider_id: data.provider,
+          model_name: data.model,
+          label_ids: data.label_ids,
+          prompts: data.prompts,
+        },
+        output_type: data.output_type,
+        confidence: data.confidence,
+        create_missing_classes: false,
+      }),
       signal,
     });
   },

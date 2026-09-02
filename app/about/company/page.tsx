@@ -3,6 +3,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import { Target, Cpu, Globe, ArrowRight } from "lucide-react";
 
 const sections = [
@@ -108,9 +109,11 @@ export default function Page() {
                   "group",
                 ].join(" ")}
               >
-                <img
+                <Image
                   src={sec.image}
                   alt={sec.title}
+                  fill
+                  unoptimized
                   className={[
                     "w-full h-full object-cover group-hover:scale-105 transition-transform",
                     "duration-700",

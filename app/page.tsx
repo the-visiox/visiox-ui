@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Badge from "@/components/Badge";
 import { useAuth } from "@/lib/auth";
 import { assetPath } from "@/lib/assets";
@@ -269,7 +270,7 @@ export default function Home() {
                             : "border-stone-100 opacity-40 hover:opacity-100 hover:border-stone-300"
                         }`}
                     >
-                      <img src={img.src} alt={img.title} className="w-full h-full object-cover" />
+                      <Image src={img.src} alt={img.title} fill unoptimized className="object-cover" />
                       <div
                         className={[
                           "absolute inset-0 bg-orange-500/10 transition-opacity",
@@ -309,10 +310,12 @@ export default function Home() {
                         transition={{ duration: 0.6, ease: "easeOut" }}
                         className="absolute inset-0"
                       >
-                        <img
+                        <Image
                           src={DEMO_IMAGES[demoIndex].src}
                           alt={DEMO_IMAGES[demoIndex].title}
-                          className="w-full h-full object-cover"
+                          fill
+                          unoptimized
+                          className="object-cover"
                         />
 
                         {/* Overlay Gradient for better label readability */}
@@ -889,11 +892,14 @@ export default function Home() {
                       onMouseEnter={() => setHoveredPartner(logo)}
                       onMouseLeave={() => setHoveredPartner(null)}
                     >
-                      <img
+                      <Image
                         src={assetPath(`/logos/${logo}.svg`)}
                         alt={logo}
+                        width={120}
+                        height={44}
+                        unoptimized
                         className={`
-                          h-9 lg:h-11
+                          h-9 lg:h-11 w-auto
                           ${isActive ? "opacity-100 grayscale-0 scale-110" : "opacity-40 grayscale"}
                           transition-all duration-500
                           group-hover:opacity-100
