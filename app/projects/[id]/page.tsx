@@ -1615,9 +1615,9 @@ function ClassEditorInline({
     setError("");
     try {
       if (editing) {
-        await annotationClasses.update(editing.id, { name: name.trim(), color });
+        await annotationClasses.update(editing.id, { name: name.trim().toLowerCase(), color });
       } else {
-        await annotationClasses.create({ project: projectId, name: name.trim(), color });
+        await annotationClasses.create({ project: projectId, name: name.trim().toLowerCase(), color });
       }
       broadcastClassChange(projectId);
       onSaved();
@@ -1683,8 +1683,6 @@ export default function ProjectDetailPage() {
   const { user: currentUser } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [datasetList, setDatasetList] = useState<Dataset[]>([]);
-  const [splitDrafts, setSplitDrafts] = useState<Record<number, { train: number; test: number }>>({});
-  const [splittingDatasetId, setSplittingDatasetId] = useState<number | null>(null);
   const [exportDialog, setExportDialog] = useState<ExportDialogState | null>(null);
   const [trainingDatasetDialogOpen, setTrainingDatasetDialogOpen] = useState(false);
   const [selectedTrainingDatasetIds, setSelectedTrainingDatasetIds] = useState<number[]>([]);
@@ -2021,40 +2019,6 @@ export default function ProjectDetailPage() {
         confirmLabel: "OK",
         hideCancel: true,
       });
-    }
-  }
-
-  async function handleDatasetSplit(dataset: Dataset) {
-    const current = splitDrafts[dataset.id] ?? {
-      train: dataset.split_config?.train ?? 70,
-      test: dataset.split_config?.test ?? 10,
-    };
-    const train = current.test === 0 ? 80 : Math.max(70, Math.min(80, current.train));
-    const test = current.test === 0 ? 0 : 10;
-    const val = 100 - train - test;
-    setSplittingDatasetId(dataset.id);
-    try {
-      const result = await datasets.configureSplit(dataset.id, {
-        train,
-        val,
-        test,
-        seed: dataset.split_config?.seed ?? 42,
-        strategy: dataset.split_config?.strategy === "random" ? "random" : "class",
-        test_dataset_id: test === 0 ? dataset.split_config?.test_dataset_id ?? null : null,
-      });
-      setDatasetList((currentList) =>
-        currentList.map((item) => (item.id === dataset.id ? result.dataset : item)),
-      );
-      setSplitDrafts((drafts) => ({ ...drafts, [dataset.id]: { train, test } }));
-    } catch (error) {
-      await confirm({
-        title: "Could not split dataset",
-        message: error instanceof Error ? error.message : "Please check the dataset and try again.",
-        confirmLabel: "OK",
-        hideCancel: true,
-      });
-    } finally {
-      setSplittingDatasetId(null);
     }
   }
 
@@ -2719,12 +2683,14 @@ export default function ProjectDetailPage() {
 
         <div
           className="
-            grid gap-4
+            grid gap-4.5
             grid-cols-1
             sm:grid-cols-2
             md:grid-cols-3
             lg:grid-cols-4
-            2xl:grid-cols-5
+            xl:grid-cols-5
+            2xl:grid-cols-6
+            w-full
           "
         >
           {datasetList.map((dataset, i) => {
@@ -2741,174 +2707,110 @@ export default function ProjectDetailPage() {
             return (
               <motion.div
                 key={dataset.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
+                transition={{ delay: i * 0.04 }}
                 onClick={() => router.push(`/datasets/${dataset.id}`)}
                 className={[
-                  "group flex aspect-square w-full cursor-pointer flex-col rounded-3xl border",
-                  "border-stone-200 bg-white p-2 text-left shadow-sm transition-all hover:border-orange-300",
-                  "hover:shadow-xl hover:shadow-orange-50 active:scale-[0.99]",
+                  "group flex w-full cursor-pointer flex-col justify-between rounded-2xl border",
+                  "border-stone-200 bg-white p-2.5 text-left shadow-2xs transition-all hover:border-orange-400",
+                  "hover:shadow-md active:scale-[0.99]",
                 ].join(" ")}
               >
-                <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden bg-stone-50">
-                  {dataset.thumbnail ? (
-                    <Image
-                      src={resolveMediaUrl(dataset.thumbnail)}
-                      alt={dataset.name}
-                      fill
-                      unoptimized
-                      className={[
-                        "w-full h-full object-cover group-hover:scale-105 transition-transform",
-                        "duration-500",
-                      ].join(" ")}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center opacity-30">
-                      <ImageIcon className="w-12 h-12 text-stone-300" />
-                    </div>
-                  )}
-                  <div
-                    className={[
-                      "absolute top-3 left-3 px-2 py-1 bg-white/90 backdrop-blur-sm rounded-lg text-[9px]",
-                      "font-bold text-stone-900 shadow-sm flex items-center gap-1.5 border border-white/40",
-                    ].join(" ")}
-                  >
-                    <div className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} /> {status}
-                  </div>
-                </div>
-                <div className="shrink-0 px-3 pt-2 pb-1">
-                  <div className="flex items-center justify-between gap-1 mb-2">
-                    <h3
-                      className={[
-                        "font-bold text-stone-900 group-hover:text-orange-600 transition-colors truncate",
-                        "text-base",
-                      ].join(" ")}
-                    >
-                      {dataset.name}
-                    </h3>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <CardMenu items={datasetMenuItems(dataset)} />
-                    </div>
-                  </div>
-                  <div className="mb-2 min-h-7">
-                    {isImporting && importJob ? (
-                      <div role="status" aria-label={`Importing ${dataset.name}`}>
-                        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold">
-                          <span className="truncate text-stone-500">
-                            {importJob.status === "queued" ? "Waiting for worker" : "Importing frames"}
-                          </span>
-                          <span className="shrink-0 tabular-nums text-orange-600">
-                            {importJob.total > 0 ? `${importJob.done}/${importJob.total}` : "Preparing"}
-                          </span>
-                        </div>
-                        <div
-                          role="progressbar"
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={importProgress}
-                          className="h-1.5 w-full overflow-hidden rounded-full bg-orange-100"
-                        >
-                          <div
-                            className="h-full rounded-full bg-orange-500 transition-[width] duration-500"
-                            style={{ width: `${importProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    ) : importFailed ? (
-                      <p
-                        title={importJob?.error || "Dataset import failed."}
-                        className="line-clamp-2 text-[10px] font-semibold leading-4 text-red-600"
-                      >
-                        {importJob?.error || "Dataset import failed."}
-                      </p>
+                <div>
+                  <div className="relative aspect-[16/10] w-full rounded-xl overflow-hidden bg-stone-50">
+                    {dataset.thumbnail ? (
+                      <Image
+                        src={resolveMediaUrl(dataset.thumbnail)}
+                        alt={dataset.name}
+                        fill
+                        unoptimized
+                        className={[
+                          "w-full h-full object-cover group-hover:scale-105 transition-transform",
+                          "duration-500",
+                        ].join(" ")}
+                      />
                     ) : (
-                      <div>
-                        <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-stone-400">
-                          <span>
-                            <span className="text-stone-900">{annotated}</span> / {imageTotal} images annotated
-                          </span>
-                          <span>{annotationProgress}%</span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
-                          <div
-                            className={[
-                              "h-full rounded-full transition-[width] duration-500",
-                              dataset.is_train_ready ? "bg-emerald-500" : "bg-orange-400",
-                            ].join(" ")}
-                            style={{ width: `${annotationProgress}%` }}
-                          />
-                        </div>
+                      <div className="w-full h-full flex items-center justify-center opacity-30">
+                        <ImageIcon className="w-10 h-10 text-stone-300" />
                       </div>
                     )}
+                    <div
+                      className={[
+                        "absolute top-2.5 left-2.5 px-2 py-0.5 bg-white/95 backdrop-blur-xs rounded-md text-[9px]",
+                        "font-bold text-stone-900 shadow-2xs flex items-center gap-1.5 border border-stone-200/60",
+                      ].join(" ")}
+                    >
+                      <div className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} /> {status}
+                    </div>
                   </div>
-                  {false && (() => {
-                    const draft = splitDrafts[dataset.id] ?? {
-                      train: dataset.split_config?.train ?? 70,
-                      test: dataset.split_config?.test ?? 10,
-                    };
-                    const train = draft.test === 0 ? 80 : draft.train;
-                    const valid = 100 - train - draft.test;
-                    return (
-                      <div
-                        className="mb-2 flex items-end gap-1.5 rounded-xl bg-stone-50 p-2"
-                        onClick={(event) => event.stopPropagation()}
+                  <div className="px-1 pt-2.5 pb-1">
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <h3
+                        className={[
+                          "font-bold text-stone-900 group-hover:text-orange-600 transition-colors truncate",
+                          "text-sm",
+                        ].join(" ")}
+                        title={dataset.name}
                       >
-                        <label className="min-w-0 flex-1 text-[9px] font-bold uppercase text-stone-400">
-                          Train
-                          <input
-                            type="number"
-                            min={70}
-                            max={80}
-                            disabled={draft.test === 0}
-                            value={train}
-                            onChange={(event) => setSplitDrafts((current) => ({
-                              ...current,
-                              [dataset.id]: { ...draft, train: Number(event.target.value) },
-                            }))}
-                            className="no-number-spinner mt-1 h-7 w-full rounded-lg border border-stone-200 bg-white px-2 text-xs font-bold text-stone-800 outline-none focus:border-orange-400 disabled:text-stone-400"
-                            aria-label={`${dataset.name} train percentage`}
-                          />
-                        </label>
-                        <div className="min-w-0 flex-1 text-[9px] font-bold uppercase text-stone-400">
-                          Valid
-                          <div className="mt-1 flex h-7 items-center rounded-lg border border-stone-200 bg-stone-100 px-2 text-xs font-bold text-stone-600">
-                            {valid}%
+                        {dataset.name}
+                      </h3>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <CardMenu items={datasetMenuItems(dataset)} />
+                      </div>
+                    </div>
+                    <div className="mb-1">
+                      {isImporting && importJob ? (
+                        <div role="status" aria-label={`Importing ${dataset.name}`}>
+                          <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold">
+                            <span className="truncate text-stone-500">
+                              {importJob.status === "queued" ? "Waiting for worker" : "Importing frames"}
+                            </span>
+                            <span className="shrink-0 tabular-nums text-orange-600">
+                              {importJob.total > 0 ? `${importJob.done}/${importJob.total}` : "Preparing"}
+                            </span>
+                          </div>
+                          <div
+                            role="progressbar"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={importProgress}
+                            className="h-1.5 w-full overflow-hidden rounded-full bg-orange-100"
+                          >
+                            <div
+                              className="h-full rounded-full bg-orange-500 transition-[width] duration-500"
+                              style={{ width: `${importProgress}%` }}
+                            />
                           </div>
                         </div>
-                        <label className="min-w-0 flex-1 text-[9px] font-bold uppercase text-stone-400">
-                          Test
-                          <select
-                            value={draft.test}
-                            onChange={(event) => {
-                              const test = Number(event.target.value);
-                              setSplitDrafts((current) => ({
-                                ...current,
-                                [dataset.id]: { train: test === 0 ? 80 : train, test },
-                              }));
-                            }}
-                            className="mt-1 h-7 w-full rounded-lg border border-stone-200 bg-white px-1 text-xs font-bold text-stone-800 outline-none focus:border-orange-400"
-                            aria-label={`${dataset.name} test percentage`}
-                          >
-                            <option value={10}>10%</option>
-                            <option value={0}>{dataset.split_config?.test_dataset_id ? "Fixed" : "0%"}</option>
-                          </select>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => void handleDatasetSplit(dataset)}
-                          disabled={splittingDatasetId === dataset.id}
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white transition hover:bg-orange-600 disabled:opacity-50"
-                          aria-label={`Apply split for ${dataset.name}`}
-                          title="Apply split"
+                      ) : importFailed ? (
+                        <p
+                          title={importJob?.error || "Dataset import failed."}
+                          className="line-clamp-2 text-[10px] font-semibold leading-4 text-red-600"
                         >
-                          {splittingDatasetId === dataset.id
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <Check className="h-3.5 w-3.5" />}
-                        </button>
-                      </div>
-                    );
-                  })()}
+                          {importJob?.error || "Dataset import failed."}
+                        </p>
+                      ) : (
+                        <div>
+                          <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-stone-400">
+                            <span>
+                              <span className="text-stone-900">{annotated}</span> / {imageTotal} images
+                            </span>
+                            <span>{annotationProgress}%</span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
+                            <div
+                              className={[
+                                "h-full rounded-full transition-[width] duration-500",
+                                dataset.is_train_ready ? "bg-emerald-500" : "bg-orange-400",
+                              ].join(" ")}
+                              style={{ width: `${annotationProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             );
@@ -2917,20 +2819,20 @@ export default function ProjectDetailPage() {
           <motion.div
             onClick={() => setShowModal(true)}
             className={[
-              "group flex aspect-square cursor-pointer flex-col items-center justify-center gap-4",
-              "rounded-3xl border-2 border-dashed border-stone-200 p-8 text-center transition-all",
-              "hover:bg-stone-50",
+              "group flex min-h-[190px] cursor-pointer flex-col items-center justify-center gap-3",
+              "rounded-2xl border-2 border-dashed border-stone-200 p-6 text-center transition-all",
+              "hover:border-orange-400 hover:bg-orange-50/20 active:scale-[0.99]",
             ].join(" ")}
           >
             <div
               className={[
-                "w-14 h-14 bg-stone-100 rounded-2xl flex items-center justify-center",
-                "group-hover:scale-110 group-hover:bg-orange-50 transition-all",
+                "w-11 h-11 bg-stone-100 rounded-xl flex items-center justify-center",
+                "group-hover:scale-110 group-hover:bg-orange-100 transition-all",
               ].join(" ")}
             >
-              <Plus className="w-6 h-6 text-stone-300 group-hover:text-orange-500" />
+              <Plus className="w-5 h-5 text-stone-400 group-hover:text-orange-600" />
             </div>
-            <p className="font-bold text-stone-900 text-sm">Add New Dataset</p>
+            <p className="font-bold text-stone-800 text-xs group-hover:text-orange-700 transition">Add New Dataset</p>
           </motion.div>
         </div>
       </main>
