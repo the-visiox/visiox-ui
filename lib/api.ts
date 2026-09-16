@@ -1383,10 +1383,14 @@ export const autoLabel = {
     return request<AutoLabelPredictionResponse>(`/api/v1/datasets/${datasetId}/frames/${frame}/predict/`, {
       method: "POST",
       body: JSON.stringify({
+        provider: data.provider,
+        model: data.model,
+        label_ids: data.label_ids,
+        prompts: data.prompts,
         source: {
-          type: "provider",
-          provider_id: data.provider,
-          model_name: data.model,
+          kind: "provider",
+          provider: data.provider,
+          model: data.model,
           label_ids: data.label_ids,
           prompts: data.prompts,
         },

@@ -156,8 +156,6 @@ function frameMatchesClassFilter(frame: BrowserData["frames"][number], filter: I
 
 const CARD = "bg-white rounded-2xl border border-stone-200";
 const CARD_P = `${CARD} p-6`;
-const CARD_COL1 = `flex h-full min-h-0 flex-col space-y-4 ${CARD_P}`;
-const CARD_COL2 = `flex h-full min-h-0 flex-col items-center justify-center border-dashed ${CARD} p-8 text-center`;
 const ACCORDION_TRIGGER = [
   "flex min-h-[4.5rem] items-center gap-3 bg-white p-5 text-left transition-colors",
   "hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-70",
@@ -183,14 +181,16 @@ function GenerationStepMarker({
   const active = current === step;
   return (
     <span
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs font-bold transition-all ${
         done
-          ? "bg-emerald-500 text-white"
-          : active ? "bg-orange-500 text-white" : "bg-stone-100 text-stone-500"
+          ? "border-emerald-200/80 bg-emerald-50 text-emerald-600"
+          : active
+            ? "border-orange-200/80 bg-orange-50 text-orange-600 shadow-xs"
+            : "border-stone-200/70 bg-stone-100/70 text-stone-400"
       }`}
       aria-label={done ? `Step ${step} completed` : `Step ${step}`}
     >
-      {done ? <Check className="h-4 w-4" aria-hidden="true" /> : step}
+      {done ? <Check className="h-3.5 w-3.5 stroke-[2.5]" aria-hidden="true" /> : step}
     </span>
   );
 }
@@ -208,14 +208,20 @@ function DatasetSectionMarker({
   const active = current === section;
   return (
     <span
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all ${
         done
-          ? "bg-emerald-500 text-white"
-          : active ? "bg-orange-500 text-white" : "bg-stone-100 text-stone-500"
+          ? "border-emerald-200/80 bg-emerald-50 text-emerald-600"
+          : active
+            ? "border-orange-200/80 bg-orange-50 text-orange-600 shadow-xs"
+            : "border-stone-200/70 bg-stone-100/70 text-stone-400"
       }`}
       aria-label={done ? `Section ${section} completed` : `Section ${section}`}
     >
-      {done ? <Check className="h-4 w-4" aria-hidden="true" /> : section === 1 ? "A" : "B"}
+      {section === 1 ? (
+        <ImageIcon className="h-4.5 w-4.5" aria-hidden="true" />
+      ) : (
+        <Layers className="h-4.5 w-4.5" aria-hidden="true" />
+      )}
     </span>
   );
 }
@@ -498,12 +504,8 @@ export default function DatasetDetailClient({ id }: Props) {
   const [splitRatios, setSplitRatios] = useState(DEFAULT_SPLIT_RATIOS);
   const [splitting, setSplitting] = useState(false);
   const [verifyingLabels, setVerifyingLabels] = useState(false);
-  const [splitView, setSplitView] = useState<"class" | "split">("class");
   const [splitStrategy, setSplitStrategy] = useState<"class" | "random">("random");
   const splitStrategyTouchedRef = useRef(false);
-  const [testMode, setTestMode] = useState<"split" | "none" | "dataset">("split");
-  const [fixedTestDatasetId, setFixedTestDatasetId] = useState<number | null>(null);
-  const [projectDatasets, setProjectDatasets] = useState<Dataset[]>([]);
   const [browserData, setBrowserData] = useState<BrowserData | null>(null);
   const [annotatedCountApi, setAnnotatedCountApi] = useState<number | null>(null);
   const [mediaCountApi, setMediaCountApi] = useState<number | null>(null);
@@ -527,6 +529,7 @@ export default function DatasetDetailClient({ id }: Props) {
   const [showAnnotationLabels, setShowAnnotationLabels] = useState(true);
   const [currentDatasetSection, setCurrentDatasetSection] = useState<1 | 2>(1);
   const [browserOpen, setBrowserOpen] = useState(true);
+  const [importBannerDismissed, setImportBannerDismissed] = useState(false);
   const browserLayoutInitializedRef = useRef(false);
   /** Last frame row index for Shift+click range selection (in `browserData.frames` order). */
   const anchorFrameIndexRef = useRef<number | null>(null);
@@ -591,8 +594,6 @@ export default function DatasetDetailClient({ id }: Props) {
         });
         const savedStrategy = saved.strategy === "class" ? "class" : "random";
         setSplitStrategy(splitStrategyTouchedRef.current ? savedStrategy : "random");
-        setFixedTestDatasetId(null);
-        setTestMode("split");
       }
       setAnnotatedCountApi(dsResult.value.annotated_count ?? null);
       setMediaCountApi(dsResult.value.media_count ?? null);
@@ -601,7 +602,6 @@ export default function DatasetDetailClient({ id }: Props) {
       setStats(statsResult.value);
       const projectId = statsResult.value.project_id;
       if (projectId) {
-        datasets.listAll(projectId).then(setProjectDatasets).catch(() => {});
         annotationClasses
           .list(projectId)
           .then((res) => setAllClasses(res.results))
@@ -743,8 +743,6 @@ export default function DatasetDetailClient({ id }: Props) {
       setSplitRatios(DEFAULT_SPLIT_RATIOS);
       setSplitStrategy("random");
       splitStrategyTouchedRef.current = false;
-      setTestMode("split");
-      setFixedTestDatasetId(null);
       setCurrentGenerationStep(1);
       setSplitOpen(true);
       setPrepareOpen(true);
@@ -768,12 +766,6 @@ export default function DatasetDetailClient({ id }: Props) {
     } finally {
       setVerifyingLabels(false);
     }
-  };
-
-  const handleTestModeChange = (mode: "split" | "none" | "dataset") => {
-    setTestMode(mode);
-    setSplitRatios(mode === "split" ? { train: 70, val: 20, test: 10 } : { train: 80, val: 20, test: 0 });
-    if (mode !== "dataset") setFixedTestDatasetId(null);
   };
 
   useEffect(() => {
@@ -1329,12 +1321,12 @@ export default function DatasetDetailClient({ id }: Props) {
             ) : null}
           </div>
         </div>
-      ) : latestImportJob ? (
+      ) : latestImportJob && !importBannerDismissed ? (
         <div
           role={latestImportJob.status === "error" ? "alert" : "status"}
           aria-live={latestImportJob.status === "error" ? "assertive" : "polite"}
           className={[
-            "mx-6 mt-3 flex flex-col gap-3 rounded-2xl border px-4 py-3.5 text-sm shadow-sm",
+            "mx-6 mt-3 flex flex-col gap-3 rounded-2xl border px-4 py-3 text-sm shadow-xs",
             "sm:flex-row sm:items-center sm:justify-between",
             latestImportJob.status === "error"
               ? "border-red-200 bg-red-50/80"
@@ -1346,7 +1338,7 @@ export default function DatasetDetailClient({ id }: Props) {
           <div className="flex min-w-0 items-start gap-3">
             <span
               className={[
-                "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
                 latestImportJob.status === "error"
                   ? "bg-red-100 text-red-600"
                   : latestImportJob.status === "done"
@@ -1366,7 +1358,7 @@ export default function DatasetDetailClient({ id }: Props) {
             <div className="min-w-0">
               <p
                 className={[
-                  "font-bold",
+                  "font-bold text-xs",
                   latestImportJob.status === "error"
                     ? "text-red-800"
                     : latestImportJob.status === "done"
@@ -1384,7 +1376,7 @@ export default function DatasetDetailClient({ id }: Props) {
               </p>
               <p
                 className={[
-                  "mt-0.5 break-words text-xs leading-relaxed",
+                  "mt-0.5 break-words text-[11px] leading-relaxed",
                   latestImportJob.status === "error"
                     ? "text-red-600"
                     : latestImportJob.status === "done"
@@ -1405,13 +1397,22 @@ export default function DatasetDetailClient({ id }: Props) {
               type="button"
               onClick={() => setImportDialogOpen(true)}
               className={[
-                "inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl",
-                "border border-red-200 bg-white px-3 text-xs font-bold text-red-700",
+                "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg",
+                "border border-red-200 bg-white px-3 text-xs font-semibold text-red-700",
                 "transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2",
                 "focus-visible:ring-red-400 focus-visible:ring-offset-2 sm:self-center",
               ].join(" ")}
             >
               <Upload className="h-3.5 w-3.5" /> Choose another file
+            </button>
+          ) : latestImportJob.status === "done" ? (
+            <button
+              type="button"
+              onClick={() => setImportBannerDismissed(true)}
+              className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-emerald-700 hover:bg-emerald-100 transition-colors"
+              aria-label="Dismiss notification"
+            >
+              <X className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </div>
@@ -1507,132 +1508,229 @@ export default function DatasetDetailClient({ id }: Props) {
           </motion.div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
-          {/* Column 1: Stats, Annotation Progress & Label Distribution */}
+        {/* ── Consolidated Overview: Key Metrics & Label Distribution ── */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-stretch">
+          {/* Left: Key Metrics & Dataset Health */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
-            className={CARD_COL1}
+            transition={{ duration: 0.35 }}
+            className="flex flex-col justify-between rounded-2xl border border-stone-200 bg-white p-5 shadow-xs lg:col-span-6"
           >
-            {/* Mini stats */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {(
-                [
-                  {
-                    label: "Total Images",
-                    value: totalImages,
-                    Icon: ImageIcon,
-                    iconClass: "bg-orange-100 text-orange-500",
-                  },
-                  {
-                    label: "Classes",
-                    value: allClasses.length || labels.length,
-                    Icon: Tag,
-                    iconClass: "bg-purple-100 text-purple-500",
-                  },
-                  {
-                    label: "Annotations",
-                    value: totalAnnotations,
-                    Icon: BarChart3,
-                    iconClass: "bg-blue-100 text-blue-500",
-                  },
-                  {
-                    label: "Annotated images",
-                    value: annotatedCount,
-                    Icon: CheckCircle2,
-                    iconClass: "bg-emerald-100 text-emerald-500",
-                  },
-                ] as const
-              ).map(({ label, value, Icon, iconClass }) => (
-                <div key={label} className="rounded-xl bg-stone-50 px-3 py-3">
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-2 ${iconClass}`}>
-                    <Icon className="w-3.5 h-3.5" />
+            <div>
+              <div className="mb-4 flex items-center justify-between border-b border-stone-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-orange-200/70 bg-orange-50 text-orange-600">
+                    <BarChart3 className="h-3.5 w-3.5 text-orange-600" />
                   </div>
-                  <p className="text-xl font-bold text-stone-900">{value}</p>
-                  <p className="text-xs font-medium text-stone-500 mt-0.5">{label}</p>
+                  <div>
+                    <h3 className="text-sm font-bold text-stone-900">Dataset Overview</h3>
+                    <p className="text-[11px] text-stone-400">Core metrics & annotation health</p>
+                  </div>
                 </div>
-              ))}
+                {labelsAreVerified ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200/80 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+                    <BadgeCheck className="h-3 w-3" /> Verified
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700">
+                    Unverified
+                  </span>
+                )}
+              </div>
+
+              {/* 4 Metrics in clean 2x2 grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Total Images */}
+                <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-stone-500">Total Images</span>
+                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-orange-100/80 text-orange-600">
+                      <ImageIcon className="h-3.5 w-3.5 text-orange-600" />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xl font-bold tracking-tight text-stone-900">
+                    {INTEGER_FORMATTER.format(totalImages)}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-stone-400">
+                    <span className="font-semibold text-stone-600">{originalCount}</span> original ·{" "}
+                    <span className="font-semibold text-stone-600">{augmentedCount}</span> augmented
+                  </p>
+                </div>
+
+                {/* Classes */}
+                <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-stone-500">Classes</span>
+                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-100/80 text-purple-600">
+                      <Tag className="h-3.5 w-3.5 text-purple-600" />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xl font-bold tracking-tight text-stone-900">
+                    {allClasses.length || labels.length}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-stone-400">
+                    {allClasses.length > 0 ? "Classes configured" : "Detected in dataset"}
+                  </p>
+                </div>
+
+                {/* Annotations */}
+                <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-stone-500">Annotations</span>
+                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-100/80 text-blue-600">
+                      <Layers className="h-3.5 w-3.5 text-blue-600" />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xl font-bold tracking-tight text-stone-900">
+                    {INTEGER_FORMATTER.format(totalAnnotations)}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-stone-400">
+                    Avg {totalImages ? (totalAnnotations / totalImages).toFixed(1) : "0"} / image
+                  </p>
+                </div>
+
+                {/* Annotated Ratio */}
+                <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-stone-500">Annotated</span>
+                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100/80 text-emerald-600">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    </div>
+                  </div>
+                  <div className="mt-1 flex items-baseline gap-1.5">
+                    <p className="text-xl font-bold tracking-tight text-stone-900">
+                      {totalImages > 0 ? `${Math.round((annotatedCount / totalImages) * 100)}%` : "0%"}
+                    </p>
+                    <span className="text-[10px] text-stone-400">
+                      ({annotatedCount}/{totalImages})
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-stone-200/70">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                      style={{
+                        width: `${totalImages > 0 ? Math.min(100, Math.round((annotatedCount / totalImages) * 100)) : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {(allClasses.length > 0 || labels.length > 0) &&
-              browserData &&
-              (() => {
-                // Build a name→count map from browser labels
-                const labelCountByName = new Map<string, number>();
-                labels.forEach((label) => {
-                  const count = browserData.frames.reduce(
-                    (sum, f) => sum + f.annotations.filter((a) => a.label_id === label.id).length,
-                    0,
-                  );
-                  labelCountByName.set(label.name.toLowerCase(), count);
-                });
+            {/* Split Breakdown Footer */}
+            <div className="mt-3.5 flex items-center justify-between rounded-xl border border-stone-200/60 bg-stone-50/70 px-3.5 py-2">
+              <span className="text-[11px] font-semibold text-stone-500">Split Breakdown</span>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                <span className="rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                  {splitRatios.train}% Train
+                </span>
+                <span className="rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200/60">
+                  {splitRatios.val}% Val
+                </span>
+                <span className="rounded px-1.5 py-0.5 bg-violet-50 text-violet-700 border border-violet-200/60">
+                  {splitRatios.test}% Test
+                </span>
+              </div>
+            </div>
+          </motion.div>
 
-                // Use project classes (all labels) if available, else fall back to browserData labels
-                const source = allClasses.length > 0 ? allClasses : labels;
-                const counts = source.map((label) => ({
-                  id: label.id,
-                  name: label.name,
-                  color: label.color,
-                  count: labelCountByName.get(label.name.toLowerCase()) ?? 0,
-                }));
-                const maxCount = Math.max(...counts.map((c) => c.count), 1);
-                const totalCount = counts.reduce((s, c) => s + c.count, 0);
-                return (
+          {/* Right: Label Distribution */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.1 }}
+            className="flex flex-col justify-between rounded-2xl border border-stone-200 bg-white p-5 shadow-xs lg:col-span-6"
+          >
+            <div>
+              <div className="mb-4 flex items-center justify-between border-b border-stone-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-purple-200/70 bg-purple-50 text-purple-600">
+                    <Tag className="h-3.5 w-3.5 text-purple-600" />
+                  </div>
                   <div>
-                    <h3 className="text-base font-bold text-stone-900 mb-3">Label Distribution</h3>
-                    {/* Horizontal bars — reads cleanly whether there's 1 class or many. */}
-                    <div className="space-y-2.5">
+                    <h3 className="text-sm font-bold text-stone-900">Label Distribution</h3>
+                    <p className="text-[11px] text-stone-400">Class balance across annotated instances</p>
+                  </div>
+                </div>
+                {(allClasses.length > 0 || labels.length > 0) && (
+                  <span className="rounded-full border border-stone-200 bg-stone-100/80 px-2 py-0.5 text-[10px] font-bold text-stone-600">
+                    {allClasses.length || labels.length} classes
+                  </span>
+                )}
+              </div>
+
+              {(allClasses.length > 0 || labels.length > 0) &&
+                browserData &&
+                (() => {
+                  const labelCountByName = new Map<string, number>();
+                  labels.forEach((label) => {
+                    const count = browserData.frames.reduce(
+                      (sum, f) => sum + f.annotations.filter((a) => a.label_id === label.id).length,
+                      0,
+                    );
+                    labelCountByName.set(label.name.toLowerCase(), count);
+                  });
+
+                  const source = allClasses.length > 0 ? allClasses : labels;
+                  const counts = source.map((label) => ({
+                    id: label.id,
+                    name: label.name,
+                    color: label.color,
+                    count: labelCountByName.get(label.name.toLowerCase()) ?? 0,
+                  }));
+                  const maxCount = Math.max(...counts.map((c) => c.count), 1);
+                  const totalCount = counts.reduce((s, c) => s + c.count, 0);
+
+                  return (
+                    <div className="custom-scrollbar max-h-48 space-y-2.5 overflow-y-auto pr-1">
                       {counts.map((lbl) => {
                         const pct = (lbl.count / maxCount) * 100;
                         const share = totalCount > 0 ? Math.round((lbl.count / totalCount) * 100) : 0;
                         return (
-                          <div key={lbl.id} className="flex items-center gap-3">
-                            <div className="flex w-24 shrink-0 items-center gap-2 min-w-0">
-                              <span className="h-3 w-3 shrink-0 rounded-[3px]" style={{ backgroundColor: lbl.color }} />
-                              <span className="truncate text-xs font-bold text-stone-600">{lbl.name}</span>
+                          <div
+                            key={lbl.id}
+                            className="flex items-center gap-3 px-1 py-1"
+                          >
+                            <div className="flex w-28 shrink-0 items-center gap-2 min-w-0">
+                              <span
+                                className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-stone-100"
+                                style={{ backgroundColor: lbl.color }}
+                              />
+                              <span className="truncate text-xs font-semibold text-stone-700">{lbl.name}</span>
                             </div>
-                            <div className="relative h-2 flex-1 overflow-hidden rounded-md bg-stone-100">
+                            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-stone-100">
                               <motion.div
                                 initial={{ width: 0 }}
                                 animate={{ width: `${pct}%` }}
                                 transition={{ duration: 0.6, ease: "easeOut" }}
-                                className="absolute inset-y-0 left-0 min-w-[3px] rounded-md"
+                                className="absolute inset-y-0 left-0 min-w-[4px] rounded-full"
                                 style={{ backgroundColor: lbl.color }}
                               />
                             </div>
-                            <div className="ml-1 flex w-20 shrink-0 items-center">
-                              <span className="text-xs font-bold tabular-nums text-stone-800">{lbl.count}</span>
-
-                              <span className="ml-auto text-xs font-bold tabular-nums text-stone-400">{share}%</span>
+                            <div className="ml-1 flex w-24 shrink-0 items-center justify-end gap-1.5">
+                              <span className="text-xs font-bold tabular-nums text-stone-800">
+                                {INTEGER_FORMATTER.format(lbl.count)}
+                              </span>
+                              <span className="text-[11px] font-medium tabular-nums text-stone-400">
+                                ({share}%)
+                              </span>
                             </div>
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
-            {allClasses.length === 0 && labels.length === 0 && (
-              <div className="text-center py-6 text-stone-400">
-                <Tag className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm font-bold">No labels yet</p>
-                <p className="text-xs mt-1">Add labels via the Annotate interface</p>
-              </div>
-            )}
-          </motion.div>
-
-          {/* Column 2: Model Performance placeholder */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.25 }}
-            className={CARD_COL2}
-          >
-            <BarChart3 className="w-8 h-8 text-stone-300 mx-auto mb-3" />
-            <p className="text-base font-bold text-stone-400">Model Performance</p>
-            <p className="text-sm text-stone-300 mt-1 max-w-xs">Train a model to see predictions & metrics here</p>
+              {allClasses.length === 0 && labels.length === 0 && (
+                <div className="flex flex-1 flex-col items-center justify-center py-6 text-center text-stone-400">
+                  <Tag className="mb-2 h-7 w-7 opacity-30" />
+                  <p className="text-xs font-bold text-stone-600">No classes detected yet</p>
+                  <p className="mt-0.5 text-[11px] text-stone-400">Annotate images to define object classes</p>
+                </div>
+              )}
+            </div>
           </motion.div>
         </div>
 
@@ -1661,11 +1759,26 @@ export default function DatasetDetailClient({ id }: Props) {
                   completed={generationIsComplete}
                 />
                 <div className="text-left">
-                  <h3 className="text-base font-bold text-stone-900">Generate Dataset</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-stone-900">Step 2: Generate Dataset Version</h3>
+                    {generationIsComplete ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200/80 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                        <Check className="h-3 w-3" aria-hidden="true" /> Generated
+                      </span>
+                    ) : !labelsAreVerified ? (
+                      <span className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">
+                        Requires Verification
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                        Ready to Generate
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-0.5 text-xs text-stone-400">
                     {labelsAreVerified
-                      ? "Preprocessing · Augmentation · Apply to dataset"
-                      : "Verify annotations in Image Browser to unlock"}
+                      ? "Preprocessing · Augmentation · Generate dataset version"
+                      : "Verify annotations in Step 1 to unlock dataset generation"}
                   </p>
                 </div>
               </div>
@@ -1800,51 +1913,6 @@ export default function DatasetDetailClient({ id }: Props) {
                   </div>}
                 </section>
 
-                <div className="hidden rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm shadow-stone-200/40">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-                    <div className="shrink-0 lg:w-64">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white">1</span>
-                        <p className="text-sm font-bold text-stone-900">Split Dataset</p>
-                        <span
-                          aria-live="polite"
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            splitIsSaved ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                          }`}
-                        >
-                          {splitIsSaved ? "Saved" : "Not saved"}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs text-stone-500">Split first. Only Train images will be augmented.</p>
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
-                      <SplitAllocationSlider value={splitRatios} onChange={setSplitRatios} />
-                      <label className="grid gap-1 text-[10px] font-bold uppercase text-stone-400">
-                        Strategy
-                        <select
-                          value={splitStrategy}
-                          onChange={(event) => {
-                            splitStrategyTouchedRef.current = true;
-                            setSplitStrategy(event.target.value as "class" | "random");
-                          }}
-                          className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-xs font-bold normal-case text-stone-700 outline-none focus:border-orange-400"
-                        >
-                          <option value="class">By class</option>
-                          <option value="random">Random</option>
-                        </select>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => void handleConfigureSplit()}
-                        disabled={splitting}
-                        className="flex h-9 items-center gap-1.5 rounded-xl bg-orange-500 px-3 text-xs font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
-                      >
-                        {splitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                        Save Split
-                      </button>
-                    </div>
-                  </div>
-                </div>
                 <section className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${
                   prepareOpen && splitIsConfigured ? "border-orange-200" : "border-stone-200"
                 }`}>
@@ -2183,324 +2251,7 @@ export default function DatasetDetailClient({ id }: Props) {
           </motion.div>
         )}
 
-        {false && <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className={CARD_P}
-          aria-labelledby="dataset-split-heading"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 id="dataset-split-heading" className="text-base font-bold text-stone-900">Data Split</h2>
-                {datasetDetail?.split_updated_at && (
-                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
-                    Ready
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-sm text-stone-500">
-                Augmentation is included in Train only. Valid and Test remain raw.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              {(["train", "val", "test"] as const).map((key) => (
-                <label key={key} className="grid gap-1 text-xs font-semibold capitalize text-stone-500">
-                  {key === "val" ? "Valid" : key}
-                  <span className="flex h-10 items-center rounded-xl border border-stone-200 bg-white px-3 focus-within:border-orange-400">
-                    <input
-                      type="number"
-                      min={key === "train" ? 70 : 10}
-                      max={key === "train" ? 80 : key === "val" ? 20 : 10}
-                      value={splitRatios[key]}
-                      disabled={key === "test" && testMode !== "split"}
-                      onChange={(event) =>
-                        setSplitRatios((current) => ({ ...current, [key]: Number(event.target.value) }))
-                      }
-                      className="no-number-spinner w-10 bg-transparent text-sm font-bold text-stone-800 outline-none disabled:text-stone-400"
-                      aria-label={`${key} percentage`}
-                    />
-                    <span className="text-stone-400">%</span>
-                  </span>
-                </label>
-              ))}
-              <button
-                type="button"
-                onClick={() => void handleConfigureSplit()}
-                disabled={
-                  splitting
-                  || splitRatios.train + splitRatios.val + splitRatios.test !== 100
-                  || (testMode === "dataset" && !fixedTestDatasetId)
-                }
-                className="flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
-              >
-                {splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
-                Apply split
-              </button>
-            </div>
-          </div>
 
-          <div className="mt-5 grid gap-4 rounded-2xl border border-stone-200 bg-stone-50/60 p-4 lg:grid-cols-2">
-            <fieldset>
-              <legend className="text-xs font-bold uppercase tracking-wider text-stone-500">Split strategy</legend>
-              <div className="mt-2 inline-flex rounded-xl border border-stone-200 bg-white p-1">
-                {([['class', 'By Class'], ['random', 'Random']] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setSplitStrategy(value)}
-                    aria-pressed={splitStrategy === value}
-                    className={`rounded-lg px-4 py-2 text-xs font-bold transition ${
-                      splitStrategy === value
-                        ? "bg-orange-50 text-orange-700 shadow-sm ring-1 ring-orange-200"
-                        : "text-stone-500 hover:text-stone-800"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-stone-400">
-                {splitStrategy === "class"
-                  ? "Balances every class and background while keeping capture groups together."
-                  : "Random split with a fixed seed; capture groups still stay together."}
-              </p>
-            </fieldset>
-
-            <fieldset>
-              <legend className="text-xs font-bold uppercase tracking-wider text-stone-500">Test source</legend>
-              <div className="mt-2 flex flex-wrap gap-1 rounded-xl border border-stone-200 bg-white p-1">
-                {([['split', 'Split 10%'], ['none', 'No test'], ['dataset', 'Fixed dataset']] as const).map(
-                  ([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => handleTestModeChange(value)}
-                      aria-pressed={testMode === value}
-                      className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
-                        testMode === value
-                          ? "bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-200"
-                          : "text-stone-500 hover:text-stone-800"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ),
-                )}
-              </div>
-              {testMode === "dataset" ? (
-                <select
-                  value={fixedTestDatasetId ?? ""}
-                  onChange={(event) => setFixedTestDatasetId(event.target.value ? Number(event.target.value) : null)}
-                  className="mt-2 h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700 outline-none focus:border-violet-400"
-                  aria-label="Fixed test dataset"
-                >
-                  <option value="">Select a verified dataset…</option>
-                  {projectDatasets
-                    .filter((item) => item.id !== numericId && item.verification_status === "verified")
-                    .map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              ) : (
-                <p className="mt-2 text-xs text-stone-400">
-                  {testMode === "none"
-                    ? "Training sends only Train and Valid. You can attach a test dataset later."
-                    : "10% of this dataset is reserved for final evaluation."}
-                </p>
-              )}
-            </fieldset>
-          </div>
-
-          {datasetDetail?.split_config?.summary && (() => {
-            const summary = datasetDetail!.split_config!.summary!;
-            const totalRaw = summary.train.raw + summary.val.raw + summary.test.raw;
-            const colors = { train: "#52d8c2", val: "#f7cf5c", test: "#7657f6" };
-            return (
-              <div className="mt-6 border-t border-stone-100 pt-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-stone-900">View your split ({totalRaw} raw images)</p>
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-stone-600">
-                      <span>Train: <b className="text-stone-900">{summary.train.raw}</b></span>
-                      <span>Valid: <b className="text-stone-900">{summary.val.raw}</b></span>
-                      <span>Test: <b className="text-stone-900">{summary.test.raw}</b></span>
-                    </div>
-                  </div>
-                  <div className="inline-flex self-start rounded-lg border border-stone-200 bg-stone-50 p-0.5" role="tablist">
-                    {([['class', 'By Class'], ['split', 'By Split']] as const).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        role="tab"
-                        aria-selected={splitView === value}
-                        onClick={() => setSplitView(value)}
-                        className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
-                          splitView === value
-                            ? "bg-white text-stone-900 shadow-sm ring-1 ring-stone-200"
-                            : "text-stone-400 hover:text-stone-600"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  {splitView === "class" ? (
-                    summary.classes?.length ? (summary.classes ?? []).map((row) => {
-                      const total = row.train + row.val + row.test;
-                      return (
-                        <div key={row.name} className="grid grid-cols-[7rem_1fr] items-center gap-3">
-                          <span className="truncate text-xs font-medium text-stone-700" title={row.name}>{row.name}</span>
-                          <div className="flex h-2 overflow-hidden rounded-full bg-stone-100">
-                            {(["train", "val", "test"] as const).map((key) => (
-                              <motion.span
-                                key={key}
-                                initial={{ width: 0 }}
-                                animate={{ width: `${total ? row[key] * 100 / total : 0}%` }}
-                                transition={{ duration: 0.45 }}
-                                style={{ backgroundColor: colors[key] }}
-                                title={`${key}: ${row[key]}`}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }) : <p className="text-xs text-stone-400">Apply split again to calculate class distribution.</p>
-                  ) : (
-                    (["train", "val", "test"] as const).map((key) => {
-                      const value = summary[key];
-                      return (
-                        <div key={key} className="grid grid-cols-[7rem_1fr_auto] items-center gap-3">
-                          <span className="text-xs font-bold capitalize text-stone-700">{key === "val" ? "Valid" : key}</span>
-                          <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: `${totalRaw ? value.raw * 100 / totalRaw : 0}%` }}
-                              transition={{ duration: 0.45 }}
-                              className="h-full rounded-full"
-                              style={{ backgroundColor: colors[key] }}
-                            />
-                          </div>
-                          <span className="w-28 text-right text-xs tabular-nums text-stone-500">
-                            {value.raw} raw{value.augmented ? ` + ${value.augmented} aug` : ""}
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-4 border-t border-stone-100 pt-3">
-                  {([['train', 'Train'], ['val', 'Valid'], ['test', 'Test']] as const).map(([key, label]) => (
-                    <span key={key} className="flex items-center gap-1.5 text-[11px] font-medium text-stone-500">
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[key] }} />{label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-        </motion.section>}
-
-        {confirmDialog}
-
-        {augJob &&
-          typeof document !== "undefined" &&
-          createPortal(
-            <div
-              className={[
-                "fixed bottom-5 right-5 z-[150] w-72 rounded-2xl border border-stone-200 bg-white/95 p-4",
-                "shadow-xl shadow-stone-300/40 backdrop-blur",
-              ].join(" ")}
-            >
-              <div className="flex items-center gap-2">
-                {augJob.status === "done" ? (
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                ) : (
-                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-orange-500" />
-                )}
-                <p className="text-sm font-bold text-stone-800">
-                  {augJob.status === "done" ? "Augmentation complete" : "Generating dataset…"}
-                </p>
-              </div>
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-stone-100">
-                <div
-                  className="h-full rounded-full bg-orange-500 transition-all duration-300"
-                  style={{ width: `${augJob.total ? Math.round((augJob.done / augJob.total) * 100) : 0}%` }}
-                />
-              </div>
-              <p className="mt-1.5 text-xs font-medium text-stone-500">
-                {augJob.done}/{augJob.total} images · runs in background
-              </p>
-            </div>,
-            document.body,
-          )}
-
-        {augConfirmOpen &&
-          typeof document !== "undefined" &&
-          createPortal(
-            <div
-              className={[
-                "fixed inset-0 z-[200] flex items-center justify-center bg-black/40",
-                "backdrop-blur-sm",
-              ].join(" ")}
-            >
-              <div className="relative w-96 rounded-2xl bg-white p-6 shadow-2xl">
-                <button
-                  type="button"
-                  onClick={() => setAugConfirmOpen(false)}
-                  className={[
-                    "absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100",
-                    "hover:text-stone-600",
-                  ].join(" ")}
-                  aria-label="Close"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-
-                <h2 className="text-base font-bold text-stone-900">Generate dataset</h2>
-
-                <p className="mt-1.5 text-sm text-stone-500">
-                  {hasGenerationTransforms ? (
-                    <>
-                      Generate <span className="font-bold text-stone-700">{trainImageCount * multiplier}</span> processed
-                      image{trainImageCount * multiplier === 1 ? "" : "s"} from Train images?
-                    </>
-                  ) : (
-                    "Finalize the current Train, Validation and Test split without preprocessing or augmentation?"
-                  )}
-                </p>
-
-                <div className="mt-6 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setAugConfirmOpen(false)}
-                    className={[
-                      "flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold",
-                      "text-stone-600 transition hover:bg-stone-100",
-                    ].join(" ")}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={augApplying}
-                    onClick={() => void handleAugApply()}
-                    className={[
-                      "flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5",
-                      "text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50",
-                    ].join(" ")}
-                  >
-                    {augApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                    Apply
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )}
 
         {browserLoading && !browserData ? (
           <div
@@ -2520,7 +2271,7 @@ export default function DatasetDetailClient({ id }: Props) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.18 }}
-            className="bg-white rounded-2xl border border-dashed border-stone-200 p-10 text-center"
+            className="order-1 bg-white rounded-2xl border border-dashed border-stone-200 p-10 text-center"
           >
             <div
               className={[
@@ -2577,169 +2328,216 @@ export default function DatasetDetailClient({ id }: Props) {
                   completed={labelsAreVerified}
                 />
                 <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-stone-900">Image Browser</h3>
-                  {labelsAreVerified && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
-                      <BadgeCheck className="h-3 w-3" aria-hidden="true" /> Verified
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-stone-900">Step 1: Images & Annotations</h3>
+                    <span className="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-600">
+                      {INTEGER_FORMATTER.format(totalImages)} images
                     </span>
-                  )}
-                </div>
-                <p className="mt-0.5 text-xs text-stone-400">
-                  Review images · Check annotations · Verify dataset
-                </p>
+                    {labelsAreVerified ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200/80 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                        <BadgeCheck className="h-3 w-3" aria-hidden="true" /> Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                        Unverified
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-stone-400">
+                    Review dataset frames · Inspect labels · Verify dataset
+                  </p>
                 </div>
                 <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-stone-400 transition-transform ${browserOpen ? "rotate-180" : ""}`} />
               </button>
             </div>
 
             {browserOpen && <div className="border-t border-stone-100 bg-stone-50/40 px-6 pb-6 pt-5">
-            {/* ── Original / Augmented tabs ── */}
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex w-fit items-center gap-1 rounded-xl bg-stone-100 p-1">
-              {[
-                { key: "original" as const, label: "Original", count: originalCount },
-                { key: "augmented" as const, label: "Augmented", count: augmentedCount },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => {
-                    if (browserTab === tab.key) return;
-                    setBrowserTab(tab.key);
-                    setCurrentPage(1);
-                    setSelectedMediaIds([]);
-                    anchorFrameIndexRef.current = null;
-                  }}
-                  className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${
-                    browserTab === tab.key ? "bg-white text-stone-900 shadow-sm" : "text-stone-500 hover:text-stone-700"
-                  }`}
-                >
-                  {tab.label}
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                      browserTab === tab.key ? "bg-orange-100 text-orange-700" : "bg-stone-200 text-stone-500"
-                    }`}
-                  >
-                    {tab.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <label className="relative">
-              <span className="sr-only">Filter images by class</span>
-              <Tag
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
-              />
-              <select
-                value={imageClassFilter}
-                onChange={(event) => {
-                  setImageClassFilter(event.target.value as ImageClassFilter);
-                  setCurrentPage(1);
-                  setSelectedMediaIds([]);
-                  anchorFrameIndexRef.current = null;
-                }}
-                className="h-10 min-w-44 rounded-xl border border-stone-200 bg-white pl-9 pr-8 text-sm font-bold text-stone-700"
-              >
-                <option value="all">All classes</option>
-                <option value="unlabeled">Unlabeled</option>
-                {(allClasses.length > 0 ? allClasses : browserData.labels).map((annotationClass) => (
-                  <option key={annotationClass.id} value={`class:${annotationClass.id}`}>
-                    {annotationClass.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            </div>
-            {(selectableMediaIds.length > 0 || selectedMediaIds.length > 0) && (
-              <div className="relative z-10 flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
-                {selectableMediaIds.length > 0 && (
-                  <label className="inline-flex h-10 min-w-32 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600 transition-colors hover:bg-stone-50">
-                    <input
-                      type="checkbox"
-                      checked={allSelectableSelected}
-                      onChange={() => toggleSelectAllMedia()}
-                      className="peer sr-only"
+            {/* ── Studio Toolbar ── */}
+            <div className="mb-4 flex flex-col gap-3">
+              {/* Row 1: Filters, Modes & Batch Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Left: Tab switch & Class filter */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-stone-100/80 p-0.5">
+                    {[
+                      { key: "original" as const, label: "Original", count: originalCount },
+                      { key: "augmented" as const, label: "Augmented", count: augmentedCount },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => {
+                          if (browserTab === tab.key) return;
+                          setBrowserTab(tab.key);
+                          setCurrentPage(1);
+                          setSelectedMediaIds([]);
+                          anchorFrameIndexRef.current = null;
+                        }}
+                        className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all ${
+                          browserTab === tab.key
+                            ? "border border-stone-200/60 bg-white text-stone-900 shadow-xs"
+                            : "text-stone-500 hover:text-stone-800"
+                        }`}
+                      >
+                        {tab.label}
+                        <span
+                          className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums ${
+                            browserTab === tab.key
+                              ? "bg-orange-50 text-orange-700"
+                              : "bg-stone-200/70 text-stone-500"
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative inline-flex items-center">
+                    <span className="sr-only">Filter images by class</span>
+                    <Tag
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 transition-colors ${
+                        imageClassFilter !== "all" ? "text-orange-500" : "text-stone-400"
+                      }`}
                     />
-                    <span
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50 ${
-                        allSelectableSelected
-                          ? "border-orange-500 bg-orange-500 text-white"
-                          : "border-stone-300 bg-white text-transparent"
+                    <select
+                      value={imageClassFilter}
+                      onChange={(event) => {
+                        setImageClassFilter(event.target.value as ImageClassFilter);
+                        setCurrentPage(1);
+                        setSelectedMediaIds([]);
+                        anchorFrameIndexRef.current = null;
+                      }}
+                      className={`h-8.5 min-w-40 cursor-pointer appearance-none rounded-lg border bg-white pl-8 pr-8 text-xs font-semibold shadow-xs transition-all focus:outline-none focus:ring-2 ${
+                        imageClassFilter !== "all"
+                          ? "border-orange-300 bg-orange-50/40 text-orange-900 focus:border-orange-400 focus:ring-orange-400/20"
+                          : "border-stone-200 text-stone-700 hover:border-stone-300 hover:bg-stone-50/60 focus:border-stone-400 focus:ring-stone-400/20"
                       }`}
                     >
-                      <Check className="h-3 w-3 stroke-[3]" aria-hidden="true" />
-                    </span>
-                    Select all
-                  </label>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteSelectedMedia()}
-                  disabled={deleting || selectedMediaIds.length === 0}
-                  className="inline-flex h-10 min-w-32 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-bold tabular-nums text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  Delete ({selectedMediaIds.length})
-                </button>
-              </div>
-            )}
-            </div>
+                      <option value="all">All classes</option>
+                      <option value="unlabeled">Unlabeled</option>
+                      {(allClasses.length > 0 ? allClasses : browserData.labels).map((annotationClass) => (
+                        <option key={annotationClass.id} value={`class:${annotationClass.id}`}>
+                          {annotationClass.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 transition-colors ${
+                        imageClassFilter !== "all" ? "text-orange-500" : "text-stone-400"
+                      }`}
+                    />
+                  </div>
+                </div>
 
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-stone-200 bg-white p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={modelRunConfig.modelId}
-                  onChange={(event) => setModelRunConfig((current) => ({
-                    ...current,
-                    modelId: event.target.value ? Number(event.target.value) : "",
-                  }))}
-                  className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700"
-                  aria-label="Select model"
-                >
-                  <option value="">Select trained model</option>
-                  {registeredModels.map((model) => (
-                    <option key={model.id} value={model.id}>{model.name} v{model.version}</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={modelRunConfig.confidence}
-                  onChange={(event) => setModelRunConfig((current) => ({
-                    ...current,
-                    confidence: Math.max(0, Math.min(1, Number(event.target.value) || 0)),
-                  }))}
-                  className="no-number-spinner h-10 w-24 rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm font-bold"
-                  aria-label="Confidence"
-                />
-                <button
-                  type="button"
-                  onClick={handleTryModel}
-                  disabled={!modelRunConfig.modelId || browserTab !== "original" || activeFrames.length === 0}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-bold text-white disabled:opacity-40"
-                >
-                  <Wand2 className="h-4 w-4" />
-                  Try Model
-                </button>
+                {/* Right: Quick toggles & Batch selection */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAnnotationLabels((value) => !value)}
+                    aria-pressed={showAnnotationLabels}
+                    className={`inline-flex h-8.5 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-all shadow-xs ${
+                      showAnnotationLabels
+                        ? "border-stone-300 bg-stone-100 text-stone-800"
+                        : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                    }`}
+                  >
+                    {showAnnotationLabels ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                    Annotations
+                  </button>
+
+                  {selectableMediaIds.length > 0 && (
+                    <label className="inline-flex h-8.5 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-stone-200 bg-white px-2.5 text-xs font-medium text-stone-600 shadow-xs transition-colors hover:bg-stone-50">
+                      <input
+                        type="checkbox"
+                        checked={allSelectableSelected}
+                        onChange={() => toggleSelectAllMedia()}
+                        className="peer sr-only"
+                      />
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-orange-400/50 ${
+                          allSelectableSelected
+                            ? "border-orange-500 bg-orange-500 text-white"
+                            : "border-stone-300 bg-white text-transparent"
+                        }`}
+                      >
+                        <Check className="h-2.5 w-2.5 stroke-[3]" aria-hidden="true" />
+                      </span>
+                      Select all
+                    </label>
+                  )}
+
+                  {selectedMediaIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteSelectedMedia()}
+                      disabled={deleting}
+                      className="inline-flex h-8.5 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/80 px-3 text-xs font-medium tabular-nums text-red-600 shadow-xs transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      Delete ({selectedMediaIds.length})
+                    </button>
+                  )}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowAnnotationLabels((value) => !value)}
-                aria-pressed={showAnnotationLabels}
-                className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-bold ${
-                  showAnnotationLabels
-                    ? "border-orange-200 bg-orange-50 text-orange-700"
-                    : "border-stone-200 text-stone-500"
-                }`}
-              >
-                {showAnnotationLabels ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                Annotations
-              </button>
+
+              {/* Row 2: Model Inference Bar (if models registered) */}
+              {registeredModels.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-stone-200/70 pt-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex items-center gap-1 text-[11px] font-semibold text-stone-500">
+                      <Wand2 className="h-3 w-3 text-orange-500" /> Model Inference:
+                    </span>
+                    <select
+                      value={modelRunConfig.modelId}
+                      onChange={(event) =>
+                        setModelRunConfig((current) => ({
+                          ...current,
+                          modelId: event.target.value ? Number(event.target.value) : "",
+                        }))
+                      }
+                      className="h-8 rounded-lg border border-stone-200 bg-white px-2.5 text-xs font-medium text-stone-700 shadow-xs hover:border-stone-300 focus:border-stone-400 focus:outline-none"
+                      aria-label="Select model"
+                    >
+                      <option value="">Select trained model</option>
+                      {registeredModels.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name} v{model.version}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 h-8 shadow-xs">
+                      <span className="text-[10px] font-semibold text-stone-400">Conf:</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={modelRunConfig.confidence}
+                        onChange={(event) =>
+                          setModelRunConfig((current) => ({
+                            ...current,
+                            confidence: Math.max(0, Math.min(1, Number(event.target.value) || 0)),
+                          }))
+                        }
+                        className="no-number-spinner w-12 text-center text-xs font-bold text-stone-700 outline-none"
+                        aria-label="Confidence"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleTryModel}
+                      disabled={!modelRunConfig.modelId || browserTab !== "original" || activeFrames.length === 0}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-orange-500 px-3 text-xs font-semibold text-white shadow-xs transition-all hover:bg-orange-600 disabled:opacity-40"
+                    >
+                      <Wand2 className="h-3.5 w-3.5" />
+                      Try Model
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             {modelRunError ? (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
@@ -3049,24 +2847,136 @@ export default function DatasetDetailClient({ id }: Props) {
                 </div>
               </div>
             )}
-            <div className="mt-6 flex items-center justify-end border-t border-stone-200 pt-4">
-                <button
-                  type="button"
-                  onClick={() => void (labelsAreVerified ? handleUnverifyLabels() : handleVerifyLabels())}
-                  disabled={verifyingLabels}
-                  className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    labelsAreVerified
-                      ? "border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
-                      : "bg-orange-500 text-white shadow-sm shadow-orange-200 hover:bg-orange-600"
+            <div className="mt-6 flex flex-col gap-3 border-t border-stone-200/80 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                    labelsAreVerified ? "bg-emerald-100 text-emerald-600" : "bg-stone-100 text-stone-400"
                   }`}
                 >
-                  {verifyingLabels ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
-                  {labelsAreVerified ? "Unverify" : "Verify"}
-                </button>
+                  <BadgeCheck className="h-3.5 w-3.5" />
+                </span>
+                <p className="text-xs text-stone-500">
+                  {labelsAreVerified
+                    ? "Dataset annotations are verified and locked for dataset generation."
+                    : "Review your images and verify annotations to unlock the Generate Dataset workflow."}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => void (labelsAreVerified ? handleUnverifyLabels() : handleVerifyLabels())}
+                disabled={verifyingLabels}
+                className={`inline-flex h-10 items-center gap-2 rounded-xl px-5 text-sm font-bold shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                  labelsAreVerified
+                    ? "border border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
+                    : "bg-orange-500 text-white shadow-orange-200 hover:bg-orange-600 hover:shadow-md"
+                }`}
+              >
+                {verifyingLabels ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
+                {labelsAreVerified ? "Unverify Labels" : "Verify Labels"}
+              </button>
+            </div>
             </div>}
           </motion.div>
         )}
+
+        {confirmDialog}
+
+        {augJob &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              className={[
+                "fixed bottom-5 right-5 z-[150] w-72 rounded-2xl border border-stone-200 bg-white/95 p-4",
+                "shadow-xl shadow-stone-300/40 backdrop-blur",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-2">
+                {augJob.status === "done" ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                ) : (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-orange-500" />
+                )}
+                <p className="text-sm font-bold text-stone-800">
+                  {augJob.status === "done" ? "Augmentation complete" : "Generating dataset…"}
+                </p>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-stone-100">
+                <div
+                  className="h-full rounded-full bg-orange-500 transition-all duration-300"
+                  style={{ width: `${augJob.total ? Math.round((augJob.done / augJob.total) * 100) : 0}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs font-medium text-stone-500">
+                {augJob.done}/{augJob.total} images · runs in background
+              </p>
+            </div>,
+            document.body,
+          )}
+
+        {augConfirmOpen &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              className={[
+                "fixed inset-0 z-[200] flex items-center justify-center bg-black/40",
+                "backdrop-blur-sm",
+              ].join(" ")}
+            >
+              <div className="relative w-96 rounded-2xl bg-white p-6 shadow-2xl">
+                <button
+                  type="button"
+                  onClick={() => setAugConfirmOpen(false)}
+                  className={[
+                    "absolute right-4 top-4 rounded-lg p-1 text-stone-400 transition hover:bg-stone-100",
+                    "hover:text-stone-600",
+                  ].join(" ")}
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+
+                <h2 className="text-base font-bold text-stone-900">Generate dataset</h2>
+
+                <p className="mt-1.5 text-sm text-stone-500">
+                  {hasGenerationTransforms ? (
+                    <>
+                      Generate <span className="font-bold text-stone-700">{trainImageCount * multiplier}</span> processed
+                      image{trainImageCount * multiplier === 1 ? "" : "s"} from Train images?
+                    </>
+                  ) : (
+                    "Finalize the current Train, Validation and Test split without preprocessing or augmentation?"
+                  )}
+                </p>
+
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAugConfirmOpen(false)}
+                    className={[
+                      "flex-1 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-semibold",
+                      "text-stone-600 transition hover:bg-stone-100",
+                    ].join(" ")}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={augApplying}
+                    onClick={() => void handleAugApply()}
+                    className={[
+                      "flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5",
+                      "text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50",
+                    ].join(" ")}
+                  >
+                    {augApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
       </div>
     </div>
   );
