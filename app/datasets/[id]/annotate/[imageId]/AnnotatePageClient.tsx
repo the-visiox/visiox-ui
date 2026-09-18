@@ -1072,8 +1072,17 @@ export default function AnnotatePageClient() {
     setAutoSegmentOpen(true);
   }, [autoSegmentActive]);
 
+  const closeAutoSegment = useCallback(() => {
+    if (autoSegmentLoading) {
+      autoSegmentAbortRef.current?.abort();
+      autoSegmentAbortRef.current = null;
+      setAutoSegmentLoading(false);
+    }
+    setAutoSegmentOpen(false);
+  }, [autoSegmentLoading]);
+
   const runAutoSegment = useCallback(async (labelIds: number[], confidence: number) => {
-    if (autoSegmentLoading || labelIds.length < 1 || labelIds.length > 20) return;
+    if (autoSegmentLoading || labelIds.length > 20) return;
     const controller = new AbortController();
     autoSegmentAbortRef.current = controller;
     setAutoSegmentLoading(true);
@@ -1111,20 +1120,25 @@ export default function AnnotatePageClient() {
   }, [autoSegmentLoading, datasetId, frameIndex]);
 
   const commitAutoSegment = useCallback((shape: EditorShape) => {
+    const assignedClassLabelId = shape.classLabelId ?? activeClassId ?? 0;
+    const shapeToCommit = {
+      ...shape,
+      classLabelId: assignedClassLabelId,
+    };
     _setShapes(sessionRef.current.update((current) => {
-      const geometry = JSON.stringify(shape.points?.map((value) => Math.round(value * 100) / 100));
+      const geometry = JSON.stringify(shapeToCommit.points?.map((value) => Math.round(value * 100) / 100));
       const alreadyExists = current.some((item) =>
         item.shapeType === "polygon" &&
-        item.classLabelId === shape.classLabelId &&
+        item.classLabelId === shapeToCommit.classLabelId &&
         JSON.stringify(item.points?.map((value) => Math.round(value * 100) / 100)) === geometry,
       );
       if (alreadyExists) return current;
-      return [...current, shape];
+      return [...current, shapeToCommit];
     }));
     setAutoSegmentCandidates((current) => current.filter((item) => item.clientId !== shape.clientId));
-    setSelectedShapeId(shape.clientId);
+    setSelectedShapeId(shapeToCommit.clientId);
     setActiveRightTab("objects");
-  }, []);
+  }, [activeClassId]);
 
   const handleAutoLabelComplete = useCallback(async () => {
     if (!isNativeMode || !Number.isFinite(datasetId)) return;
@@ -2132,7 +2146,7 @@ export default function AnnotatePageClient() {
           running={autoSegmentLoading}
           error={autoSegmentError}
           message={autoSegmentMessage}
-          onClose={() => setAutoSegmentOpen(false)}
+          onClose={closeAutoSegment}
           onRun={runAutoSegment}
         />
       ) : null}

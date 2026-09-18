@@ -155,7 +155,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [isMiddlePan, setIsMiddlePan] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ shapeId: string; x: number; y: number } | null>(null);
   const [autoSegmentHoveredId, setAutoSegmentHoveredId] = useState<string | null>(null);
-  const autoSegmentTimerRef = useRef<number | null>(null);
   const onAutoSegmentCommitRef = useRef(onAutoSegmentCommit);
   onAutoSegmentCommitRef.current = onAutoSegmentCommit;
   const panOffsetRef = useRef(panOffset);
@@ -165,27 +164,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const MENU_HEIGHT = 220;
   const MENU_GAP = 8;
 
-  useEffect(() => {
-    if (autoSegmentTimerRef.current !== null) window.clearTimeout(autoSegmentTimerRef.current);
-    autoSegmentTimerRef.current = null;
-    if (!autoSegmentEnabled || !autoSegmentHoveredId) return;
-    const candidate = autoSegmentCandidates.find((shape) => shape.clientId === autoSegmentHoveredId);
-    if (!candidate) return;
-    autoSegmentTimerRef.current = window.setTimeout(() => {
-      onAutoSegmentCommitRef.current?.(candidate);
-      setAutoSegmentHoveredId(null);
-      autoSegmentTimerRef.current = null;
-    }, 450);
-    return () => {
-      if (autoSegmentTimerRef.current !== null) window.clearTimeout(autoSegmentTimerRef.current);
-      autoSegmentTimerRef.current = null;
-    };
-  }, [autoSegmentCandidates, autoSegmentEnabled, autoSegmentHoveredId]);
-
   const imageW = image?.width ?? 0;
   const imageH = image?.height ?? 0;
   const containerW = dimensions.width;
   const containerH = dimensions.height;
+
   const baseFitScale = useMemo(() => {
     if (!imageW || !imageH || containerW <= 0 || containerH <= 0) {
       return 1;
@@ -730,6 +713,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     setNewBox({ ...newBox, width: pos.x - newBox.x, height: pos.y - newBox.y });
   };
 
+
+
   const handleMouseUp = () => {
     /* box drawing is two-click — finalize happens in handleStageClick */
   };
@@ -747,6 +732,19 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
     if (isMiddlePan || e.evt.button !== 0) return;
+    if (autoSegmentEnabled) {
+      const pos = layerPos(e, layerX, layerY, layerScale, imageW, imageH);
+      const candidate = pos
+        ? autoSegmentCandidates.find(
+            (shape) => shape.points && pointInPolygon(pos.x, pos.y, shape.points),
+          )
+        : autoSegmentCandidates.find((shape) => shape.clientId === autoSegmentHoveredId);
+      if (candidate) {
+        onAutoSegmentCommitRef.current?.(candidate);
+        setAutoSegmentHoveredId(null);
+      }
+      return;
+    }
     if (canDrawPath) {
       appendPathVertex(e);
       return;
@@ -776,10 +774,12 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const cursorClass = isMiddlePan
     ? "cursor-grabbing"
     : autoSegmentEnabled
-      ? "cursor-cell"
-    : canDrawRect || canDrawPath || canPlacePoint || canPlaceTag
-      ? "cursor-crosshair"
-      : "cursor-default";
+      ? autoSegmentHoveredId
+        ? "cursor-pointer"
+        : "cursor-cell"
+      : canDrawRect || canDrawPath || canPlacePoint || canPlaceTag
+        ? "cursor-crosshair"
+        : "cursor-default";
 
   return (
     <div
@@ -966,7 +966,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               const livePos = dragPreview[shape.clientId];
               const shapeX = livePos?.x ?? shape.x;
               const shapeY = livePos?.y ?? shape.y;
-              const shapePointerEnabled = true;
+              const shapePointerEnabled = !autoSegmentEnabled;
               const isPinned = pinnedShapeIds.includes(shape.clientId);
               const showFloatingLabel = (isHovered || isPinned) && shape.shapeType !== "tag";
               const floatingLabelWidth = Math.max(PINNED_LABEL_MIN_WIDTH, shapeLabel.length * 7 + 18) / safeLayerScale;

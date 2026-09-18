@@ -36,6 +36,8 @@ import {
   Film,
   Sparkles,
   Minimize2,
+  Layers,
+  Database,
 } from "lucide-react";
 import BlueprintGrid from "@/components/BlueprintGrid";
 import { CardMenu, type CardMenuItem } from "@/components/CardMenu";
@@ -65,6 +67,24 @@ const STATUS_DOT: Record<string, string> = {
   Importing: "bg-orange-500 animate-pulse",
   "Import failed": "bg-red-500",
   Draft: "bg-stone-300",
+};
+
+const TASK_TYPE_LABEL: Record<string, string> = {
+  object_detection: "Object Detection",
+  instance_segmentation: "Instance Segmentation",
+  image_classification: "Image Classification",
+  semantic_segmentation: "Semantic Segmentation",
+  keypoint_detection: "Keypoint Detection",
+  video_annotation: "Video Annotation",
+};
+
+const TASK_TYPE_DESCRIPTION: Record<string, string> = {
+  object_detection: "Detect and locate objects with bounding boxes",
+  instance_segmentation: "Detect and segment individual objects with polygon masks",
+  image_classification: "Classify whole images into categories",
+  semantic_segmentation: "Pixel-level classification across categories",
+  keypoint_detection: "Identify specific keypoints or skeletal landmarks",
+  video_annotation: "Track and annotate objects across video frames",
 };
 
 type DatasetImportHint = "images" | "yolo26" | "coco";
@@ -1062,9 +1082,16 @@ function CreateDatasetModal({
             </div>
             <div className="min-w-0">
               <h2 className="text-2xl font-bold tracking-tight text-stone-950">New Dataset</h2>
-              <p className="mt-1 truncate text-sm text-stone-500">
-                Creating in project <span className="font-bold text-orange-600">{project.name}</span>
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-500">
+                <span>
+                  Creating in project <span className="font-bold text-orange-600">{project.name}</span>
+                </span>
+                <span className="text-stone-300">•</span>
+                <span className="inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">
+                  <Layers className="h-3 w-3 text-orange-600" />
+                  {TASK_TYPE_LABEL[project.task_type] ?? project.task_type}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1227,6 +1254,36 @@ function CreateDatasetModal({
               </div>
             </div>
           </section>
+
+          {/* Task Type Info */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">
+              Task type
+            </label>
+            <div className="flex items-center justify-between rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                  <Layers className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-stone-900">
+                      {TASK_TYPE_LABEL[project.task_type] ?? project.task_type}
+                    </span>
+                    <span className="inline-flex items-center rounded-md bg-orange-100/80 px-2 py-0.5 text-[10px] font-bold tracking-wide text-orange-800 uppercase">
+                      Project Task
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-stone-500">
+                    {TASK_TYPE_DESCRIPTION[project.task_type] ?? "Inherited from project configuration"}
+                  </p>
+                </div>
+              </div>
+              <span className="hidden sm:inline-block text-xs text-stone-400 font-medium shrink-0">
+                Fixed by project
+              </span>
+            </div>
+          </div>
 
           {/* Dataset Name */}
           <div>
@@ -2184,38 +2241,49 @@ export default function ProjectDetailPage() {
       <main className="flex-grow p-6 z-10">
         <header
           className={[
-            "mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 p-5",
+            "mb-6 flex flex-col gap-4 rounded-3xl border border-stone-200/80 bg-white/80 px-5 py-4",
             "shadow-sm shadow-stone-200/50 backdrop-blur md:flex-row md:items-center",
             "md:justify-between",
           ].join(" ")}
         >
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push("/projects")}
-                className={[
-                  "p-2 hover:bg-white/80 rounded-xl transition-colors border border-transparent",
-                  "hover:border-stone-200",
-                ].join(" ")}
-              >
-                <ArrowLeft className="w-5 h-5 text-stone-600" />
-              </button>
-              <div className="h-6 w-[1px] bg-stone-200" />
-              <div
-                className={[
-                  "flex items-center gap-2 text-stone-400 text-xs font-bold uppercase",
-                  "tracking-widest",
-                ].join(" ")}
-              >
-                <Link href="/projects" className="hover:text-stone-600 transition-colors">
-                  Projects
-                </Link>
-                <span>/</span>
-                <span className="text-stone-900">{project.name}</span>
-              </div>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3.5">
+            <button
+              onClick={() => router.push("/projects")}
+              className={[
+                "p-2 hover:bg-stone-100 rounded-xl transition-colors border border-transparent",
+                "hover:border-stone-200 text-stone-600",
+              ].join(" ")}
+              title="Back to Projects"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="h-6 w-[1px] bg-stone-200" />
+            <div
+              className={[
+                "flex items-center gap-2 text-stone-400 text-xs font-bold uppercase",
+                "tracking-widest",
+              ].join(" ")}
+            >
+              <Link href="/projects" className="hover:text-stone-600 transition-colors">
+                Projects
+              </Link>
+              <span>/</span>
             </div>
+            <h1 className="text-xl font-bold tracking-tight text-stone-900 truncate max-w-[320px]">
+              {project.name}
+            </h1>
+            <span
+              className={[
+                "inline-flex items-center gap-1.5 rounded-full border border-orange-200/90 bg-orange-50 px-3",
+                "py-1 text-xs font-semibold text-orange-700 shadow-2xs",
+              ].join(" ")}
+            >
+              <Layers className="w-3.5 h-3.5 text-orange-500" />
+              {TASK_TYPE_LABEL[project.task_type] ?? project.task_type}
+            </span>
           </div>
-          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+
+          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end shrink-0">
             <button
               type="button"
               disabled={!preferredTrainingDataset}

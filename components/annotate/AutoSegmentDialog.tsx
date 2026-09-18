@@ -23,11 +23,9 @@ export default function AutoSegmentDialog({
   onClose: () => void;
   onRun: (labelIds: number[], confidence: number) => void | Promise<void>;
 }) {
-  const [selectedIds, setSelectedIds] = useState<number[]>(() =>
-    labels.some((label) => label.id === activeClassId) ? [activeClassId] : [],
-  );
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [search, setSearch] = useState("");
-  const [confidence, setConfidence] = useState(0.35);
+  const [confidence, setConfidence] = useState(0.1);
 
   const filteredLabels = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -56,21 +54,30 @@ export default function AutoSegmentDialog({
               <Hexagon className="h-5 w-5 text-orange-500" /> Auto Segment
             </h2>
             <p className="mt-1 text-xs leading-5 text-stone-500">
-              Choose up to 20 dataset labels. SAM 3 will prepare polygons for hover selection.
+              SAM 3 prepares polygon segmentations. Click candidates to add.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            disabled={running}
             aria-label="Close Auto Segment"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-stone-400 hover:bg-stone-100 hover:text-stone-700 disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+            title="Close"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          {selectedIds.length === 0 ? (
+            <div className="rounded-2xl border border-orange-200/80 bg-orange-50/70 p-3.5 text-xs leading-5 text-stone-700">
+              <p className="font-bold text-orange-900">Default mode (no labels selected)</p>
+              <p className="mt-0.5 text-stone-600">
+                SAM 3 will segment all detected objects without forcing a specific label. You can click candidates to assign them directly to your active tool class.
+              </p>
+            </div>
+          ) : null}
+
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
             <input
@@ -83,13 +90,24 @@ export default function AutoSegmentDialog({
           </label>
 
           <div className="flex items-center justify-between text-xs font-bold text-stone-500">
-            <span>Labels to segment</span>
-            <span className={selectedIds.length >= 20 ? "text-orange-600" : "tabular-nums"}>
-              {selectedIds.length}/20 selected
-            </span>
+            <span>Labels to segment (optional)</span>
+            <div className="flex items-center gap-2">
+              {selectedIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds([])}
+                  className="font-bold text-orange-600 hover:text-orange-700"
+                >
+                  Clear
+                </button>
+              )}
+              <span className={selectedIds.length >= 20 ? "text-orange-600" : "tabular-nums"}>
+                {selectedIds.length}/20 selected
+              </span>
+            </div>
           </div>
 
-          <div className="custom-scrollbar max-h-72 space-y-2 overflow-y-auto pr-1">
+          <div className="custom-scrollbar max-h-56 space-y-2 overflow-y-auto pr-1">
             {filteredLabels.length ? filteredLabels.map((label) => {
               const selected = selectedIds.includes(label.id);
               return (
@@ -147,20 +165,33 @@ export default function AutoSegmentDialog({
               {message}
             </p>
           ) : null}
+          {running ? (
+            <p className="rounded-xl border border-orange-200 bg-orange-50/80 px-3 py-2 text-xs font-medium text-orange-800">
+              Running SAM 3 inference on server. You can click &quot;Stop &amp; Cancel&quot; anytime to abort.
+            </p>
+          ) : null}
         </div>
 
         <div className="flex justify-end gap-3 border-t border-stone-100 px-5 py-4">
-          <button type="button" onClick={onClose} disabled={running} className="h-10 rounded-xl border border-stone-200 px-4 text-sm font-bold text-stone-700 disabled:opacity-40">
-            Cancel
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-xl border border-stone-200 px-4 text-sm font-bold text-stone-700 hover:bg-stone-50 transition-colors"
+          >
+            {running ? "Stop & Cancel" : "Cancel"}
           </button>
           <button
             type="button"
             onClick={() => void onRun(selectedIds, confidence)}
-            disabled={running || selectedIds.length === 0}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={running}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
           >
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hexagon className="h-4 w-4" />}
-            {running ? "Preparing segments…" : "Prepare segments"}
+            {running
+              ? "Preparing segments…"
+              : selectedIds.length === 0
+                ? "Prepare segments (Default)"
+                : `Prepare segments (${selectedIds.length})`}
           </button>
         </div>
       </div>
